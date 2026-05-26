@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+coverage
+*.tsbuildinfo
+package-lock.json
+pnpm-lock.yaml
+.env
+.env.*
+public
+src/components/ui

@@ -1,0 +1,4 @@
+# Admin Operations Console — never index. This is a private SPA behind auth;
+# anything Google would find here is either a login page or an authorized view.
+User-agent: *
+Disallow: /

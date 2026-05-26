@@ -1,0 +1,1465 @@
+import type { CompanySlug } from '@/contexts/project-context';
+
+const RAW_API_URL = import.meta.env.VITE_API_URL;
+if (import.meta.env.PROD && !RAW_API_URL) {
+  throw new Error(
+    'VITE_API_URL is required in production builds. Pass it as a Docker --build-arg.',
+  );
+}
+const API_BASE = (RAW_API_URL ?? 'http://localhost:8000').replace(/\/$/, '');
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public body?: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  body?: unknown;
+  companySlug?: CompanySlug;
+  signal?: AbortSignal;
+}
+
+async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.companySlug) headers['X-Company-Slug'] = opts.companySlug;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: opts.method ?? 'GET',
+    headers,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    credentials: 'include',
+    signal: opts.signal,
+  });
+
+  const text = await res.text();
+  const parsed = text ? safeJson(text) : null;
+
+  if (!res.ok) {
+    const msg =
+      (parsed && typeof parsed === 'object' && 'error' in parsed
+        ? String((parsed as { error?: unknown }).error)
+        : null) ??
+      res.statusText ??
+      `Request failed (${res.status})`;
+    throw new ApiError(res.status, msg, parsed);
+  }
+
+  return parsed as T;
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+// --- Contact ---------------------------------------------------------------
+
+export type ContactStatus = 'new' | 'read' | 'replied' | 'archived';
+
+export interface ContactMessage {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  subject: string | null;
+  message: string;
+  locale: string;
+  source: string | null;
+  status: ContactStatus;
+  priority: string;
+  consentPrivacy: boolean;
+  consentMarketing: boolean;
+  handledByUserId: string | null;
+  handledAt: string | null;
+  repliedAt: string | null;
+  internalNotes: string | null;
+  /** Brand-specific extras submitted by the storefront (jsonb). Empty object if unused. */
+  metadata: Record<string, unknown>;
+  attachments: Array<{ key: string; name: string; size: number; contentType?: string }>;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactSubmitInput {
+  name: string;
+  email: string;
+  phone?: string;
+  subject?: string;
+  message: string;
+  locale?: string;
+  source?: string;
+  consentPrivacy: true;
+  consentMarketing?: boolean;
+}
+
+// --- Users / Profile / Settings -------------------------------------------
+
+export type UserAudience = 'admin' | 'partner' | 'customer';
+export type UserAccessLevel = 'super_admin' | 'admin' | 'manager' | 'viewer' | 'none';
+
+export interface MeUser {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  name: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  phoneVerified: boolean;
+  image: string | null;
+  dateOfBirth: string | null;
+  gender: string | null;
+  locale: string;
+  timezone: string;
+  audience: UserAudience;
+  accessLevel: UserAccessLevel;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type UserGender = 'male' | 'female' | 'diverse' | 'prefer_not_to_say';
+
+export interface ProfilePatch {
+  name?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
+  image?: string | null;
+  locale?: string;
+  timezone?: string;
+  /** ISO date — `YYYY-MM-DD`. */
+  dateOfBirth?: string | null;
+  gender?: UserGender | null;
+}
+
+// --- Addresses ------------------------------------------------------------
+
+export type AddressType = 'primary' | 'billing' | 'service' | 'shipping' | 'other';
+
+export interface Address {
+  id: number;
+  userId: string;
+  label: string | null;
+  type: AddressType;
+  line1: string;
+  line2: string | null;
+  city: string;
+  region: string | null;
+  postalCode: string;
+  country: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AddressInput {
+  label?: string | null;
+  type?: AddressType;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  region?: string | null;
+  postalCode: string;
+  country?: string;
+  isDefault?: boolean;
+}
+
+export type AddressPatch = Partial<AddressInput>;
+
+export type UserTheme = 'system' | 'light' | 'dark';
+
+export interface UserSettings {
+  userId: string;
+  locale: string;
+  theme: UserTheme;
+  notificationsEmail: boolean;
+  notificationsSms: boolean;
+  marketingOptIn: boolean;
+  updatedAt: string;
+}
+
+export interface SettingsPatch {
+  locale?: string;
+  theme?: UserTheme;
+  notificationsEmail?: boolean;
+  notificationsSms?: boolean;
+  marketingOptIn?: boolean;
+}
+
+export interface MembershipRow {
+  companySlug: CompanySlug;
+  role: 'owner' | 'admin' | 'manager' | 'viewer' | 'partner';
+  companyName: string | null;
+  acceptedAt: string | null;
+}
+
+export const usersApi = {
+  me(signal?: AbortSignal) {
+    return request<{ user: MeUser }>('/admin/users/me', { signal });
+  },
+  updateMe(patch: ProfilePatch) {
+    return request<{ user: MeUser }>('/admin/users/me', {
+      method: 'PATCH',
+      body: patch,
+    });
+  },
+  memberships(signal?: AbortSignal) {
+    return request<{ memberships: MembershipRow[] }>('/admin/users/me/memberships', { signal });
+  },
+  settings(signal?: AbortSignal) {
+    return request<{ settings: UserSettings }>('/admin/users/me/settings', { signal });
+  },
+  updateSettings(patch: SettingsPatch) {
+    return request<{ settings: UserSettings }>('/admin/users/me/settings', {
+      method: 'PATCH',
+      body: patch,
+    });
+  },
+  addresses(signal?: AbortSignal) {
+    return request<{ addresses: Address[] }>('/admin/users/me/addresses', {
+      signal,
+    });
+  },
+  createAddress(input: AddressInput) {
+    return request<{ address: Address }>('/admin/users/me/addresses', {
+      method: 'POST',
+      body: input,
+    });
+  },
+  updateAddress(id: number, patch: AddressPatch) {
+    return request<{ address: Address }>(`/admin/users/me/addresses/${id}`, {
+      method: 'PATCH',
+      body: patch,
+    });
+  },
+  deleteAddress(id: number) {
+    return request<null>(`/admin/users/me/addresses/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// --- Partners (admin) -----------------------------------------------------
+
+export type PartnerStatus = 'pending' | 'active' | 'suspended' | 'rejected';
+
+export interface Partner {
+  id: number;
+  userId: string;
+  companyName: string | null;
+  legalName: string | null;
+  taxId: string | null;
+  vatId: string | null;
+  registrationNumber: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  websiteUrl: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  region: string | null;
+  postalCode: string | null;
+  country: string | null;
+  serviceAreas: string[];
+  services: string[];
+  iban: string | null;
+  bic: string | null;
+  commissionRate: string | null;
+  status: PartnerStatus;
+  approvedAt: string | null;
+  approvedByUserId: string | null;
+  suspendedAt: string | null;
+  internalNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PartnerUpdate {
+  status?: PartnerStatus;
+  internalNotes?: string | null;
+}
+
+export interface PartnerCreateInput {
+  email: string;
+  companyName: string;
+  legalName?: string;
+  contactPhone?: string;
+  websiteUrl?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  region?: string;
+  postalCode?: string;
+  country?: string;
+  services?: string[];
+  serviceAreas?: string[];
+  iban?: string;
+  bic?: string;
+  taxId?: string;
+  vatId?: string;
+  internalNotes?: string;
+}
+
+export const partnersAdminApi = {
+  list(companySlug: CompanySlug, signal?: AbortSignal) {
+    return request<{ partners: Partner[] }>('/admin/partners', {
+      companySlug,
+      signal,
+    });
+  },
+  create(companySlug: CompanySlug, input: PartnerCreateInput) {
+    return request<{ partner: Partner; userCreated: boolean }>('/admin/partners', {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
+  update(companySlug: CompanySlug, id: number, patch: PartnerUpdate) {
+    return request<{ partner: Partner }>(`/admin/partners/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: patch,
+    });
+  },
+};
+
+// --- Service inquiries (admin + public) ----------------------------------
+
+export type InquiryStatus = 'new' | 'in_review' | 'quoted' | 'won' | 'lost';
+
+export interface ServiceInquiry {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  service: string | null;
+  propertyDetails: string | null;
+  /** ISO `YYYY-MM-DD` or null. */
+  preferredDate: string | null;
+  budget: string | null;
+  message: string;
+  locale: string;
+  source: string | null;
+  status: InquiryStatus;
+  priority: string;
+  consentPrivacy: boolean;
+  consentMarketing: boolean;
+  handledByUserId: string | null;
+  handledAt: string | null;
+  quotedAt: string | null;
+  quotedAmount: string | null;
+  closedAt: string | null;
+  internalNotes: string | null;
+  /** Brand-specific form fields submitted by the storefront. */
+  metadata: Record<string, unknown>;
+  attachments: Array<{ key: string; name: string; size: number; contentType?: string }>;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InquirySubmitInput {
+  name: string;
+  email: string;
+  phone?: string;
+  service?: string;
+  propertyDetails?: string;
+  preferredDate?: string;
+  budget?: string;
+  message: string;
+  locale?: string;
+  source?: string;
+  metadata?: Record<string, unknown>;
+  consentPrivacy: true;
+  consentMarketing?: boolean;
+}
+
+export interface InquiryUpdate {
+  status?: InquiryStatus;
+  priority?: 'normal' | 'high';
+  internalNotes?: string | null;
+  quotedAmount?: string | null;
+}
+
+export const inquiriesApi = {
+  submit(companySlug: CompanySlug, input: InquirySubmitInput) {
+    return request<{ ok: true; inquiry: ServiceInquiry }>('/storefront/inquiries', {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
+  list(
+    companySlug: CompanySlug,
+    opts: { limit?: number; cursor?: string | null } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.cursor) params.set('cursor', opts.cursor);
+    const qs = params.toString();
+    return request<{ inquiries: ServiceInquiry[]; nextCursor: string | null }>(
+      `/admin/inquiries${qs ? `?${qs}` : ''}`,
+      { companySlug, signal },
+    );
+  },
+  get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<{ inquiry: ServiceInquiry | null }>(`/admin/inquiries/${id}`, {
+      companySlug,
+      signal,
+    });
+  },
+  update(companySlug: CompanySlug, id: number, patch: InquiryUpdate) {
+    return request<{ inquiry: ServiceInquiry }>(`/admin/inquiries/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: patch,
+    });
+  },
+};
+
+// --- Uploads (admin) ------------------------------------------------------
+
+export const uploadsAdminApi = {
+  /**
+   * Exchange an S3 object key for a short-lived presigned GET URL the browser
+   * can use to render the image. Keys are scoped to the company — passing
+   * another tenant's key will be rejected by the backend with 403.
+   */
+  signDownload(companySlug: CompanySlug, key: string, signal?: AbortSignal) {
+    const qs = new URLSearchParams({ key }).toString();
+    return request<{ downloadUrl: string; expiresIn: number }>(
+      `/admin/uploads/sign-download?${qs}`,
+      { companySlug, signal },
+    );
+  },
+  /**
+   * Two-step upload helper: ask the backend for a presigned PUT URL, then
+   * stream the file straight to S3 from the browser. Returns the attachment
+   * record (key + metadata) ready to embed in a chat message or any other
+   * row that references uploads.
+   */
+  async uploadDirect(companySlug: CompanySlug, file: File) {
+    const sign = await request<{ uploadUrl: string; key: string }>('/admin/uploads/sign-upload', {
+      method: 'POST',
+      body: {
+        filename: file.name,
+        contentType: file.type || 'application/octet-stream',
+        size: file.size,
+      },
+      companySlug,
+    });
+    const put = await fetch(sign.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+    return {
+      key: sign.key,
+      name: file.name,
+      size: file.size,
+      contentType: file.type || undefined,
+    };
+  },
+};
+
+// --- Orders (admin) ---------------------------------------------------------
+
+export type OrderStatus =
+  | 'pending'
+  | 'payment_pending'
+  | 'paid'
+  | 'accepted'
+  | 'picked_up'
+  | 'in_cleaning'
+  | 'ready'
+  | 'delivered'
+  | 'completed'
+  | 'cancelled'
+  | 'refunded';
+
+export type OrderTransitionStatus = Exclude<OrderStatus, 'pending' | 'payment_pending' | 'paid'>;
+
+export interface OrderRow {
+  id: number;
+  orderNumber: string;
+  publicToken: string;
+  kind: 'teppichreinigung' | 'teppichreparatur' | 'polsterreinigung' | 'teppichbodenreinigung';
+  status: OrderStatus;
+  currency: string;
+  subtotalCents: number;
+  pickupFeeCents: number;
+  minOrderTopUpCents: number;
+  totalCents: number;
+  pickupMode: 'pickup' | 'drop_off' | 'onsite';
+  pickupZone: number | null;
+  pickupPlz: string | null;
+  pickupLabel: string | null;
+  preferredDate: string | null;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressCity: string | null;
+  addressPostalCode: string | null;
+  addressCountry: string | null;
+  customerNotes: string | null;
+  internalNotes: string | null;
+  stripeSessionId: string | null;
+  stripePaymentIntentId: string | null;
+  paidAt: string | null;
+  acceptedAt: string | null;
+  pickedUpAt: string | null;
+  inCleaningAt: string | null;
+  readyAt: string | null;
+  deliveredAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  refundedAt: string | null;
+  consentPrivacy: boolean;
+  consentMarketing: boolean;
+  locale: string;
+  source: string | null;
+  metadata: {
+    /** Up to 3 customer-preferred on-site slots, "YYYY-MM-DDTHH:mm". */
+    preferredSlots?: string[];
+    /** The slot the admin confirmed. */
+    confirmedSlot?: string;
+    [key: string]: unknown;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrderItem {
+  id: number;
+  code: string;
+  label: string;
+  quantityLabel: string;
+  quantity: string;
+  unitPriceCents: number;
+  subtotalCents: number;
+}
+
+export interface OrderStatusLogEntry {
+  id: number;
+  fromStatus: string | null;
+  toStatus: string;
+  changedByUserId: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface OrderListResponse {
+  orders: OrderRow[];
+  nextCursor: string | null;
+}
+
+/**
+ * Cross-brand list — same as OrderRow but with companySlug/companyName so the
+ * UI can render a brand badge and dispatch detail-view loads back to the
+ * right tenant.
+ */
+export interface OrderListAllResponse {
+  orders: Array<OrderRow & { companySlug: CompanySlug; companyName: string }>;
+  nextCursor: null;
+}
+
+export interface OrderDetailResponse {
+  order: OrderRow;
+  items: OrderItem[];
+  statusLog: OrderStatusLogEntry[];
+  allowedNextStatuses: OrderStatus[];
+}
+
+export const ordersAdminApi = {
+  list(
+    companySlug: CompanySlug,
+    opts: { limit?: number; cursor?: string; status?: OrderStatus } = {},
+    signal?: AbortSignal,
+  ) {
+    const qs = new URLSearchParams();
+    if (opts.limit) qs.set('limit', String(opts.limit));
+    if (opts.cursor) qs.set('cursor', opts.cursor);
+    if (opts.status) qs.set('status', opts.status);
+    return request<OrderListResponse>(`/admin/orders?${qs.toString()}`, {
+      companySlug,
+      signal,
+    });
+  },
+  /**
+   * Cross-brand list for the admin "All companies" view. Doesn't pass
+   * X-Company-Slug; backend aggregates across all active tenant schemas.
+   * Cursor pagination isn't implemented across tenants yet — limit caps the
+   * page at 200, which is enough for current volume.
+   */
+  listAllCompanies(opts: { limit?: number; status?: OrderStatus } = {}, signal?: AbortSignal) {
+    const qs = new URLSearchParams();
+    if (opts.limit) qs.set('limit', String(opts.limit));
+    if (opts.status) qs.set('status', opts.status);
+    const search = qs.toString();
+    return request<OrderListAllResponse>(`/admin/orders/all${search ? `?${search}` : ''}`, {
+      signal,
+    });
+  },
+  get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<OrderDetailResponse>(`/admin/orders/${id}`, { companySlug, signal });
+  },
+  transition(
+    companySlug: CompanySlug,
+    id: number,
+    body: { toStatus: OrderTransitionStatus; reason?: string },
+  ) {
+    return request<{ order: OrderRow }>(`/admin/orders/${id}/transition`, {
+      method: 'POST',
+      body,
+      companySlug,
+    });
+  },
+  updateNotes(companySlug: CompanySlug, id: number, internalNotes: string | null) {
+    return request<{ order: OrderRow }>(`/admin/orders/${id}/notes`, {
+      method: 'PATCH',
+      body: { internalNotes },
+      companySlug,
+    });
+  },
+  confirmAppointment(companySlug: CompanySlug, id: number, slot: string) {
+    return request<{ order: OrderRow }>(`/admin/orders/${id}/confirm-appointment`, {
+      method: 'POST',
+      body: { slot },
+      companySlug,
+    });
+  },
+  /**
+   * Recovery action: re-fetch the Stripe Checkout Session and reconcile the
+   * order. Used to recover an order stuck in `payment_pending` when the
+   * webhook was missed. `action` describes what the backend did:
+   *   - "marked_paid"      → was unpaid in DB, Stripe says paid → flipped + emails sent
+   *   - "marked_cancelled" → Stripe session expired → flipped to cancelled
+   *   - "still_pending"    → Stripe also says still in flight (SEPA, abandoned, etc.)
+   *   - "noop"             → already paid/cancelled/refunded; nothing to do
+   */
+  syncStripe(companySlug: CompanySlug, id: number) {
+    return request<{
+      order: OrderRow | null;
+      stripe: { sessionStatus: string; paymentStatus: string };
+      action: 'marked_paid' | 'marked_cancelled' | 'still_pending' | 'noop';
+    }>(`/admin/orders/${id}/sync-stripe`, {
+      method: 'POST',
+      companySlug,
+    });
+  },
+};
+
+// --- Newsletter (admin) ---------------------------------------------------
+
+export interface NewsletterSubscriber {
+  id: number;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  locale: string;
+  source: string | null;
+  tags: string[];
+  confirmed: boolean;
+  confirmedAt: string | null;
+  unsubscribedAt: string | null;
+  lastEmailSentAt: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- Chat (admin side) -----------------------------------------------------
+
+export interface ChatAttachment {
+  key: string;
+  name: string;
+  size: number;
+  contentType?: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  conversationId: number;
+  senderUserId: string;
+  senderRole: 'admin' | 'partner';
+  body: string | null;
+  attachments: ChatAttachment[];
+  deliveredAt: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface ChatConversation {
+  /** Null until the first message creates the chat_conversations row. */
+  id: number | null;
+  partnerUserId: string;
+  partnerCompanyName: string | null;
+  partnerContactEmail: string | null;
+  partnerName: string | null;
+  partnerEmail: string | null;
+  partnerStatus: string;
+  lastMessageAt: string | null;
+  lastMessagePreview: string | null;
+  /** Backend returns 0 when there's no conversation row. */
+  unreadForAdmin: number;
+  /** Conversation creation time (null = no conversation yet). */
+  createdAt: string | null;
+}
+
+export const chatAdminApi = {
+  conversations(companySlug: CompanySlug, signal?: AbortSignal) {
+    return request<{ conversations: ChatConversation[] }>('/admin/chat/conversations', {
+      signal,
+      companySlug,
+    });
+  },
+  messages(companySlug: CompanySlug, partnerUserId: string, signal?: AbortSignal) {
+    return request<{ conversation: { id: number }; messages: ChatMessage[] }>(
+      `/admin/chat/conversations/${encodeURIComponent(partnerUserId)}/messages`,
+      { signal, companySlug },
+    );
+  },
+  send(
+    companySlug: CompanySlug,
+    partnerUserId: string,
+    body: { body?: string; attachments?: ChatAttachment[] },
+  ) {
+    return request<{ message: ChatMessage }>(
+      `/admin/chat/conversations/${encodeURIComponent(partnerUserId)}/messages`,
+      { method: 'POST', body, companySlug },
+    );
+  },
+  markRead(companySlug: CompanySlug, partnerUserId: string) {
+    return request<null>(`/admin/chat/conversations/${encodeURIComponent(partnerUserId)}/read`, {
+      method: 'POST',
+      body: {},
+      companySlug,
+    });
+  },
+  setTyping(companySlug: CompanySlug, partnerUserId: string, isTyping: boolean) {
+    return request<null>(`/admin/chat/conversations/${encodeURIComponent(partnerUserId)}/typing`, {
+      method: 'POST',
+      body: { isTyping },
+      companySlug,
+    });
+  },
+};
+
+export const newsletterAdminApi = {
+  list(
+    companySlug: CompanySlug,
+    opts: { limit?: number; cursor?: string | null } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.cursor) params.set('cursor', opts.cursor);
+    const qs = params.toString();
+    return request<{
+      subscribers: NewsletterSubscriber[];
+      nextCursor: string | null;
+    }>(`/admin/newsletter${qs ? `?${qs}` : ''}`, {
+      companySlug,
+      signal,
+    });
+  },
+  delete(companySlug: CompanySlug, id: number) {
+    return request<null>(`/admin/newsletter/${id}`, {
+      method: 'DELETE',
+      companySlug,
+    });
+  },
+  /** ALL_68 — bulk CSV import. dryRun:true returns the summary without writing. */
+  import(
+    companySlug: CompanySlug,
+    body: { csv: string; dryRun?: boolean; tag?: string; source?: string },
+  ) {
+    return request<{
+      summary: NewsletterImportSummary;
+      dryRun: boolean;
+    }>('/admin/newsletter/import', {
+      method: 'POST',
+      companySlug,
+      body,
+    });
+  },
+};
+
+export type NewsletterRejectReason =
+  | 'invalid_email'
+  | 'duplicate'
+  | 'own_domain'
+  | 'system_address'
+  | 'disposable_domain';
+
+export interface NewsletterImportSummary {
+  parsedRows: number;
+  imported: number;
+  skipped: number;
+  byReason: Record<NewsletterRejectReason, number>;
+  sampleRejects: Array<{
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    line: number;
+    reject?: NewsletterRejectReason;
+  }>;
+}
+
+export interface ContactReply {
+  id: number;
+  contactMessageId: number;
+  body: string;
+  sentByUserId: string | null;
+  sentByName: string | null;
+  emailMessageId: string | null;
+  createdAt: string;
+}
+
+// --- Companies (admin: create + list) -------------------------------------
+
+export interface CompanyRow {
+  slug: string;
+  name: string;
+  schemaName: string;
+  keyPrefix?: string;
+  storefrontOrigin?: string | null;
+  senderEmail?: string | null;
+  senderName?: string | null;
+  email?: string | null;
+  websiteUrl?: string | null;
+  primaryColor?: string | null;
+  isActive?: boolean;
+  createdAt?: string;
+}
+
+export interface CreateCompanyInput {
+  slug: string;
+  name: string;
+  schemaName?: string;
+  keyPrefix?: string;
+  storefrontOrigin?: string;
+  senderEmail?: string;
+  senderName?: string;
+  email?: string;
+  websiteUrl?: string;
+  primaryColor?: string;
+  logoUrl?: string;
+}
+
+export interface CompanyListRow {
+  slug: string;
+  name: string;
+  legalName: string | null;
+  schemaName: string;
+  email: string | null;
+  phone: string | null;
+  websiteUrl: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  region: string | null;
+  postalCode: string | null;
+  country: string | null;
+  vatId: string | null;
+  registrationNumber: string | null;
+  logoUrl: string | null;
+  primaryColor: string | null;
+  senderEmail: string | null;
+  senderName: string | null;
+  storefrontOrigin: string | null;
+  isActive: boolean;
+  role: string;
+}
+
+export interface CompanyUpdateInput {
+  name?: string;
+  legalName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  websiteUrl?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  region?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  vatId?: string | null;
+  registrationNumber?: string | null;
+  primaryColor?: string | null;
+  logoUrl?: string | null;
+  senderEmail?: string | null;
+  senderName?: string | null;
+  storefrontOrigin?: string | null;
+  isActive?: boolean;
+}
+
+export interface CompanyStats {
+  newsletter: { confirmed: number; pending: number; unsubscribed: number };
+  contact: { total: number; new: number; last7Days: number };
+  inquiry: { total: number; openCount: number; last7Days: number };
+}
+
+export const companiesAdminApi = {
+  list(signal?: AbortSignal) {
+    return request<{ companies: CompanyListRow[] }>('/admin/companies', { signal });
+  },
+  create(input: CreateCompanyInput) {
+    return request<{ company: CompanyRow }>('/admin/companies', {
+      method: 'POST',
+      body: input,
+    });
+  },
+  update(slug: string, patch: CompanyUpdateInput) {
+    return request<{ company: CompanyRow }>(`/admin/companies/${slug}`, {
+      method: 'PATCH',
+      body: patch,
+    });
+  },
+  stats(slug: string, signal?: AbortSignal) {
+    return request<{ stats: CompanyStats }>(`/admin/companies/${slug}/stats`, { signal });
+  },
+};
+
+// --- Dashboard summary -----------------------------------------------------
+
+export interface DashboardBrandStats {
+  slug: string;
+  name: string;
+  newsletter: { confirmed: number; pending: number; unsubscribed: number };
+  contact: { total: number; new: number; last7Days: number };
+  inquiry: { total: number; openCount: number; last7Days: number };
+}
+
+export type DashboardActivityKind = 'contact' | 'inquiry' | 'newsletter';
+export interface DashboardActivityItem {
+  id: string;
+  kind: DashboardActivityKind;
+  companySlug: string;
+  companyName: string;
+  rowId: number;
+  title: string;
+  subtitle: string | null;
+  createdAt: string;
+}
+
+export interface DashboardSummary {
+  brands: DashboardBrandStats[];
+  activity: DashboardActivityItem[];
+}
+
+export const dashboardAdminApi = {
+  summary(signal?: AbortSignal) {
+    return request<DashboardSummary>('/admin/dashboard/summary', { signal });
+  },
+};
+
+// --- Notifications (bell) --------------------------------------------------
+
+export type NotificationKind = 'contact' | 'inquiry';
+export interface NotificationItem {
+  id: string;
+  kind: NotificationKind;
+  companySlug: string;
+  companyName: string;
+  rowId: number;
+  title: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface NotificationsUnreadResponse {
+  count: number;
+  byBrand: Array<{ slug: string; name: string; count: number }>;
+}
+
+export const notificationsAdminApi = {
+  unreadCount(signal?: AbortSignal) {
+    return request<NotificationsUnreadResponse>('/admin/notifications/unread-count', { signal });
+  },
+  list(limit = 20, signal?: AbortSignal) {
+    return request<{ items: NotificationItem[] }>(`/admin/notifications?limit=${limit}`, {
+      signal,
+    });
+  },
+};
+
+// --- Invites (admin: create; storefront: lookup + accept) -----------------
+
+export interface InviteCreateInput {
+  email: string;
+  companySlug: string;
+  role?: 'owner' | 'admin' | 'manager' | 'viewer' | 'partner';
+  audience?: 'admin' | 'partner';
+  accessLevel?: 'super_admin' | 'admin' | 'manager' | 'viewer' | 'none';
+  /** Pre-fill the partner profile on accept (only honoured when audience=partner). */
+  partner?: {
+    companyName: string;
+    contactPhone?: string;
+    websiteUrl?: string;
+    city?: string;
+    postalCode?: string;
+  };
+}
+
+export interface InviteDetails {
+  email: string;
+  companyName: string | null;
+  companySlug: string;
+  role: string;
+  invitedByName: string;
+  expiresAt: string;
+}
+
+export interface InviteAcceptInput {
+  token: string;
+  password: string;
+  firstName: string;
+  lastName?: string;
+}
+
+export const invitesAdminApi = {
+  create(input: InviteCreateInput) {
+    return request<{
+      invite: { email: string; companySlug: string; role: string; expiresAt: string };
+    }>('/admin/invites', { method: 'POST', body: input });
+  },
+};
+
+export const invitesPublicApi = {
+  lookup(token: string, signal?: AbortSignal) {
+    const qs = new URLSearchParams({ token }).toString();
+    return request<{ invite: InviteDetails }>(`/storefront/invites?${qs}`, { signal });
+  },
+  accept(input: InviteAcceptInput) {
+    return request<{ ok: true; companySlug: string }>('/storefront/invites/accept', {
+      method: 'POST',
+      body: input,
+    });
+  },
+};
+
+export const contactApi = {
+  submit(companySlug: CompanySlug, input: ContactSubmitInput) {
+    return request<{ ok: true; message: ContactMessage }>('/storefront/contact', {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
+
+  list(
+    companySlug: CompanySlug,
+    opts: { limit?: number; cursor?: string | null } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.cursor) params.set('cursor', opts.cursor);
+    const qs = params.toString();
+    return request<{ messages: ContactMessage[]; nextCursor: string | null }>(
+      `/admin/contact${qs ? `?${qs}` : ''}`,
+      { companySlug, signal },
+    );
+  },
+
+  get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<{ message: ContactMessage | null; replies: ContactReply[] }>(
+      `/admin/contact/${id}`,
+      { companySlug, signal },
+    );
+  },
+
+  updateStatus(companySlug: CompanySlug, id: number, status: ContactStatus) {
+    return request<{ message: ContactMessage }>(`/admin/contact/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: { status },
+    });
+  },
+
+  reply(companySlug: CompanySlug, id: number, body: string) {
+    return request<{
+      ok: true;
+      reply: ContactReply;
+      message: ContactMessage;
+    }>(`/admin/contact/${id}/reply`, {
+      method: 'POST',
+      companySlug,
+      body: { body },
+    });
+  },
+};
+
+// --- Catalog / Pricing -----------------------------------------------------
+// The brand's price book — services + tiers + addons. Read-only here; edits
+// live in `cleaning-dashboard-backend/src/lib/price-books/<slug>.ts`.
+
+export type CatalogServiceKind =
+  | 'teppichreinigung'
+  | 'teppichreparatur'
+  | 'polsterreinigung'
+  | 'teppichbodenreinigung';
+
+export type CatalogUnit = 'qm' | 'lfdm' | 'stueck' | 'bracket';
+
+export interface CatalogTier {
+  code: string;
+  label: string;
+  /**
+   * Für Bracket-Services (unit: 'bracket') sind die Preise tier × bracket;
+   * `unitPriceCents` ist dann `0` und sollte ignoriert werden. Stattdessen
+   * `brackets[].pricesCents[tierCode]` auf dem Service lesen.
+   */
+  unitPriceCents: number;
+  /** Optionale Card-Subtitle (z. B. "Mit Fleckenbehandlung & Imprägnierung"). */
+  description?: string;
+}
+
+export interface CatalogBracket {
+  code: string;
+  label: string;
+  /** Preis je Tier-Code in Cents — `null` ⇒ "auf Anfrage". */
+  pricesCents: Record<string, number | null>;
+}
+
+export interface CatalogService {
+  kind: CatalogServiceKind;
+  label: string;
+  unit: CatalogUnit;
+  tiers: CatalogTier[];
+  /** Nur gesetzt für `unit: 'bracket'`. */
+  brackets?: CatalogBracket[];
+  /** Service-specific config — minOrderCents, anfahrtCents, thresholds, … */
+  options: Record<string, unknown>;
+}
+
+export interface CatalogResponse {
+  brand: { slug: string; name: string };
+  currency: string;
+  services: CatalogService[];
+  addons: CatalogTier[];
+}
+
+export const catalogApi = {
+  /** Fetch the brand's price book. Cheap, deterministic — no rate-limit concerns. */
+  forBrand(companySlug: CompanySlug, signal?: AbortSignal) {
+    return request<CatalogResponse>('/storefront/catalog/', {
+      companySlug,
+      signal,
+    });
+  },
+};
+
+// --- Web Push subscriptions -----------------------------------------------
+
+export interface PushStatus {
+  configured: boolean;
+  subscriptions: string[];
+}
+
+export interface PushSubscribeBody {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  userAgent?: string;
+}
+
+export const pushAdminApi = {
+  vapidKey(signal?: AbortSignal) {
+    return request<{ publicKey: string }>('/admin/push/vapid-key', { signal });
+  },
+  status(signal?: AbortSignal) {
+    return request<PushStatus>('/admin/push/status', { signal });
+  },
+  subscribe(body: PushSubscribeBody) {
+    return request<{ ok: true }>('/admin/push/subscribe', {
+      method: 'POST',
+      body,
+    });
+  },
+  unsubscribe(endpoint: string) {
+    return request<{ ok: true }>('/admin/push/subscribe', {
+      method: 'DELETE',
+      body: { endpoint },
+    });
+  },
+  test() {
+    return request<{ ok: true; sent: number; pruned: number }>('/admin/push/test', {
+      method: 'POST',
+    });
+  },
+};
+
+// --- Tasks (ALL_103) -------------------------------------------------------
+
+export type TaskKind =
+  | 'contact_review'
+  | 'inquiry_review'
+  | 'order_dispute'
+  | 'bad_review_followup'
+  | 'partner_application'
+  | 'ad_hoc';
+
+export type TaskStatus = 'open' | 'in_progress' | 'done' | 'dismissed';
+export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface Task {
+  id: number;
+  companySlug: string;
+  kind: TaskKind;
+  refKind: string | null;
+  refId: number | null;
+  title: string;
+  body: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assigneeUserId: string | null;
+  dueAt: string | null;
+  resolvedAt: string | null;
+  resolvedByUserId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskListResponse {
+  items: Task[];
+  nextCursor: string | null;
+}
+
+export interface TaskSummary {
+  openByBrand: Array<{ slug: string; count: number }>;
+  openTotal: number;
+}
+
+export interface TaskUserLite {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface TaskComment {
+  id: number;
+  body: string;
+  createdAt: string;
+  authorUserId: string;
+  authorName: string | null;
+  authorEmail: string | null;
+}
+
+export interface TaskMember {
+  id: string;
+  name: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  role: string;
+}
+
+export interface TaskCreateInput {
+  companySlug: CompanySlug;
+  kind?: string;
+  title: string;
+  body?: string;
+  priority?: TaskPriority;
+  assigneeUserId?: string;
+  dueAt?: string;
+}
+
+export interface TaskPatchInput {
+  title?: string;
+  body?: string | null;
+  priority?: TaskPriority;
+  /** ISO date string, or null to clear. */
+  dueAt?: string | null;
+  /** User id, or null to unassign. */
+  assigneeUserId?: string | null;
+}
+
+export const tasksAdminApi = {
+  list(
+    opts: {
+      status?: TaskStatus | 'all';
+      brand?: CompanySlug;
+      mine?: boolean;
+      limit?: number;
+      cursor?: string | null;
+    } = {},
+    signal?: AbortSignal,
+  ) {
+    const p = new URLSearchParams();
+    if (opts.status) p.set('status', opts.status);
+    if (opts.brand) p.set('brand', opts.brand);
+    if (opts.mine) p.set('mine', 'true');
+    if (opts.limit != null) p.set('limit', String(opts.limit));
+    if (opts.cursor) p.set('cursor', opts.cursor);
+    const qs = p.toString();
+    return request<TaskListResponse>(`/admin/tasks${qs ? `?${qs}` : ''}`, { signal });
+  },
+  summary(signal?: AbortSignal) {
+    return request<TaskSummary>('/admin/tasks/summary', { signal });
+  },
+  detail(id: number, signal?: AbortSignal) {
+    return request<{
+      task: Task;
+      assignee: TaskUserLite | null;
+      resolvedBy: TaskUserLite | null;
+    }>(`/admin/tasks/${id}`, { signal });
+  },
+  members(brand: CompanySlug, signal?: AbortSignal) {
+    return request<{ members: TaskMember[] }>(
+      `/admin/tasks/members?brand=${encodeURIComponent(brand)}`,
+      { signal },
+    );
+  },
+  create(body: TaskCreateInput) {
+    return request<{ task: Task; created: boolean }>('/admin/tasks', {
+      method: 'POST',
+      body,
+    });
+  },
+  patch(id: number, body: TaskPatchInput) {
+    return request<{ task: Task }>(`/admin/tasks/${id}`, {
+      method: 'PATCH',
+      body,
+    });
+  },
+  ack(id: number) {
+    return request<{ task: Task }>(`/admin/tasks/${id}/ack`, { method: 'POST' });
+  },
+  done(id: number) {
+    return request<{ task: Task }>(`/admin/tasks/${id}/done`, { method: 'POST' });
+  },
+  dismiss(id: number) {
+    return request<{ task: Task }>(`/admin/tasks/${id}/dismiss`, { method: 'POST' });
+  },
+  comments(id: number, signal?: AbortSignal) {
+    return request<{ comments: TaskComment[] }>(`/admin/tasks/${id}/comments`, { signal });
+  },
+  postComment(id: number, body: string) {
+    return request<{ comment: TaskComment }>(`/admin/tasks/${id}/comments`, {
+      method: 'POST',
+      body: { body },
+    });
+  },
+};
+
+// --- Exports (ALL_74) ------------------------------------------------------
+
+export type ExportKind = 'orders' | 'inquiries' | 'contacts' | 'newsletter';
+
+export type ExportStatus = 'pending' | 'processing' | 'done' | 'failed' | 'cancelled';
+
+export interface ExportJob {
+  id: number;
+  companySlug: string;
+  requestedByUserId: string;
+  kind: ExportKind;
+  filter: Record<string, unknown>;
+  format: 'csv';
+  status: ExportStatus;
+  rowCount: number | null;
+  s3Key: string | null;
+  sizeBytes: number | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface ExportListResponse {
+  items: ExportJob[];
+  nextCursor: string | null;
+}
+
+export const exportsAdminApi = {
+  list(
+    opts: { limit?: number; cursor?: string | null; status?: ExportStatus | 'all' } = {},
+    signal?: AbortSignal,
+  ) {
+    const p = new URLSearchParams();
+    if (opts.limit != null) p.set('limit', String(opts.limit));
+    if (opts.cursor) p.set('cursor', opts.cursor);
+    if (opts.status) p.set('status', opts.status);
+    const qs = p.toString();
+    return request<ExportListResponse>(`/admin/exports${qs ? `?${qs}` : ''}`, { signal });
+  },
+  create(body: { companySlug: CompanySlug; kind: ExportKind; filter?: Record<string, unknown> }) {
+    return request<{ job: ExportJob }>('/admin/exports', { method: 'POST', body });
+  },
+  get(id: number, signal?: AbortSignal) {
+    return request<{ job: ExportJob }>(`/admin/exports/${id}`, { signal });
+  },
+  download(id: number) {
+    return request<{ downloadUrl: string; expiresIn: number }>(`/admin/exports/${id}/download`);
+  },
+  cancel(id: number) {
+    return request<{ job: ExportJob }>(`/admin/exports/${id}/cancel`, {
+      method: 'POST',
+    });
+  },
+};
+
+// --- Order cancellation (ALL_06) -------------------------------------------
+
+export interface CancellationDecision {
+  allowed: boolean;
+  mode: 'full' | 'partial' | 'denied';
+  reasonCode:
+    | 'not_yet_paid'
+    | 'well_in_advance'
+    | 'within_24h'
+    | 'after_pickup'
+    | 'terminal_state'
+    | 'invalid_status';
+  suggestedRefundCents: number;
+  message: string;
+}
+
+export const ordersCancellationApi = {
+  preview(companySlug: CompanySlug, orderId: number, signal?: AbortSignal) {
+    return request<{ decision: CancellationDecision }>(`/admin/orders/${orderId}/cancel-preview`, {
+      companySlug,
+      signal,
+    });
+  },
+  cancel(
+    companySlug: CompanySlug,
+    orderId: number,
+    body: { reason?: string; refundCentsOverride?: number } = {},
+  ) {
+    return request<{
+      order: unknown;
+      decision: CancellationDecision;
+      refundCents: number;
+    }>(`/admin/orders/${orderId}/cancel`, {
+      method: 'POST',
+      companySlug,
+      body,
+    });
+  },
+};

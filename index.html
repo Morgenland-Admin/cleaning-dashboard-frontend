@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icon-app.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#241c17" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4ebdc" media="(prefers-color-scheme: light)" />
+    <meta
+      name="description"
+      content="Reinigungs-Portal — zentrale Admin-Konsole für Aufträge, Partner-Werkstätten und B2B-Vertrieb für Cleanilo, Hamburg Teppichreinigung und teppichreinigen-lassen.de."
+    />
+    <!-- Admin SPA — never index. Nginx should also send X-Robots-Tag: noindex, nofollow. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="googlebot" content="noindex, nofollow" />
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Reinigungs-Portal" />
+    <meta name="format-detection" content="telephone=no" />
+    <!-- Open Graph -->
+    <meta property="og:title" content="Reinigungs-Portal" />
+
+    <meta
+      property="og:description"
+      content="Reinigungs-Portal — zentrale Admin-Konsole für drei Reinigungs-Marken."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://reinigungs-portal.com" />
+    <title>Reinigungs-Portal · Operations Console</title>
+  </head>
+  <body class="h-full">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
