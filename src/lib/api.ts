@@ -527,6 +527,10 @@ export interface OrderRow {
   internalNotes: string | null;
   stripeSessionId: string | null;
   stripePaymentIntentId: string | null;
+  /** 'upfront' — paid at checkout via Stripe. 'after_service' — paid after the job. */
+  paymentMode: 'upfront' | 'after_service';
+  /** How an after-service order was settled: 'cash' | 'ec_card' | 'credit_card'. */
+  paymentMethod: 'cash' | 'ec_card' | 'credit_card' | null;
   paidAt: string | null;
   acceptedAt: string | null;
   pickedUpAt: string | null;
@@ -665,6 +669,27 @@ export const ordersAdminApi = {
       stripe: { sessionStatus: string; paymentStatus: string };
       action: 'marked_paid' | 'marked_cancelled' | 'still_pending' | 'noop';
     }>(`/admin/orders/${id}/sync-stripe`, {
+      method: 'POST',
+      companySlug,
+    });
+  },
+  /**
+   * Record an in-person payment for a "pay after service" order
+   * (Barzahlung / EC-Kartenzahlung). Marks the order paid immediately.
+   */
+  recordPayment(companySlug: CompanySlug, id: number, method: 'cash' | 'ec_card') {
+    return request<{ order: OrderRow }>(`/admin/orders/${id}/record-payment`, {
+      method: 'POST',
+      body: { method },
+      companySlug,
+    });
+  },
+  /**
+   * Create a Stripe credit-card payment link for an after-service order and
+   * email it to the customer. Returns the link so it can also be shared manually.
+   */
+  createPaymentLink(companySlug: CompanySlug, id: number) {
+    return request<{ checkoutUrl: string | null }>(`/admin/orders/${id}/payment-link`, {
       method: 'POST',
       companySlug,
     });

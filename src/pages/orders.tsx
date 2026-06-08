@@ -2,10 +2,12 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import {
   AlertCircle,
   Ban,
+  Banknote,
   CalendarClock,
   Check,
   CheckCircle2,
   ClipboardList,
+  Copy,
   CreditCard,
   ExternalLink,
   History,
@@ -20,6 +22,7 @@ import {
   Save,
   Truck,
   User,
+  Wallet,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -90,6 +93,12 @@ const STATUS_ACCENT: Record<OrderStatus, string> = {
   completed: 'bg-gradient-to-b from-emerald-400 to-emerald-600',
   cancelled: 'bg-gradient-to-b from-rose-300 to-rose-500',
   refunded: 'bg-gradient-to-b from-rose-400 to-rose-600',
+};
+
+const PAYMENT_METHOD_LABEL: Record<'cash' | 'ec_card' | 'credit_card', string> = {
+  cash: 'Barzahlung',
+  ec_card: 'EC-Kartenzahlung',
+  credit_card: 'Kreditkartenzahlung',
 };
 
 const KIND_LABEL: Record<OrderRow['kind'], string> = {
@@ -826,13 +835,17 @@ function DetailBody({
           </div>
         </div>
 
-        <StripePaymentBlock
-          order={order}
-          onSyncStripe={onSyncStripe}
-          isSyncing={isSyncing}
-          syncResult={syncResult}
-          syncError={syncError}
-        />
+        {order.paymentMode === 'after_service' ? (
+          <AfterServicePaymentBlock companySlug={companySlug} order={order} bcp47={bcp47} />
+        ) : (
+          <StripePaymentBlock
+            order={order}
+            onSyncStripe={onSyncStripe}
+            isSyncing={isSyncing}
+            syncResult={syncResult}
+            syncError={syncError}
+          />
+        )}
 
         <div>
           <SectionLabel icon={Check}>Status ändern</SectionLabel>
@@ -962,6 +975,159 @@ function RowSyncButton({
         <RefreshCcw className="size-3.5" />
       )}
     </span>
+  );
+}
+
+function AfterServicePaymentBlock({
+  companySlug,
+  order,
+  bcp47,
+}: {
+  companySlug: ReturnType<typeof useProject>['activeProject']['companySlug'];
+  order: OrderRow;
+  bcp47: string;
+}) {
+  const queryClient = useQueryClient();
+  const detailKey = ['order-detail', companySlug, order.id] as const;
+  const listKeyPrefix = ['orders-infinite', companySlug] as const;
+  const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const invalidate = async () => {
+    await queryClient.invalidateQueries({ queryKey: detailKey });
+    await queryClient.invalidateQueries({ queryKey: listKeyPrefix, exact: false });
+  };
+
+  const recordPayment = useMutation({
+    mutationFn: (method: 'cash' | 'ec_card') =>
+      ordersAdminApi.recordPayment(companySlug, order.id, method),
+    onSuccess: invalidate,
+  });
+
+  const paymentLink = useMutation({
+    mutationFn: () => ordersAdminApi.createPaymentLink(companySlug, order.id),
+    onSuccess: async (res) => {
+      setLinkUrl(res.checkoutUrl);
+      await invalidate();
+    },
+  });
+
+  const isPaid = !!order.paidAt;
+  const busy = recordPayment.isPending || paymentLink.isPending;
+  const errorMsg =
+    recordPayment.error instanceof ApiError
+      ? recordPayment.error.message
+      : paymentLink.error instanceof ApiError
+        ? paymentLink.error.message
+        : recordPayment.isError || paymentLink.isError
+          ? 'Aktion fehlgeschlagen.'
+          : null;
+
+  return (
+    <div>
+      <SectionLabel icon={CreditCard}>Zahlung nach Leistung</SectionLabel>
+
+      {isPaid ? (
+        <div className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-sm">
+          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+          <div>
+            <div className="font-medium">
+              Bezahlt
+              {order.paymentMethod ? ` · ${PAYMENT_METHOD_LABEL[order.paymentMethod]}` : ''}
+            </div>
+            {order.paidAt && (
+              <div className="text-xs text-muted-foreground">
+                {formatDateTime(order.paidAt, bcp47)} · {formatEur(order.totalCents, bcp47)}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Service erbracht? Erfassen Sie hier, wie der Kunde die{' '}
+            {formatEur(order.totalCents, bcp47)} bezahlt hat.
+          </p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => recordPayment.mutate('cash')}
+            >
+              {recordPayment.isPending && recordPayment.variables === 'cash' ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Banknote className="size-3.5" />
+              )}
+              Barzahlung
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => recordPayment.mutate('ec_card')}
+            >
+              {recordPayment.isPending && recordPayment.variables === 'ec_card' ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Wallet className="size-3.5" />
+              )}
+              EC-Kartenzahlung
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => paymentLink.mutate()}
+            >
+              {paymentLink.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <CreditCard className="size-3.5" />
+              )}
+              Kreditkartenzahlung
+            </Button>
+          </div>
+
+          {linkUrl && (
+            <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-xs dark:border-sky-900/40 dark:bg-sky-950/30">
+              <p className="text-sky-900 dark:text-sky-100">
+                Zahlungslink erstellt und per E-Mail an{' '}
+                <span className="font-medium">{order.customerEmail}</span> gesendet. Sie können ihn
+                auch direkt teilen:
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  readOnly
+                  value={linkUrl}
+                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px]"
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(linkUrl);
+                      setCopied(true);
+                      window.setTimeout(() => setCopied(false), 1500);
+                    } catch {
+                      /* clipboard unavailable — the field is selectable as a fallback */
+                    }
+                  }}
+                >
+                  {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                  {copied ? 'Kopiert' : 'Kopieren'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {errorMsg && <p className="mt-2 text-xs text-destructive">{errorMsg}</p>}
+        </>
+      )}
+    </div>
   );
 }
 
