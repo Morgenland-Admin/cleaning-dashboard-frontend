@@ -218,7 +218,7 @@ export function LoginPage() {
                   }}
                   disabled={submitting || forgotSent}
                   placeholder={t('login.emailPlaceholder')}
-                  className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 text-[14px] shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+                  className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]"
                 />
               </div>
             </div>
@@ -254,12 +254,12 @@ export function LoginPage() {
                       onKeyDown={handleCapsLock}
                       disabled={submitting}
                       placeholder={t('login.passwordPlaceholder')}
-                      className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-[14px] shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+                      className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
                       aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                       aria-pressed={showPassword}
                     >

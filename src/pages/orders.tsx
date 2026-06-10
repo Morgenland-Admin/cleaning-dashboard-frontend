@@ -227,7 +227,7 @@ export function OrdersPage() {
         }
       />
 
-      <div className="mt-6">
+      <div className="mt-6 overflow-x-auto">
         <Tabs value={tab} onValueChange={(v) => setTab(v as OrderStatus | 'all')}>
           <TabsList>
             {TAB_FILTERS.map((f) => (
@@ -640,7 +640,7 @@ function DetailBody({
           type="button"
           aria-label="Detail schließen"
           onClick={onClose}
-          className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust focus-visible:ring-offset-1"
         >
           <X className="size-4" />
         </button>
@@ -967,7 +967,7 @@ function RowSyncButton({
           onClick(e);
         }
       }}
-      className="ml-2 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-rust focus-visible:ring-offset-1"
+      className="ml-2 inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-rust focus-visible:ring-offset-1"
     >
       {isSyncing ? (
         <Loader2 className="size-3.5 animate-spin" />
@@ -1101,7 +1101,7 @@ function AfterServicePaymentBlock({
                 <input
                   readOnly
                   value={linkUrl}
-                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px]"
+                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-base sm:text-[11px]"
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <Button

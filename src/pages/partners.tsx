@@ -316,9 +316,9 @@ export function PartnersPage() {
                             </span>
                           ) : null}
                           {p.contactEmail ? (
-                            <span className="inline-flex items-center gap-1">
-                              <Mail className="size-3" />
-                              {p.contactEmail}
+                            <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                              <Mail className="size-3 shrink-0" />
+                              <span className="truncate">{p.contactEmail}</span>
                             </span>
                           ) : null}
                           {p.contactPhone ? (
@@ -608,13 +608,13 @@ function ModalShell({
     >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 grid w-[92vw] max-w-xl -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-card p-6 shadow-lg outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 grid max-h-[85svh] w-[92vw] max-w-xl -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
           <div className="mb-2 flex items-center justify-between">
             <DialogPrimitive.Title className="font-serif text-xl font-semibold tracking-tight">
               {title}
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
-              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rust"
+              className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rust"
               aria-label="Schließen"
             >
               <X className="size-4" />

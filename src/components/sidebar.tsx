@@ -11,7 +11,10 @@ import {
   LogOut,
   Mail,
   MessageSquare,
+  Receipt,
+  RefreshCcw,
   Settings as SettingsIcon,
+  Star,
   Tag,
   User,
   Users,
@@ -46,8 +49,11 @@ type NavItem = {
 const primaryNav: NavItem[] = [
   { to: '/', labelKey: 'nav.overview', icon: LayoutGrid, end: true },
   { to: '/auftraege', labelKey: 'nav.auftraege', icon: Briefcase },
+  { to: '/rechnungen', labelKey: 'nav.invoices', icon: Receipt },
+  { to: '/abos', labelKey: 'nav.subscriptions', icon: RefreshCcw },
   { to: '/inquiries', labelKey: 'nav.inquiries', icon: ClipboardList },
   { to: '/contacts', labelKey: 'nav.contacts', icon: Mail },
+  { to: '/bewertungen', labelKey: 'nav.reviews', icon: Star },
   { to: '/newsletter', labelKey: 'nav.newsletter', icon: AtSign },
   { to: '/partner', labelKey: 'nav.partner', icon: Users },
   // /chat is rendered separately so it can show a live unread badge.

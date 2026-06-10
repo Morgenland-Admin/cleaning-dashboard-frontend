@@ -556,7 +556,10 @@ function ImportNewsletterButton({ onImported }: { onImported: () => void }) {
           if (!o) reset();
         }}
       >
-        <SheetContent side="right" className="flex w-full flex-col gap-6 sm:max-w-lg">
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-6 overflow-y-auto sm:max-w-lg"
+        >
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
               <BrandMark brand={activeProject} size="xs" />

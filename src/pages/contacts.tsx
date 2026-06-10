@@ -501,7 +501,7 @@ function DetailPanel({
         </div>
 
         {/* Toolbar — Gmail-style icon buttons with tooltips */}
-        <div className="flex shrink-0 items-center gap-0.5 self-start sm:self-center">
+        <div className="flex shrink-0 items-center gap-2 self-start sm:gap-0.5 sm:self-center">
           <ToolbarButton
             onClick={() => onStatusChange('read')}
             disabled={isUpdating || message.status === 'read'}
@@ -618,7 +618,7 @@ function ToolbarButton({
           disabled={disabled}
           aria-label={label}
           className={cn(
-            'inline-flex size-8 items-center justify-center rounded-md text-foreground/70 transition-colors',
+            'inline-flex size-9 items-center justify-center rounded-md text-foreground/70 transition-colors',
             'hover:bg-muted hover:text-foreground',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30',
             'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground/70',
@@ -756,7 +756,7 @@ function ReplyComposer({
         placeholder={t('contacts.replyPlaceholder')}
         disabled={isSending}
         aria-label={t('contacts.replyPlaceholder')}
-        className="resize-none border-0 bg-transparent px-3.5 py-3 text-[13.5px] leading-relaxed shadow-none focus-visible:ring-0"
+        className="resize-none border-0 bg-transparent px-3.5 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0 sm:text-[13.5px]"
       />
       {shownError ? (
         <div

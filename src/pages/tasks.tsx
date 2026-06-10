@@ -434,15 +434,16 @@ function TaskRow({
       </button>
 
       {open ? (
-        <div className="flex shrink-0 items-center gap-1 border-l border-border/70 px-2">
+        <div className="flex shrink-0 items-center gap-2 border-l border-border/70 px-2 sm:gap-1">
           {task.status === 'open' ? (
             <Button
               variant="ghost"
               size="sm"
               onClick={onAck}
               disabled={busy}
-              className="h-7 px-2 text-xs"
+              className="size-9 px-0 text-xs"
               title={t('tasks.actions.ack')}
+              aria-label={t('tasks.actions.ack')}
             >
               <UserIcon className="size-3" />
             </Button>
@@ -452,8 +453,9 @@ function TaskRow({
             size="sm"
             onClick={onDone}
             disabled={busy}
-            className="h-7 px-2 text-xs text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
+            className="size-9 px-0 text-xs text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
             title={t('tasks.actions.done')}
+            aria-label={t('tasks.actions.done')}
           >
             <CheckCircle2 className="size-3.5" />
           </Button>
@@ -462,8 +464,9 @@ function TaskRow({
             size="sm"
             onClick={onDismiss}
             disabled={busy}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+            className="size-9 px-0 text-xs text-muted-foreground hover:text-destructive"
             title={t('tasks.actions.dismiss')}
+            aria-label={t('tasks.actions.dismiss')}
           >
             <CircleSlash className="size-3.5" />
           </Button>
@@ -1142,7 +1145,7 @@ function CreateTaskSheet({
         </div>
 
         <form
-          className="flex min-h-0 flex-1 flex-col gap-3"
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto"
           onSubmit={(e) => {
             e.preventDefault();
             create.mutate();

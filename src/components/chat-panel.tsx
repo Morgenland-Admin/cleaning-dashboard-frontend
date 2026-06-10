@@ -292,7 +292,7 @@ export function ChatPanel({
                   type="button"
                   onClick={() => setAttachments((curr) => curr.filter((x) => x.key !== a.key))}
                   aria-label={t('chat.removeAttachment', { name: a.name })}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="-m-1 rounded-md p-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <X className="size-3" aria-hidden="true" />
                 </button>
@@ -347,7 +347,7 @@ export function ChatPanel({
             </button>
             <Button
               type="button"
-              size="sm"
+              size="icon"
               onClick={handleSend}
               disabled={!canSend}
               aria-label={t('chat.send')}

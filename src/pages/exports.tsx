@@ -420,7 +420,7 @@ function NewExportSheet({
         }
       }}
     >
-      <SheetContent side="right" className="flex w-full flex-col gap-6 sm:max-w-md">
+      <SheetContent side="right" className="flex w-full flex-col gap-6 overflow-y-auto sm:max-w-md">
         <div>
           <SheetTitle className="font-serif text-xl tracking-tight">
             {t('exports.sheetTitle')}

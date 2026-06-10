@@ -499,8 +499,8 @@ function AddressRow({
           {a.country ? <> · {a.country}</> : null}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button variant="ghost" size="icon" onClick={onEdit} aria-label={t('common.save')}>
+      <div className="flex shrink-0 items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={onEdit} aria-label={t('common.edit')}>
           <Pencil className="size-4" />
         </Button>
         <Button
@@ -762,7 +762,7 @@ function NativeSelect({
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="flex h-9 w-full appearance-none rounded-md border border-input bg-background pl-3 pr-8 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex h-9 w-full appearance-none rounded-md border border-input bg-background pl-3 pr-8 text-base shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
       >
         {children}
       </select>

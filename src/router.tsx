@@ -12,6 +12,7 @@ import { ContactsPage } from '@/pages/contacts';
 import { DashboardPage } from '@/pages/dashboard';
 import { ExportsPage } from '@/pages/exports';
 import { InquiriesPage } from '@/pages/inquiries';
+import { InvoicesPage } from '@/pages/invoices';
 import { LoginPage } from '@/pages/login';
 import { NewsletterPage } from '@/pages/newsletter';
 import { NotFoundPage } from '@/pages/not-found';
@@ -20,7 +21,9 @@ import { PartnersPage } from '@/pages/partners';
 import { PricingPage } from '@/pages/pricing';
 import { ProfilePage } from '@/pages/profile';
 import { ResetPasswordPage } from '@/pages/reset-password';
+import { ReviewsPage } from '@/pages/reviews';
 import { SettingsPage } from '@/pages/settings';
+import { SubscriptionsPage } from '@/pages/subscriptions';
 import { TasksPage } from '@/pages/tasks';
 
 export const router = createBrowserRouter([
@@ -38,6 +41,9 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <DashboardPage /> },
           { path: 'auftraege', element: <OrdersPage /> },
+          { path: 'rechnungen', element: <InvoicesPage /> },
+          { path: 'abos', element: <SubscriptionsPage /> },
+          { path: 'bewertungen', element: <ReviewsPage /> },
           { path: 'inquiries', element: <InquiriesPage /> },
           { path: 'contacts', element: <ContactsPage /> },
           { path: 'newsletter', element: <NewsletterPage /> },

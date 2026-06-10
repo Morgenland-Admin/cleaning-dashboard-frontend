@@ -109,6 +109,10 @@
       'Segoe UI',
       Roboto,
       sans-serif;
+    /* App feel on touch devices: no grey tap flash, no font inflation. */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
@@ -117,6 +121,8 @@
       'rlig' 1,
       'calt' 1,
       'ss01' 1;
+    /* No rubber-band bounce behind the app shell (PWA/standalone). */
+    overscroll-behavior-y: none;
   }
 
   .font-serif {

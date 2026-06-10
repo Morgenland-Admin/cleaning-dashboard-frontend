@@ -219,14 +219,14 @@ function PasswordField({
         disabled={disabled}
         placeholder="••••••••"
         className={cn(
-          'h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-[14px] shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30',
+          'h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]',
         )}
       />
       {onToggleVisible ? (
         <button
           type="button"
           onClick={onToggleVisible}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
           aria-label={visible ? t('login.hidePassword') : t('login.showPassword')}
           aria-pressed={visible}
         >

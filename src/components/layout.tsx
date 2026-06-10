@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 
 import { Header } from '@/components/header';
 import { MobileBottomNav } from '@/components/mobile-bottom-nav';
+import { PwaPrompts } from '@/components/pwa-prompts';
 import { Sidebar } from '@/components/sidebar';
 import { useT } from '@/i18n';
 
@@ -31,13 +32,14 @@ export function AppLayout() {
           className={
             isFullBleed
               ? 'flex-1 outline-none'
-              : 'flex-1 p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] outline-none sm:p-4 sm:pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:p-6 lg:pb-6'
+              : 'flex-1 p-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] outline-none sm:p-4 sm:pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:p-6 lg:pb-6'
           }
         >
           <Outlet />
         </main>
       </div>
       <MobileBottomNav />
+      <PwaPrompts />
     </div>
   );
 }

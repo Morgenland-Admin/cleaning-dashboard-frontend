@@ -114,7 +114,7 @@ export function ChatPage() {
                   type="button"
                   onClick={() => setSelectedKey(null)}
                   aria-label={t('chat.backToList')}
-                  className="inline-flex size-8 items-center justify-center rounded-md text-foreground/80 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="inline-flex size-9 items-center justify-center rounded-md text-foreground/80 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <ArrowLeft className="size-4" aria-hidden="true" />
                 </button>

@@ -1458,10 +1458,13 @@ export interface CancellationDecision {
     | 'not_yet_paid'
     | 'well_in_advance'
     | 'within_24h'
+    | 'no_appointment'
     | 'after_pickup'
     | 'terminal_state'
     | 'invalid_status';
   suggestedRefundCents: number;
+  /** Hard ceiling: total minus already-refunded cents. */
+  maxRefundCents: number;
   message: string;
 }
 
@@ -1485,6 +1488,332 @@ export const ordersCancellationApi = {
       method: 'POST',
       companySlug,
       body,
+    });
+  },
+};
+
+// --- Invoices (admin) -------------------------------------------------------
+
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'void';
+export type InvoiceTaxRate = 0 | 7 | 19;
+
+export interface InvoiceLineItem {
+  label: string;
+  quantity: number;
+  unitPriceCents: number;
+}
+
+export interface InvoiceRow {
+  id: number;
+  number: string | null;
+  orderId: number | null;
+  partnerId: number | null;
+  customerType: 'b2c' | 'b2b';
+  recipientName: string;
+  recipientEmail: string | null;
+  recipientAddressLine1: string | null;
+  recipientAddressLine2: string | null;
+  recipientPostalCode: string | null;
+  recipientCity: string | null;
+  recipientCountry: string | null;
+  /** "YYYY-MM-DD" Leistungsdatum (§14 UStG) — required before issuing. */
+  serviceDate: string | null;
+  serviceDateEnd: string | null;
+  status: InvoiceStatus;
+  currency: string;
+  subtotalCents: number;
+  taxRatePercent: number;
+  taxCents: number;
+  totalCents: number;
+  lineItems: InvoiceLineItem[];
+  paymentTermsDays: number;
+  dueAt: string | null;
+  sentAt: string | null;
+  paidAt: string | null;
+  dunningLevel: number;
+  lastDunningAt: string | null;
+  odooInvoiceId: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvoiceCreateInput {
+  orderId?: number;
+  partnerId?: number;
+  customerType?: 'b2c' | 'b2b';
+  recipientName: string;
+  recipientEmail?: string;
+  recipientAddressLine1?: string | null;
+  recipientAddressLine2?: string | null;
+  recipientPostalCode?: string | null;
+  recipientCity?: string | null;
+  recipientCountry?: string;
+  serviceDate?: string | null;
+  serviceDateEnd?: string | null;
+  lineItems: InvoiceLineItem[];
+  taxRatePercent?: InvoiceTaxRate;
+  paymentTermsDays?: number;
+  notes?: string;
+}
+
+/** Drafts accept content edits; issued invoices only status/odooInvoiceId. */
+export interface InvoiceUpdateInput {
+  recipientName?: string;
+  recipientEmail?: string | null;
+  recipientAddressLine1?: string | null;
+  recipientAddressLine2?: string | null;
+  recipientPostalCode?: string | null;
+  recipientCity?: string | null;
+  recipientCountry?: string;
+  serviceDate?: string | null;
+  serviceDateEnd?: string | null;
+  lineItems?: InvoiceLineItem[];
+  taxRatePercent?: InvoiceTaxRate;
+  paymentTermsDays?: number;
+  notes?: string | null;
+  status?: InvoiceStatus;
+  odooInvoiceId?: string | null;
+}
+
+export interface InvoiceStatusLogEntry {
+  id: number;
+  invoiceId: number;
+  fromStatus: InvoiceStatus | null;
+  toStatus: InvoiceStatus;
+  changedByUserId: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface InvoiceListParams {
+  limit?: number;
+  cursor?: string;
+  status?: InvoiceStatus;
+  customerType?: 'b2c' | 'b2b';
+  overdue?: boolean;
+}
+
+export const invoicesAdminApi = {
+  list(companySlug: CompanySlug, params: InvoiceListParams = {}, signal?: AbortSignal) {
+    const qs = new URLSearchParams();
+    if (params.limit) qs.set('limit', String(params.limit));
+    if (params.cursor) qs.set('cursor', params.cursor);
+    if (params.status) qs.set('status', params.status);
+    if (params.customerType) qs.set('customerType', params.customerType);
+    if (params.overdue !== undefined) qs.set('overdue', String(params.overdue));
+    const suffix = qs.size > 0 ? `?${qs.toString()}` : '';
+    return request<{ invoices: InvoiceRow[]; nextCursor: string | null }>(
+      `/admin/invoices${suffix}`,
+      { companySlug, signal },
+    );
+  },
+  get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<{ invoice: InvoiceRow }>(`/admin/invoices/${id}`, { companySlug, signal });
+  },
+  create(companySlug: CompanySlug, input: InvoiceCreateInput) {
+    return request<{ invoice: InvoiceRow }>('/admin/invoices', {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
+  update(companySlug: CompanySlug, id: number, patch: InvoiceUpdateInput) {
+    return request<{ invoice: InvoiceRow }>(`/admin/invoices/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: patch,
+    });
+  },
+  send(companySlug: CompanySlug, id: number) {
+    return request<{ invoice: InvoiceRow; emailSent: boolean; emailSkipped: boolean }>(
+      `/admin/invoices/${id}/send`,
+      { method: 'POST', companySlug, body: {} },
+    );
+  },
+  markPaid(companySlug: CompanySlug, id: number) {
+    return request<{ invoice: InvoiceRow }>(`/admin/invoices/${id}/mark-paid`, {
+      method: 'POST',
+      companySlug,
+      body: {},
+    });
+  },
+  dunning(companySlug: CompanySlug, id: number) {
+    return request<{ invoice: InvoiceRow }>(`/admin/invoices/${id}/dunning`, {
+      method: 'POST',
+      companySlug,
+      body: {},
+    });
+  },
+  log(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<{ log: InvoiceStatusLogEntry[] }>(`/admin/invoices/${id}/log`, {
+      companySlug,
+      signal,
+    });
+  },
+};
+
+// --- Subscriptions (admin) ---------------------------------------------------
+
+export type SubscriptionStatus = 'active' | 'paused' | 'past_due' | 'cancelled';
+
+export interface SubscriptionRow {
+  id: number;
+  customerEmail: string;
+  customerName: string | null;
+  planName: string;
+  monthlyPriceCents: number;
+  intervalMonths: number;
+  stripeSubscriptionId: string | null;
+  status: SubscriptionStatus;
+  servicesIncluded: string[];
+  nextServiceDate: string | null;
+  pausedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubscriptionCreateInput {
+  customerEmail: string;
+  customerName?: string;
+  planName: string;
+  monthlyPriceCents?: number;
+  intervalMonths?: number;
+  stripeSubscriptionId?: string;
+  servicesIncluded?: string[];
+  nextServiceDate?: string;
+}
+
+export interface SubscriptionUpdateInput {
+  planName?: string;
+  monthlyPriceCents?: number;
+  intervalMonths?: number;
+  stripeSubscriptionId?: string | null;
+  servicesIncluded?: string[];
+  nextServiceDate?: string | null;
+}
+
+export type SubscriptionAction = 'pause' | 'resume' | 'cancel';
+
+export interface SubscriptionListParams {
+  limit?: number;
+  cursor?: string;
+  status?: SubscriptionStatus;
+  email?: string;
+}
+
+export const subscriptionsAdminApi = {
+  list(companySlug: CompanySlug, params: SubscriptionListParams = {}, signal?: AbortSignal) {
+    const qs = new URLSearchParams();
+    if (params.limit) qs.set('limit', String(params.limit));
+    if (params.cursor) qs.set('cursor', params.cursor);
+    if (params.status) qs.set('status', params.status);
+    if (params.email) qs.set('email', params.email);
+    const suffix = qs.size > 0 ? `?${qs.toString()}` : '';
+    return request<{ subscriptions: SubscriptionRow[]; nextCursor: string | null }>(
+      `/admin/subscriptions${suffix}`,
+      { companySlug, signal },
+    );
+  },
+  get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<{ subscription: SubscriptionRow }>(`/admin/subscriptions/${id}`, {
+      companySlug,
+      signal,
+    });
+  },
+  create(companySlug: CompanySlug, input: SubscriptionCreateInput) {
+    return request<{ subscription: SubscriptionRow }>('/admin/subscriptions', {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
+  update(companySlug: CompanySlug, id: number, patch: SubscriptionUpdateInput) {
+    return request<{ subscription: SubscriptionRow }>(`/admin/subscriptions/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: patch,
+    });
+  },
+  /** Mirrored to Stripe server-side before the local update. */
+  action(companySlug: CompanySlug, id: number, action: SubscriptionAction) {
+    return request<{ subscription: SubscriptionRow }>(`/admin/subscriptions/${id}/${action}`, {
+      method: 'POST',
+      companySlug,
+      body: {},
+    });
+  },
+};
+
+// --- Reviews (admin) ----------------------------------------------------------
+
+export type ReviewStatus = 'new' | 'published' | 'flagged' | 'hidden';
+
+export interface ReviewRow {
+  id: number;
+  orderId: number | null;
+  partnerId: number | null;
+  customerEmail: string | null;
+  customerName: string | null;
+  rating: number;
+  comment: string | null;
+  photos: string[];
+  status: ReviewStatus;
+  partnerResponse: string | null;
+  respondedAt: string | null;
+  flagged: boolean;
+  flagReason: string | null;
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewListParams {
+  limit?: number;
+  cursor?: string;
+  status?: ReviewStatus;
+  flagged?: boolean;
+}
+
+export const reviewsAdminApi = {
+  list(companySlug: CompanySlug, params: ReviewListParams = {}, signal?: AbortSignal) {
+    const qs = new URLSearchParams();
+    if (params.limit) qs.set('limit', String(params.limit));
+    if (params.cursor) qs.set('cursor', params.cursor);
+    if (params.status) qs.set('status', params.status);
+    if (params.flagged !== undefined) qs.set('flagged', String(params.flagged));
+    const suffix = qs.size > 0 ? `?${qs.toString()}` : '';
+    return request<{ reviews: ReviewRow[]; nextCursor: string | null }>(`/admin/reviews${suffix}`, {
+      companySlug,
+      signal,
+    });
+  },
+  setStatus(companySlug: CompanySlug, id: number, status: ReviewStatus) {
+    return request<{ review: ReviewRow }>(`/admin/reviews/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: { status },
+    });
+  },
+  respond(companySlug: CompanySlug, id: number, response: string) {
+    return request<{ review: ReviewRow }>(`/admin/reviews/${id}/respond`, {
+      method: 'POST',
+      companySlug,
+      body: { response },
+    });
+  },
+  flag(companySlug: CompanySlug, id: number, reason: string) {
+    return request<{ review: ReviewRow }>(`/admin/reviews/${id}/flag`, {
+      method: 'POST',
+      companySlug,
+      body: { reason },
+    });
+  },
+  remove(companySlug: CompanySlug, id: number) {
+    return request<void>(`/admin/reviews/${id}`, {
+      method: 'DELETE',
+      companySlug,
     });
   },
 };
