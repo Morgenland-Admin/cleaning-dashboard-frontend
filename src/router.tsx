@@ -9,6 +9,8 @@ import { BrandNewPage } from '@/pages/brand-new';
 import { ChatPage } from '@/pages/chat';
 import { CompaniesPage } from '@/pages/companies';
 import { ContactsPage } from '@/pages/contacts';
+import { CustomerDetailPage } from '@/pages/customer-detail';
+import { CustomersPage } from '@/pages/customers';
 import { DashboardPage } from '@/pages/dashboard';
 import { ExportsPage } from '@/pages/exports';
 import { InquiriesPage } from '@/pages/inquiries';
@@ -40,6 +42,8 @@ export const router = createBrowserRouter([
         errorElement: <RouteError />,
         children: [
           { index: true, element: <DashboardPage /> },
+          { path: 'customers', element: <CustomersPage /> },
+          { path: 'customers/:id', element: <CustomerDetailPage /> },
           { path: 'auftraege', element: <OrdersPage /> },
           { path: 'rechnungen', element: <InvoicesPage /> },
           { path: 'abos', element: <SubscriptionsPage /> },

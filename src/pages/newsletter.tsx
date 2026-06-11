@@ -1,7 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
-  Check,
   CheckCircle2,
   Download,
   Inbox,
@@ -9,25 +8,17 @@ import {
   Mail,
   RefreshCcw,
   Trash2,
-  Upload,
-  X,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { BrandMark } from '@/components/brand-mark';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { CsvImportSheet } from '@/components/csv-import-sheet';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProject, type Project, type CompanySlug } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
@@ -35,7 +26,6 @@ import {
   exportsAdminApi,
   newsletterAdminApi,
   type NewsletterSubscriber,
-  type NewsletterImportSummary,
   ApiError,
 } from '@/lib/api';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -197,7 +187,24 @@ export function NewsletterPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <ExportNewsletterButton />
-            <ImportNewsletterButton onImported={refreshAll} />
+            <CsvImportSheet
+              companySlug={activeProject.companySlug}
+              brandName={activeProject.name}
+              i18nPrefix="newsletter"
+              sampleHref="/admin/newsletter/import/sample"
+              importFn={(cs, body) => newsletterAdminApi.import(cs, body)}
+              onImported={refreshAll}
+              disabled={isAllBrands}
+              disabledTitle={t('newsletter.importPickBrand')}
+              headerChip={
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <BrandMark brand={activeProject} size="xs" />
+                  <span>{activeProject.shortName}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{t('newsletter.import')}</span>
+                </div>
+              }
+            />
             <Button variant="outline" size="sm" onClick={refreshAll} disabled={isFetching}>
               <RefreshCcw className={cn('size-3.5', isFetching && 'animate-spin')} />
               {t('newsletter.refresh')}
@@ -468,318 +475,5 @@ function ExportNewsletterButton() {
       )}
       {t('newsletter.export')}
     </Button>
-  );
-}
-
-function ImportNewsletterButton({ onImported }: { onImported: () => void }) {
-  const t = useT();
-  const { activeProject, isAllBrands } = useProject();
-  const [open, setOpen] = useState(false);
-  const [fileText, setFileText] = useState<string>('');
-  const [fileName, setFileName] = useState<string>('');
-  const [preview, setPreview] = useState<NewsletterImportSummary | null>(null);
-  const [busy, setBusy] = useState<false | 'preview' | 'apply'>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<NewsletterImportSummary | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-
-  function reset() {
-    setFileText('');
-    setFileName('');
-    setPreview(null);
-    setDone(null);
-    setError(null);
-    setDragOver(false);
-  }
-
-  async function readFile(f: File) {
-    reset();
-    setFileName(f.name);
-    const text = await f.text();
-    setFileText(text);
-  }
-
-  async function runPreview() {
-    if (!fileText) return;
-    setBusy('preview');
-    setError(null);
-    try {
-      const res = await newsletterAdminApi.import(activeProject.companySlug, {
-        csv: fileText,
-        dryRun: true,
-      });
-      setPreview(res.summary);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function apply() {
-    if (!fileText) return;
-    setBusy('apply');
-    setError(null);
-    try {
-      const res = await newsletterAdminApi.import(activeProject.companySlug, {
-        csv: fileText,
-      });
-      setDone(res.summary);
-      onImported();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (isAllBrands) {
-    return (
-      <Button variant="outline" size="sm" disabled title={t('newsletter.importPickBrand')}>
-        <Upload className="size-3.5" />
-        {t('newsletter.import')}
-      </Button>
-    );
-  }
-
-  return (
-    <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <Upload className="size-3.5" />
-        {t('newsletter.import')}
-      </Button>
-
-      <Sheet
-        open={open}
-        onOpenChange={(o) => {
-          setOpen(o);
-          if (!o) reset();
-        }}
-      >
-        <SheetContent
-          side="right"
-          className="flex w-full flex-col gap-6 overflow-y-auto sm:max-w-lg"
-        >
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-              <BrandMark brand={activeProject} size="xs" />
-              <span>{activeProject.shortName}</span>
-              <span aria-hidden="true">·</span>
-              <span>{t('newsletter.import')}</span>
-            </div>
-            <SheetTitle className="font-serif text-xl tracking-tight">
-              {t('newsletter.importTitle')}
-            </SheetTitle>
-            <SheetDescription>
-              {t('newsletter.importSubtitle', { brand: activeProject.name })}
-            </SheetDescription>
-          </div>
-
-          {!fileName ? (
-            <label
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                const f = e.dataTransfer.files?.[0];
-                if (f) void readFile(f);
-              }}
-              className={cn(
-                'group flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed bg-card/50 px-6 py-10 text-center transition-colors',
-                dragOver
-                  ? 'border-rust bg-rust-soft/30'
-                  : 'border-border hover:border-foreground/30 hover:bg-card',
-              )}
-            >
-              <span
-                className={cn(
-                  'inline-flex size-12 items-center justify-center rounded-full ring-1 transition-colors',
-                  dragOver
-                    ? 'bg-rust text-primary-foreground ring-rust'
-                    : 'bg-rust-soft/60 text-rust ring-rust/20',
-                )}
-                aria-hidden="true"
-              >
-                <Upload className="size-5" />
-              </span>
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {t('newsletter.dropzoneTitle')}
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {t('newsletter.dropzoneHint')}
-                </p>
-              </div>
-              <a
-                href="/admin/newsletter/import/sample"
-                download
-                onClick={(e) => e.stopPropagation()}
-                className="text-[11px] text-rust underline-offset-2 hover:underline"
-              >
-                {t('newsletter.importSampleLink')}
-              </a>
-              <input
-                type="file"
-                accept=".csv,text/csv,text/plain"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void readFile(f);
-                }}
-                className="sr-only"
-              />
-            </label>
-          ) : (
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
-              <span className="inline-flex size-10 items-center justify-center rounded-md bg-rust-soft/60 text-rust ring-1 ring-rust/15">
-                <Upload className="size-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{fileName}</p>
-                <p className="text-[11px] tabular-nums text-muted-foreground">
-                  {(fileText.length / 1024).toLocaleString('de-DE', {
-                    maximumFractionDigits: 1,
-                  })}{' '}
-                  KB
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={reset}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="size-3.5" />
-                {t('common.cancel')}
-              </Button>
-            </div>
-          )}
-
-          {error ? (
-            <div
-              role="alert"
-              className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive"
-            >
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-              <span>{error}</span>
-            </div>
-          ) : null}
-
-          {(preview || done) && (
-            <ImportSummaryCard summary={done ?? preview!} isFinal={Boolean(done)} t={t} />
-          )}
-
-          <div className="mt-auto flex flex-col gap-2">
-            {done ? (
-              <SheetClose asChild>
-                <Button>
-                  <Check className="size-4" />
-                  {t('common.close')}
-                </Button>
-              </SheetClose>
-            ) : (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  disabled={!fileText || busy !== false}
-                  onClick={runPreview}
-                >
-                  {busy === 'preview' ? <Loader2 className="size-3.5 animate-spin" /> : null}
-                  {t('newsletter.importPreview')}
-                </Button>
-                <Button className="flex-1" disabled={!preview || busy !== false} onClick={apply}>
-                  {busy === 'apply' ? <Loader2 className="size-3.5 animate-spin" /> : null}
-                  {t('newsletter.importApply', {
-                    n: preview ? preview.parsedRows - preview.skipped : 0,
-                  })}
-                </Button>
-              </div>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
-    </>
-  );
-}
-
-function ImportSummaryCard({
-  summary,
-  isFinal,
-  t,
-}: {
-  summary: NewsletterImportSummary;
-  isFinal: boolean;
-  t: ReturnType<typeof useT>;
-}) {
-  const REASONS: Array<keyof typeof summary.byReason> = [
-    'invalid_email',
-    'duplicate',
-    'own_domain',
-    'system_address',
-    'disposable_domain',
-  ];
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-        {isFinal ? t('newsletter.importDone') : t('newsletter.importDryRun')}
-      </p>
-      <div className="mt-2 grid grid-cols-3 gap-3 border-b border-border pb-3">
-        <Stat label={t('newsletter.importStat.parsed')} value={summary.parsedRows} />
-        <Stat label={t('newsletter.importStat.imported')} value={summary.imported} tone="good" />
-        <Stat label={t('newsletter.importStat.skipped')} value={summary.skipped} tone="warn" />
-      </div>
-      <ul className="mt-3 flex flex-col gap-1 text-[12px]">
-        {REASONS.filter((r) => summary.byReason[r] > 0).map((r) => (
-          <li key={r} className="flex items-center justify-between gap-3 text-muted-foreground">
-            <span>{t(`newsletter.importReason.${r}` as never)}</span>
-            <span className="font-mono tabular-nums text-foreground">{summary.byReason[r]}</span>
-          </li>
-        ))}
-      </ul>
-      {summary.sampleRejects.length > 0 ? (
-        <details className="mt-3 text-[11px]">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-            {t('newsletter.importShowRejects', {
-              n: summary.sampleRejects.length,
-            })}
-          </summary>
-          <ul className="mt-2 flex flex-col gap-0.5 font-mono text-[11px] text-muted-foreground">
-            {summary.sampleRejects.map((r, i) => (
-              <li key={i} className="truncate">
-                <span className="text-foreground/70">L{r.line}:</span> {r.email}{' '}
-                <span className="text-rust">[{r.reject}]</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: number;
-  tone?: 'neutral' | 'good' | 'warn';
-}) {
-  const cls =
-    tone === 'good'
-      ? 'text-emerald-700 dark:text-emerald-300'
-      : tone === 'warn'
-        ? 'text-rust'
-        : 'text-foreground';
-  return (
-    <div className="flex flex-col items-start gap-0.5">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
-      <span className={cn('font-mono text-lg font-medium tabular-nums', cls)}>{value}</span>
-    </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   Star,
   Tag,
   User,
+  UserRound,
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -48,6 +49,7 @@ type NavItem = {
 
 const primaryNav: NavItem[] = [
   { to: '/', labelKey: 'nav.overview', icon: LayoutGrid, end: true },
+  { to: '/customers', labelKey: 'nav.customers', icon: UserRound },
   { to: '/auftraege', labelKey: 'nav.auftraege', icon: Briefcase },
   { to: '/rechnungen', labelKey: 'nav.invoices', icon: Receipt },
   { to: '/abos', labelKey: 'nav.subscriptions', icon: RefreshCcw },

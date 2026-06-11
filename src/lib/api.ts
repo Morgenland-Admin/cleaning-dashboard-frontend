@@ -19,6 +19,36 @@ export class ApiError extends Error {
   }
 }
 
+/** Best-effort human-readable message from any thrown value. */
+export function errMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+// --- CSV import (shared by newsletter + customers) -------------------------
+
+export type CsvImportRejectReason =
+  | 'invalid_email'
+  | 'duplicate'
+  | 'own_domain'
+  | 'system_address'
+  | 'disposable_domain';
+
+export interface CsvImportSummary {
+  parsedRows: number;
+  imported: number;
+  skipped: number;
+  byReason: Record<CsvImportRejectReason, number>;
+  sampleRejects: Array<{
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    line: number;
+    reject?: CsvImportRejectReason;
+  }>;
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -71,6 +101,7 @@ export type ContactStatus = 'new' | 'read' | 'replied' | 'archived';
 
 export interface ContactMessage {
   id: number;
+  customerId: number | null;
   name: string;
   email: string;
   phone: string | null;
@@ -346,6 +377,7 @@ export type InquiryStatus = 'new' | 'in_review' | 'quoted' | 'won' | 'lost';
 
 export interface ServiceInquiry {
   id: number;
+  customerId: number | null;
   name: string;
   email: string;
   phone: string | null;
@@ -501,6 +533,7 @@ export type OrderTransitionStatus = Exclude<OrderStatus, 'pending' | 'payment_pe
 
 export interface OrderRow {
   id: number;
+  customerId: number | null;
   orderNumber: string;
   publicToken: string;
   kind: 'teppichreinigung' | 'teppichreparatur' | 'polsterreinigung' | 'teppichbodenreinigung';
@@ -700,6 +733,7 @@ export const ordersAdminApi = {
 
 export interface NewsletterSubscriber {
   id: number;
+  customerId: number | null;
   email: string;
   firstName: string | null;
   lastName: string | null;
@@ -833,26 +867,150 @@ export const newsletterAdminApi = {
   },
 };
 
-export type NewsletterRejectReason =
-  | 'invalid_email'
-  | 'duplicate'
-  | 'own_domain'
-  | 'system_address'
-  | 'disposable_domain';
+export type NewsletterRejectReason = CsvImportRejectReason;
+export type NewsletterImportSummary = CsvImportSummary;
 
-export interface NewsletterImportSummary {
-  parsedRows: number;
-  imported: number;
-  skipped: number;
-  byReason: Record<NewsletterRejectReason, number>;
-  sampleRejects: Array<{
-    email: string;
-    firstName?: string;
-    lastName?: string;
-    line: number;
-    reject?: NewsletterRejectReason;
-  }>;
+// --- Customers (admin) -----------------------------------------------------
+
+export type LoyaltyTier = 'neukunde' | 'stammkunde' | 'premium';
+
+export interface Customer {
+  id: number;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  country: string | null;
+  totalOrders: number;
+  totalSpentCents: number;
+  loyaltyTier: LoyaltyTier;
+  tags: string[];
+  internalNotes: string | null;
+  firstOrderAt: string | null;
+  lastOrderAt: string | null;
+  marketingOptIn: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
+
+export interface CustomerCreateInput {
+  email: string;
+  name?: string;
+  phone?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  postalCode?: string;
+  city?: string;
+  country?: string;
+  loyaltyTier?: LoyaltyTier;
+  tags?: string[];
+  internalNotes?: string;
+  marketingOptIn?: boolean;
+}
+
+export interface CustomerUpdateInput {
+  name?: string | null;
+  phone?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  country?: string | null;
+  loyaltyTier?: LoyaltyTier;
+  tags?: string[];
+  internalNotes?: string | null;
+  marketingOptIn?: boolean;
+}
+
+export type NewsletterProfileStatus = 'confirmed' | 'pending' | 'unsubscribed' | 'none';
+
+export interface CustomerOverviewStats {
+  orders: number;
+  paidOrders: number;
+  lifetimeSpentCents: number;
+  inquiries: number;
+  openInquiries: number;
+  contacts: number;
+  newsletterStatus: NewsletterProfileStatus;
+}
+
+export interface CustomerOverview {
+  customer: Customer;
+  orders: OrderRow[];
+  inquiries: ServiceInquiry[];
+  contacts: ContactMessage[];
+  newsletter: NewsletterSubscriber | null;
+  stats: CustomerOverviewStats;
+}
+
+export type CustomerRejectReason = CsvImportRejectReason;
+export type CustomerImportSummary = CsvImportSummary;
+
+export interface CustomerListParams {
+  limit?: number;
+  cursor?: string | null;
+  tier?: LoyaltyTier;
+  email?: string;
+}
+
+export const customersAdminApi = {
+  list(companySlug: CompanySlug, params: CustomerListParams = {}, signal?: AbortSignal) {
+    const qs = new URLSearchParams();
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.cursor) qs.set('cursor', params.cursor);
+    if (params.tier) qs.set('tier', params.tier);
+    if (params.email) qs.set('email', params.email);
+    const suffix = qs.toString();
+    return request<{ customers: Customer[]; nextCursor: string | null }>(
+      `/admin/customers${suffix ? `?${suffix}` : ''}`,
+      { companySlug, signal },
+    );
+  },
+  get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<{ customer: Customer }>(`/admin/customers/${id}`, { companySlug, signal });
+  },
+  overview(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<CustomerOverview>(`/admin/customers/${id}/overview`, { companySlug, signal });
+  },
+  create(companySlug: CompanySlug, input: CustomerCreateInput) {
+    return request<{ customer: Customer }>('/admin/customers', {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
+  update(companySlug: CompanySlug, id: number, patch: CustomerUpdateInput) {
+    return request<{ customer: Customer }>(`/admin/customers/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: patch,
+    });
+  },
+  delete(companySlug: CompanySlug, id: number) {
+    return request<null>(`/admin/customers/${id}`, { method: 'DELETE', companySlug });
+  },
+  recomputeTier(companySlug: CompanySlug, id: number) {
+    return request<{ customer: Customer }>(`/admin/customers/${id}/recompute-tier`, {
+      method: 'POST',
+      companySlug,
+      body: {},
+    });
+  },
+  /** Bulk CSV import. dryRun:true returns the summary without writing. */
+  import(
+    companySlug: CompanySlug,
+    body: { csv: string; dryRun?: boolean; marketingOptIn?: boolean },
+  ) {
+    return request<{ summary: CustomerImportSummary; dryRun: boolean }>('/admin/customers/import', {
+      method: 'POST',
+      companySlug,
+      body,
+    });
+  },
+};
 
 export interface ContactReply {
   id: number;
@@ -1394,7 +1552,7 @@ export const tasksAdminApi = {
 
 // --- Exports (ALL_74) ------------------------------------------------------
 
-export type ExportKind = 'orders' | 'inquiries' | 'contacts' | 'newsletter';
+export type ExportKind = 'orders' | 'inquiries' | 'contacts' | 'newsletter' | 'customers';
 
 export type ExportStatus = 'pending' | 'processing' | 'done' | 'failed' | 'cancelled';
 

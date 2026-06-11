@@ -14,6 +14,7 @@ import {
   Plus,
   RefreshCcw,
   Send,
+  Users,
   X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -56,6 +57,7 @@ const KIND_META: Record<ExportKind, KindMeta> = {
   inquiries: { icon: Send, accent: 'amber' },
   contacts: { icon: Mail, accent: 'sky' },
   newsletter: { icon: Inbox, accent: 'emerald' },
+  customers: { icon: Users, accent: 'sky' },
 };
 
 const ACCENT_CLS = {
