@@ -865,11 +865,11 @@ function DetailBody({
                     disabled={isTransitioning}
                     onClick={() => {
                       if (isDangerous) {
-                        if (
-                          !window.confirm(
-                            `Wirklich auf „${STATUS_LABEL[s]}“ setzen? Dies löst eine volle Stripe-Rückerstattung aus, falls eine Zahlung vorhanden ist.`,
-                          )
-                        ) {
+                        const msg =
+                          order.paymentProvider === 'paypal'
+                            ? `Wirklich auf „${STATUS_LABEL[s]}“ setzen? PayPal-Zahlungen müssen direkt in PayPal erstattet werden — hier wird keine Rückerstattung ausgelöst.`
+                            : `Wirklich auf „${STATUS_LABEL[s]}“ setzen? Dies löst eine volle Stripe-Rückerstattung aus, falls eine Zahlung vorhanden ist.`;
+                        if (!window.confirm(msg)) {
                           return;
                         }
                       }
@@ -907,6 +907,7 @@ function DetailBody({
           orderId={order.id}
           orderNumber={order.orderNumber}
           totalCents={order.totalCents}
+          paymentProvider={order.paymentProvider}
         />
 
         {statusLog.length > 0 && (
@@ -1148,8 +1149,11 @@ function StripePaymentBlock({
   } | null;
   syncError: string | null;
 }) {
-  // Same URL works for both test + live dashboards; Stripe routes by the
-  // operator's last selected mode.
+  // PayPal orders settle in the PayPal account — no Stripe IDs and no Stripe sync.
+  if (order.paymentProvider === 'paypal') {
+    return <PayPalPaymentBlock order={order} />;
+  }
+
   const piUrl = order.stripePaymentIntentId
     ? `https://dashboard.stripe.com/payments/${order.stripePaymentIntentId}`
     : null;
@@ -1242,6 +1246,39 @@ function StripePaymentBlock({
           {syncError}
         </div>
       )}
+    </div>
+  );
+}
+
+function PayPalPaymentBlock({ order }: { order: OrderRow }) {
+  const hasIds = !!(order.paypalOrderId || order.paypalCaptureId);
+  return (
+    <div>
+      <SectionLabel icon={CreditCard}>Zahlung</SectionLabel>
+      <div className="mt-2 overflow-hidden rounded-xl border border-border bg-background">
+        <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
+          <CreditCard className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="text-xs font-medium">PayPal</span>
+        </div>
+        {hasIds ? (
+          <dl className="divide-y divide-border text-xs">
+            {order.paypalOrderId && (
+              <StripeIdRow label="PayPal Order" value={order.paypalOrderId} href={null} />
+            )}
+            {order.paypalCaptureId && (
+              <StripeIdRow label="Capture" value={order.paypalCaptureId} href={null} />
+            )}
+          </dl>
+        ) : (
+          <p className="px-3 py-2 text-xs text-muted-foreground">
+            Keine PayPal-Daten vorhanden — Auftrag wurde vor der Zahlung abgebrochen.
+          </p>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Erstattungen und Partner-Auszahlungen erfolgen bei PayPal-Zahlungen manuell direkt in
+        PayPal.
+      </p>
     </div>
   );
 }

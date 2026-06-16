@@ -18,6 +18,7 @@ export function OrderCancelDialog({
   orderId,
   orderNumber,
   totalCents,
+  paymentProvider,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -25,6 +26,7 @@ export function OrderCancelDialog({
   orderId: number;
   orderNumber: string;
   totalCents: number;
+  paymentProvider?: 'stripe' | 'paypal';
 }) {
   const queryClient = useQueryClient();
 
@@ -81,6 +83,7 @@ export function OrderCancelDialog({
               companySlug={companySlug}
               orderId={orderId}
               totalCents={totalCents}
+              isPayPal={paymentProvider === 'paypal'}
               onClose={() => onOpenChange(false)}
               onSuccess={() => {
                 void queryClient.invalidateQueries({
@@ -105,6 +108,7 @@ function PolicyBlock({
   companySlug,
   orderId,
   totalCents,
+  isPayPal,
   onClose,
   onSuccess,
 }: {
@@ -112,11 +116,13 @@ function PolicyBlock({
   companySlug: CompanySlug;
   orderId: number;
   totalCents: number;
+  isPayPal: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  // PayPal refunds can't be issued here — force €0 and refund manually in PayPal.
   const [refundEur, setRefundEur] = useState<string>(() =>
-    formatCentsAsEurString(decision.suggestedRefundCents),
+    formatCentsAsEurString(isPayPal ? 0 : decision.suggestedRefundCents),
   );
   const [reason, setReason] = useState<string>('');
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -147,8 +153,11 @@ function PolicyBlock({
 
     cancel.mutate({
       reason: reason.trim() || undefined,
-      refundCentsOverride:
-        refundCentsOverride === decision.suggestedRefundCents ? undefined : refundCentsOverride,
+      refundCentsOverride: isPayPal
+        ? 0
+        : refundCentsOverride === decision.suggestedRefundCents
+          ? undefined
+          : refundCentsOverride,
     });
   }
 
@@ -200,6 +209,13 @@ function PolicyBlock({
         </div>
       </div>
 
+      {isPayPal && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+          PayPal-Zahlung: Eine Rückerstattung muss direkt in PayPal vorgenommen werden. Hier wird
+          der Auftrag nur ohne Rückerstattungsbetrag storniert.
+        </div>
+      )}
+
       <div>
         <Label htmlFor="refund-eur" className="text-sm">
           Erstattungsbetrag (EUR)
@@ -212,10 +228,12 @@ function PolicyBlock({
           onChange={(e) => setRefundEur(e.target.value)}
           placeholder="0,00"
           className="mt-1"
+          disabled={isPayPal}
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          Vorschlag: {formatCentsAsEurString(decision.suggestedRefundCents)} €. Auf 0 setzen für
-          eine Stornierung ohne Rückerstattung.
+          {isPayPal
+            ? 'Bei PayPal-Zahlungen ist hier keine Rückerstattung möglich.'
+            : `Vorschlag: ${formatCentsAsEurString(decision.suggestedRefundCents)} €. Auf 0 setzen für eine Stornierung ohne Rückerstattung.`}
         </p>
       </div>
 

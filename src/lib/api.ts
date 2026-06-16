@@ -560,7 +560,11 @@ export interface OrderRow {
   internalNotes: string | null;
   stripeSessionId: string | null;
   stripePaymentIntentId: string | null;
-  /** 'upfront' — paid at checkout via Stripe. 'after_service' — paid after the job. */
+  /** 'stripe' (Checkout) or 'paypal' (native Orders v2 — settles in the PayPal account). */
+  paymentProvider: 'stripe' | 'paypal';
+  paypalOrderId: string | null;
+  paypalCaptureId: string | null;
+  /** 'upfront' — paid at checkout. 'after_service' — paid after the job. */
   paymentMode: 'upfront' | 'after_service';
   /** How an after-service order was settled: 'cash' | 'ec_card' | 'credit_card'. */
   paymentMethod: 'cash' | 'ec_card' | 'credit_card' | null;
