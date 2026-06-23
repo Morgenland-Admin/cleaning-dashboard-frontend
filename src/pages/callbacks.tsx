@@ -220,9 +220,11 @@ function CallbackRow({
             {t('callbacks.noPhone')}
           </span>
         )}
-        <a href={`mailto:${row.email}`} className="truncate text-primary hover:underline">
-          {row.email}
-        </a>
+        {row.email ? (
+          <a href={`mailto:${row.email}`} className="truncate text-primary hover:underline">
+            {row.email}
+          </a>
+        ) : null}
         {row.plz ? (
           <span className="inline-flex items-center gap-1">
             <MapPin className="size-3" />
