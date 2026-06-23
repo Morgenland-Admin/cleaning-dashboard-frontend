@@ -26,7 +26,17 @@ import { PageHeading } from '@/components/page-heading';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ListSkeleton } from '@/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useProject } from '@/contexts/project-context';
+import { toast } from '@/hooks/use-toast';
 import { useLocale, useT } from '@/i18n';
 import {
   customersAdminApi,
@@ -226,7 +236,7 @@ export function CustomersPage() {
       ) : null}
 
       {listQuery.isLoading ? (
-        <ListSkeleton />
+        <ListSkeleton rows={4} avatar />
       ) : queryErrorMessage ? (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
           <div className="flex items-start gap-2">
@@ -269,33 +279,21 @@ export function CustomersPage() {
           </ul>
 
           <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('customers.colCustomer')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('customers.colPhone')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right font-medium">
-                    {t('customers.colOrders')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right font-medium">
-                    {t('customers.colSpent')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('customers.colTier')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('customers.colCreated')}
-                  </th>
-                  <th scope="col" className="px-4 py-3">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-border text-[11px] uppercase tracking-wide hover:bg-transparent">
+                  <TableHead>{t('customers.colCustomer')}</TableHead>
+                  <TableHead>{t('customers.colPhone')}</TableHead>
+                  <TableHead className="text-right">{t('customers.colOrders')}</TableHead>
+                  <TableHead className="text-right">{t('customers.colSpent')}</TableHead>
+                  <TableHead>{t('customers.colTier')}</TableHead>
+                  <TableHead>{t('customers.colCreated')}</TableHead>
+                  <TableHead>
                     <span className="sr-only">{t('customers.colActions')}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filtered.map((c) => (
                   <CustomerTableRow
                     key={c.id}
@@ -305,8 +303,8 @@ export function CustomersPage() {
                     onDelete={() => setConfirming(c)}
                   />
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           <InfiniteScrollSentinel
@@ -420,8 +418,8 @@ function CustomerTableRow({
 }) {
   const t = useT();
   return (
-    <tr className="transition-colors hover:bg-muted/40">
-      <td className="max-w-[18rem] px-4 py-3">
+    <TableRow>
+      <TableCell className="max-w-[18rem]">
         <Link to={`/customers/${customer.id}`} className="group flex items-center gap-2.5">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-rust/10 text-rust">
             <User className="size-4" aria-hidden="true" />
@@ -433,24 +431,26 @@ function CustomerTableRow({
             <p className="truncate text-xs text-muted-foreground">{customer.email}</p>
           </div>
         </Link>
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{customer.phone ?? '—'}</td>
-      <td className="px-4 py-3 text-right tabular-nums">
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-muted-foreground">
+        {customer.phone ?? '—'}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
         {formatNumber(customer.totalOrders, bcp47)}
-      </td>
-      <td className="px-4 py-3 text-right tabular-nums">
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
         {formatCurrency(customer.totalSpentCents / 100, 'EUR', bcp47)}
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell>
         <StatusBadge
           label={t(`customers.tier.${customer.loyaltyTier}` as never)}
           tone={TIER_TONE[customer.loyaltyTier]}
         />
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-muted-foreground">
         {formatDateTime(customer.createdAt, bcp47, { dateStyle: 'medium' })}
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell>
         <div className="flex items-center justify-end gap-1">
           <Button
             variant="ghost"
@@ -479,8 +479,8 @@ function CustomerTableRow({
             )}
           </Button>
         </div>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -499,19 +499,14 @@ function ExportCustomersButton() {
       setState('queued');
       setTimeout(() => setState('idle'), 4000);
     } catch (err) {
-      alert(errMessage(err));
+      toast.error(errMessage(err));
       setState('idle');
     }
   }
 
   if (state === 'queued') {
     return (
-      <Button
-        variant="outline"
-        size="sm"
-        asChild
-        className="h-11 text-emerald-700 dark:text-emerald-300 sm:h-9"
-      >
+      <Button variant="outline" size="sm" asChild className="h-11 text-success sm:h-9">
         <Link to="/exports">
           <CheckCircle2 className="size-3.5" aria-hidden="true" />
           {t('customers.exportQueued')}
@@ -535,22 +530,5 @@ function ExportCustomersButton() {
       )}
       {t('customers.export')}
     </Button>
-  );
-}
-
-function ListSkeleton() {
-  return (
-    <ul className="flex flex-col gap-2" aria-hidden="true">
-      {[0, 1, 2, 3].map((i) => (
-        <li key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-          <div className="size-8 shrink-0 animate-pulse rounded-full bg-muted" />
-          <div className="flex-1 space-y-2">
-            <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
-            <div className="h-2 w-1/2 animate-pulse rounded bg-muted/60" />
-          </div>
-          <div className="h-5 w-20 shrink-0 animate-pulse rounded-full bg-muted" />
-        </li>
-      ))}
-    </ul>
   );
 }

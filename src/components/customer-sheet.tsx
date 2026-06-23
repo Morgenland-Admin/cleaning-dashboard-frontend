@@ -6,6 +6,7 @@ import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import {
   Sheet,
   SheetClose,
@@ -26,9 +27,6 @@ import {
 } from '@/lib/api';
 
 const TIERS: LoyaltyTier[] = ['neukunde', 'stammkunde', 'premium'];
-
-const selectClass =
-  'flex h-11 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:h-9';
 
 /** Create / edit form for a customer, shared by the list and detail pages. */
 export function CustomerSheet({
@@ -203,17 +201,16 @@ export function CustomerSheet({
           </div>
 
           <FormField label={t('customers.form.tier')}>
-            <select
+            <Select
               value={loyaltyTier}
               onChange={(e) => setLoyaltyTier(e.target.value as LoyaltyTier)}
-              className={selectClass}
             >
               {TIERS.map((tierOption) => (
                 <option key={tierOption} value={tierOption}>
                   {t(`customers.tier.${tierOption}` as never)}
                 </option>
               ))}
-            </select>
+            </Select>
           </FormField>
           <FormField label={t('customers.form.tags')} hint={t('customers.form.tagsHint')}>
             <Input

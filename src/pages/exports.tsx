@@ -35,7 +35,9 @@ import {
   SheetDescription,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useProject, type Project } from '@/contexts/project-context';
+import { toast } from '@/hooks/use-toast';
 import { useT, useLocale } from '@/i18n';
 import {
   type ApiError,
@@ -139,7 +141,7 @@ export function ExportsPage() {
       const { downloadUrl } = await exportsAdminApi.download(id);
       window.open(downloadUrl, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
     }
   }
 
@@ -275,7 +277,7 @@ function JobRow({
         className={cn(
           'absolute inset-y-0 left-0 w-0.5',
           job.status === 'processing' && 'bg-rust',
-          job.status === 'done' && 'bg-emerald-500',
+          job.status === 'done' && 'bg-success',
           job.status === 'failed' && 'bg-destructive',
           job.status === 'pending' && 'bg-muted-foreground/30',
           job.status === 'cancelled' && 'bg-muted',
@@ -288,7 +290,7 @@ function JobRow({
           isActive
             ? 'bg-rust-soft/60 text-rust ring-rust/15'
             : isDone
-              ? ACCENT_CLS.emerald
+              ? 'bg-success-soft text-success ring-success/15'
               : ACCENT_CLS[meta.accent],
         )}
         aria-hidden="true"
@@ -353,7 +355,7 @@ function StatusPill({ status, t }: { status: ExportStatus; t: ReturnType<typeof 
   const tones: Record<ExportStatus, string> = {
     pending: 'border-muted-foreground/30 bg-muted/40 text-muted-foreground',
     processing: 'border-rust/30 bg-rust-soft/60 text-rust [&_span]:animate-pulse-dot',
-    done: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    done: 'border-success/30 bg-success-soft text-success',
     failed: 'border-destructive/40 bg-destructive/5 text-destructive',
     cancelled: 'border-border bg-muted/40 text-muted-foreground line-through',
   };
@@ -491,7 +493,7 @@ function NewExportSheet({
             <div
               role="status"
               aria-live="polite"
-              className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300"
+              className="flex items-center gap-2 rounded-md border border-success/30 bg-success-soft px-3 py-2 text-sm text-success"
             >
               <CheckCircle2 className="size-4" />
               <span>{t('exports.queued')}</span>
@@ -628,12 +630,12 @@ function ListSkeleton() {
     <ul className="flex flex-col gap-2" aria-hidden="true">
       {[0, 1, 2].map((i) => (
         <li key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-          <div className="size-10 shrink-0 animate-pulse rounded-lg bg-muted" />
+          <Skeleton className="size-10 shrink-0 rounded-lg" />
           <div className="flex-1 space-y-2">
-            <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
-            <div className="h-2 w-1/2 animate-pulse rounded bg-muted/60" />
+            <Skeleton className="h-3 w-1/3" />
+            <Skeleton className="h-2 w-1/2" />
           </div>
-          <div className="h-7 w-20 shrink-0 animate-pulse rounded bg-muted" />
+          <Skeleton className="h-7 w-20 shrink-0" />
         </li>
       ))}
     </ul>

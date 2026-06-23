@@ -32,6 +32,15 @@ import {
   SheetDescription,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { ListSkeleton } from '@/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useProject, type CompanySlug } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
 import {
@@ -238,7 +247,7 @@ export function SubscriptionsPage() {
       ) : null}
 
       {listQuery.isLoading ? (
-        <ListSkeleton />
+        <ListSkeleton rows={4} avatar={false} />
       ) : queryErrorMessage ? (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
           <div className="flex items-start gap-2">
@@ -285,30 +294,20 @@ export function SubscriptionsPage() {
 
           {/* Desktop: table */}
           <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('subscriptions.plan')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('subscriptions.customer')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('subscriptions.price')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('subscriptions.nextService')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('subscriptions.filterStatus')}
-                  </th>
-                  <th scope="col" className="px-4 py-3">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-border text-[11px] uppercase tracking-wide hover:bg-transparent">
+                  <TableHead>{t('subscriptions.plan')}</TableHead>
+                  <TableHead>{t('subscriptions.customer')}</TableHead>
+                  <TableHead>{t('subscriptions.price')}</TableHead>
+                  <TableHead>{t('subscriptions.nextService')}</TableHead>
+                  <TableHead>{t('subscriptions.filterStatus')}</TableHead>
+                  <TableHead>
                     <span className="sr-only">{t('subscriptions.edit')}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((sub) => (
                   <SubscriptionTableRow
                     key={sub.id}
@@ -319,8 +318,8 @@ export function SubscriptionsPage() {
                     onAction={(action) => runAction(sub, action)}
                   />
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           <InfiniteScrollSentinel
@@ -585,20 +584,19 @@ function SubscriptionTableRow({
 }) {
   const t = useT();
   return (
-    <tr
+    <TableRow
       className={cn(
-        'transition-colors hover:bg-muted/40',
         sub.status === 'cancelled' && 'opacity-60',
         sub.status === 'past_due' && 'bg-destructive/5',
       )}
     >
-      <td className="px-4 py-3">
+      <TableCell>
         <div className="flex items-center gap-2">
           <span className="font-medium text-foreground">{sub.planName}</span>
           {sub.stripeSubscriptionId ? <StripeLinkedBadge /> : null}
         </div>
-      </td>
-      <td className="max-w-[16rem] px-4 py-3">
+      </TableCell>
+      <TableCell className="max-w-[16rem]">
         {sub.customerName ? (
           <>
             <p className="truncate">{sub.customerName}</p>
@@ -607,22 +605,22 @@ function SubscriptionTableRow({
         ) : (
           <p className="truncate">{sub.customerEmail}</p>
         )}
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell>
         <PriceLabel sub={sub} bcp47={bcp47} />
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-muted-foreground">
         {sub.nextServiceDate
           ? formatDateTime(sub.nextServiceDate, bcp47, { dateStyle: 'medium' })
           : '—'}
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell>
         <StatusBadge
           label={t(`subscriptions.status.${sub.status}` as never)}
           tone={STATUS_TONE[sub.status]}
         />
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell>
         <RowActions
           sub={sub}
           isActing={isActing}
@@ -630,8 +628,8 @@ function SubscriptionTableRow({
           onAction={onAction}
           layout="icons"
         />
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -838,24 +836,5 @@ function SubscriptionSheet({
         </form>
       </SheetContent>
     </Sheet>
-  );
-}
-
-// --- Skeleton ------------------------------------------------------------------
-
-function ListSkeleton() {
-  return (
-    <ul className="flex flex-col gap-2" aria-hidden="true">
-      {[0, 1, 2, 3].map((i) => (
-        <li key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-          <div className="flex-1 space-y-2">
-            <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
-            <div className="h-2 w-1/2 animate-pulse rounded bg-muted/60" />
-          </div>
-          <div className="h-5 w-20 shrink-0 animate-pulse rounded-full bg-muted" />
-          <div className="h-8 w-24 shrink-0 animate-pulse rounded bg-muted/60" />
-        </li>
-      ))}
-    </ul>
   );
 }

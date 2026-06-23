@@ -38,6 +38,21 @@
     /* Rust accent used for sparklines, pipeline underline, active brand dot */
     --rust: 14 68% 46%;
     --rust-soft: 14 68% 90%;
+    /* Darker rust for TEXT on rust-tinted surfaces (passes AA; --rust is for fills). */
+    --rust-text: 14 74% 36%;
+
+    /* Semantic status tokens — the single source for success/warning/info. */
+    --success: 152 55% 32%;
+    --success-foreground: 38 40% 97%;
+    --success-soft: 152 44% 90%;
+    --warning: 33 84% 40%;
+    --warning-foreground: 38 40% 97%;
+    --warning-soft: 38 80% 90%;
+    --info: 212 72% 43%;
+    --info-foreground: 38 40% 97%;
+    --info-soft: 212 70% 92%;
+    /* Destructive split: --destructive for fills, --destructive-text for text (AA). */
+    --destructive-text: 0 62% 44%;
 
     /* Sidebar — slightly warmer cream than main canvas */
     --sidebar-background: 34 30% 91%;
@@ -83,6 +98,19 @@
 
     --rust: 14 68% 58%;
     --rust-soft: 14 68% 22%;
+    --rust-text: 14 70% 64%;
+
+    /* Semantic status tokens (dark) — lightened for contrast on dark cards. */
+    --success: 152 46% 52%;
+    --success-foreground: 24 14% 10%;
+    --success-soft: 152 30% 18%;
+    --warning: 38 80% 60%;
+    --warning-foreground: 24 14% 10%;
+    --warning-soft: 38 40% 18%;
+    --info: 212 70% 64%;
+    --info-foreground: 24 14% 10%;
+    --info-soft: 212 40% 20%;
+    --destructive-text: 0 78% 70%;
 
     --sidebar-background: 24 14% 8%;
     --sidebar-foreground: 38 22% 84%;
@@ -133,9 +161,28 @@
   }
 }
 
+@layer base {
+  /* Respect OS "reduce motion": neutralize animations/transitions globally. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
 @layer utilities {
+  /* Text rust uses the darker, AA-passing token; fills keep --rust. */
   .text-rust {
-    color: hsl(var(--rust));
+    color: hsl(var(--rust-text));
+  }
+  /* Override Tailwind's generated text-destructive with the AA text token. */
+  .text-destructive {
+    color: hsl(var(--destructive-text));
   }
   .bg-rust {
     background-color: hsl(var(--rust));

@@ -123,7 +123,7 @@ function CompanyRow({
         </div>
         <div className="flex items-center gap-2">
           {!company.isActive ? (
-            <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-800">
+            <span className="rounded-full border border-warning/30 bg-warning-soft px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-warning">
               {t('companies.inactiveLabel')}
             </span>
           ) : null}
@@ -165,7 +165,7 @@ export function CompanyLogoOrMark({
     <span
       className={`inline-flex shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${dim}`}
       style={{
-        backgroundColor: company.primaryColor ?? '#9ca3af',
+        backgroundColor: company.primaryColor ?? 'hsl(var(--muted-foreground))',
       }}
     >
       {initials || <Building2 className="size-5 opacity-80" />}

@@ -52,6 +52,22 @@ const STATUS_KEY: Record<InquiryStatus, string> = {
   lost: 'inquiries.status.lost',
 };
 
+function CallbackOwnerBadge({
+  owner,
+  t,
+}: {
+  owner: ServiceInquiry['callbackOwner'];
+  t: ReturnType<typeof useT>;
+}) {
+  if (!owner) return null;
+  return (
+    <Badge variant={owner === 'human' ? 'warning' : 'secondary'} className="gap-1">
+      <Phone className="size-3" />
+      {owner === 'human' ? t('inquiries.callbackOwner.human') : t('inquiries.callbackOwner.ai')}
+    </Badge>
+  );
+}
+
 export function InquiriesPage() {
   const { activeProject, projects, isAllBrands } = useProject();
   const queryClient = useQueryClient();
@@ -394,7 +410,7 @@ function DetailPanel({
           <CardTitle className="truncate">{inquiry.name}</CardTitle>
           <CardDescription className="truncate">
             {t('contacts.detailFrom', {
-              name: inquiry.email,
+              name: inquiry.email ?? inquiry.phone ?? '—',
               date: formatDateTime(inquiry.createdAt, bcp47),
             })}
           </CardDescription>
@@ -403,6 +419,7 @@ function DetailPanel({
             <Badge variant={STATUS_VARIANT[inquiry.status]}>
               {t(STATUS_KEY[inquiry.status] as never)}
             </Badge>
+            <CallbackOwnerBadge owner={inquiry.callbackOwner} t={t} />
           </div>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('common.close')}>
@@ -479,6 +496,16 @@ function DetailPanel({
           {inquiry.service ? (
             <DetailRow label={t('inquiries.fields.service')} icon={Wrench}>
               {inquiry.service}
+            </DetailRow>
+          ) : null}
+          {inquiry.plz ? (
+            <DetailRow label={t('inquiries.fields.plz')} icon={MapPin}>
+              {inquiry.plz}
+            </DetailRow>
+          ) : null}
+          {inquiry.callReason ? (
+            <DetailRow label={t('inquiries.fields.callReason')} icon={Phone}>
+              {inquiry.callReason}
             </DetailRow>
           ) : null}
           {inquiry.preferredDate ? (

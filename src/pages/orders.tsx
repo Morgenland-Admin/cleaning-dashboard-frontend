@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { OrderCancelDialog } from '@/components/order-cancel-dialog';
 import { PageHeading } from '@/components/page-heading';
@@ -334,7 +335,7 @@ function EmptyState() {
         className="relative flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/40 shadow-inner"
       >
         <Inbox className="size-6 text-muted-foreground" />
-        <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-background bg-amber-400 text-[10px] font-bold text-white">
+        <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-background bg-warning text-[10px] font-bold text-warning-foreground">
           0
         </span>
       </div>
@@ -378,27 +379,26 @@ function OrderListRow({
   const canSync = order.status === 'payment_pending';
   return (
     <li>
+      {/* Non-interactive container: a full-row overlay <button> is the primary
+          action and the sync control is a sibling <button> — no nested buttons. */}
       <div
-        role="button"
-        tabIndex={0}
-        onClick={onSelect}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onSelect();
-          }
-        }}
         className={cn(
-          'group relative flex w-full cursor-pointer items-stretch gap-3 overflow-hidden rounded-xl border bg-card text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust focus-visible:ring-offset-1',
+          'group relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card text-left shadow-sm transition-all focus-within:ring-2 focus-within:ring-rust focus-within:ring-offset-1 hover:border-primary/40 hover:shadow-md',
           selected ? 'border-primary/60 ring-1 ring-primary/30' : 'border-border',
         )}
       >
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-label={`Auftrag ${order.orderNumber} öffnen`}
+          className="absolute inset-0 z-0 cursor-pointer rounded-xl focus:outline-none"
+        />
         <span
           aria-hidden="true"
-          className={cn('w-[3px] shrink-0 self-stretch', STATUS_ACCENT[order.status])}
+          className={cn('relative w-[3px] shrink-0 self-stretch', STATUS_ACCENT[order.status])}
         />
 
-        <div className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3 pr-3">
+        <div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3 py-3 pl-3 pr-3">
           <div
             aria-hidden="true"
             className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-muted/80 to-muted text-[11px] font-semibold tracking-wider text-muted-foreground"
@@ -479,14 +479,14 @@ function OrderDetail({
 
   const [notes, setNotes] = useState<string>('');
   const [notesDirty, setNotesDirty] = useState(false);
-  // Sync notes from server only when we get a fresh load (not on every render
-  // — otherwise typing into the field would be wiped by background refetches).
-  useMemo(() => {
-    if (detail.data && !notesDirty) {
-      setNotes(detail.data.order.internalNotes ?? '');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail.data?.order.id, detail.data?.order.updatedAt]);
+  // Reset the editable field when a fresh record loads (id+updatedAt change) —
+  // done during render, not in an effect, so typing isn't clobbered by refetches.
+  const loadedKey = detail.data ? `${detail.data.order.id}:${detail.data.order.updatedAt}` : null;
+  const [syncedKey, setSyncedKey] = useState<string | null>(null);
+  if (loadedKey && loadedKey !== syncedKey && !notesDirty) {
+    setSyncedKey(loadedKey);
+    setNotes(detail.data!.order.internalNotes ?? '');
+  }
 
   const transition = useMutation({
     mutationFn: (toStatus: OrderTransitionStatus) =>
@@ -621,6 +621,7 @@ function DetailBody({
 }) {
   const { order, items, statusLog, allowedNextStatuses } = data;
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [refundStatus, setRefundStatus] = useState<OrderTransitionStatus | null>(null);
   // Cancellation goes through the policy-aware dialog (/cancel), not the
   // bare /transition path — /transition doesn't refund on `cancelled`.
   const cancelOffered = allowedNextStatuses.includes('cancelled');
@@ -711,10 +712,10 @@ function DetailBody({
           <div>
             <SectionLabel icon={CalendarClock}>Wunschtermine</SectionLabel>
             {order.metadata.confirmedSlot ? (
-              <div className="mt-2 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-sm">
-                <CheckCircle2 className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm">
+                <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
                 <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-success">
                     Bestätigter Termin
                   </div>
                   <div className="font-medium tabular-nums">
@@ -736,7 +737,7 @@ function DetailBody({
                     key={slot}
                     className={cn(
                       'flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm',
-                      isConfirmed ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border',
+                      isConfirmed ? 'border-success/30 bg-success-soft' : 'border-border',
                     )}
                   >
                     <span className="flex items-center gap-2 tabular-nums">
@@ -747,7 +748,7 @@ function DetailBody({
                       {formatSlotDe(slot)}
                     </span>
                     {isConfirmed ? (
-                      <span className="flex items-center gap-1 text-xs font-medium text-emerald-700">
+                      <span className="flex items-center gap-1 text-xs font-medium text-success">
                         <Check className="size-3.5" aria-hidden="true" /> Bestätigt
                       </span>
                     ) : (
@@ -865,13 +866,8 @@ function DetailBody({
                     disabled={isTransitioning}
                     onClick={() => {
                       if (isDangerous) {
-                        const msg =
-                          order.paymentProvider === 'paypal'
-                            ? `Wirklich auf „${STATUS_LABEL[s]}“ setzen? PayPal-Zahlungen müssen direkt in PayPal erstattet werden — hier wird keine Rückerstattung ausgelöst.`
-                            : `Wirklich auf „${STATUS_LABEL[s]}“ setzen? Dies löst eine volle Stripe-Rückerstattung aus, falls eine Zahlung vorhanden ist.`;
-                        if (!window.confirm(msg)) {
-                          return;
-                        }
+                        setRefundStatus(s as OrderTransitionStatus);
+                        return;
                       }
                       onTransition(s as OrderTransitionStatus);
                     }}
@@ -910,6 +906,26 @@ function DetailBody({
           paymentProvider={order.paymentProvider}
         />
 
+        <ConfirmDialog
+          open={refundStatus !== null}
+          onOpenChange={(open) => {
+            if (!open) setRefundStatus(null);
+          }}
+          title={refundStatus ? `Auf „${STATUS_LABEL[refundStatus]}" setzen?` : ''}
+          description={
+            order.paymentProvider === 'paypal'
+              ? 'PayPal-Zahlungen müssen direkt in PayPal erstattet werden — hier wird keine Rückerstattung ausgelöst.'
+              : 'Dies löst eine volle Stripe-Rückerstattung aus, falls eine Zahlung vorhanden ist.'
+          }
+          confirmLabel="Bestätigen"
+          isDangerous
+          isPending={isTransitioning}
+          onConfirm={() => {
+            if (refundStatus) onTransition(refundStatus);
+            setRefundStatus(null);
+          }}
+        />
+
         {statusLog.length > 0 && (
           <div>
             <SectionLabel icon={History}>Verlauf</SectionLabel>
@@ -943,8 +959,7 @@ function DetailBody({
   );
 }
 
-// Rendered as <span role="button"> rather than a real <button> because the
-// containing row is itself a clickable element — nested buttons are invalid.
+// Real <button>, sibling to the row's overlay action (z above it, clickable).
 function RowSyncButton({
   show,
   isSyncing,
@@ -952,30 +967,23 @@ function RowSyncButton({
 }: {
   show: boolean;
   isSyncing: boolean;
-  onClick: (e: React.MouseEvent | React.KeyboardEvent) => void;
+  onClick: (e: React.MouseEvent) => void;
 }) {
   if (!show) return null;
   return (
-    <span
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       aria-label="Mit Stripe abgleichen"
       title="Mit Stripe abgleichen"
       onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick(e);
-        }
-      }}
-      className="ml-2 inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-rust focus-visible:ring-offset-1"
+      className="pointer-events-auto relative z-10 ml-2 inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-rust focus-visible:ring-offset-1"
     >
       {isSyncing ? (
         <Loader2 className="size-3.5 animate-spin" />
       ) : (
         <RefreshCcw className="size-3.5" />
       )}
-    </span>
+    </button>
   );
 }
 
@@ -1029,8 +1037,8 @@ function AfterServicePaymentBlock({
       <SectionLabel icon={CreditCard}>Zahlung nach Leistung</SectionLabel>
 
       {isPaid ? (
-        <div className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-sm">
-          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+        <div className="mt-2 flex items-center gap-2 rounded-xl border border-success/30 bg-success-soft px-3 py-2.5 text-sm">
+          <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
           <div>
             <div className="font-medium">
               Bezahlt
@@ -1092,8 +1100,8 @@ function AfterServicePaymentBlock({
           </div>
 
           {linkUrl && (
-            <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-xs dark:border-sky-900/40 dark:bg-sky-950/30">
-              <p className="text-sky-900 dark:text-sky-100">
+            <div className="mt-3 rounded-xl border border-info/30 bg-info-soft p-3 text-xs">
+              <p className="text-info">
                 Zahlungslink erstellt und per E-Mail an{' '}
                 <span className="font-medium">{order.customerEmail}</span> gesendet. Sie können ihn
                 auch direkt teilen:
@@ -1214,8 +1222,8 @@ function StripePaymentBlock({
       )}
 
       {canSync && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs dark:border-amber-900/40 dark:bg-amber-950/30">
-          <p className="text-amber-900 dark:text-amber-100">
+        <div className="mt-3 rounded-xl border border-warning/30 bg-warning-soft p-3 text-xs">
+          <p className="text-warning">
             Dieser Auftrag wartet auf die Zahlungsbestätigung. Falls Stripe die Zahlung bereits
             erhalten hat (Webhook verpasst), können Sie hier manuell abgleichen.
           </p>
@@ -1331,15 +1339,15 @@ function SyncResultBanner({
 }) {
   const map = {
     marked_paid: {
-      cls: 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-100',
+      cls: 'border-success/30 bg-success-soft text-success',
       text: 'Stripe-Zahlung bestätigt — Auftrag ist jetzt bezahlt und Bestätigungs-E-Mail wurde versendet.',
     },
     marked_cancelled: {
-      cls: 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-100',
+      cls: 'border-destructive/30 bg-destructive/10 text-destructive',
       text: 'Stripe-Session ist abgelaufen — Auftrag wurde storniert.',
     },
     still_pending: {
-      cls: 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100',
+      cls: 'border-warning/30 bg-warning-soft text-warning',
       text: `Zahlung läuft noch (Stripe: ${result.stripe.sessionStatus}/${result.stripe.paymentStatus}). Kein Handlungsbedarf.`,
     },
     noop: {

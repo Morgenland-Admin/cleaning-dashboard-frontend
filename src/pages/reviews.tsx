@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject } from '@/contexts/project-context';
 import { useLocale, useT, type DictKey } from '@/i18n';
@@ -564,17 +565,17 @@ function SkeletonCard() {
   return (
     <Card>
       <CardContent className="p-4 sm:p-6">
-        <div className="animate-pulse space-y-3">
+        <div className="space-y-3" aria-hidden="true">
           <div className="flex items-center gap-3">
-            <div className="h-4 w-24 rounded bg-muted" />
-            <div className="h-4 w-32 rounded bg-muted" />
-            <div className="ml-auto h-5 w-20 rounded bg-muted" />
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="ml-auto h-5 w-20" />
           </div>
-          <div className="h-4 w-full rounded bg-muted" />
-          <div className="h-4 w-5/6 rounded bg-muted" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
           <div className="flex gap-2 pt-1">
-            <div className="h-11 w-28 rounded-md bg-muted" />
-            <div className="h-11 w-28 rounded-md bg-muted" />
+            <Skeleton className="h-11 w-28" />
+            <Skeleton className="h-11 w-28" />
           </div>
         </div>
       </CardContent>

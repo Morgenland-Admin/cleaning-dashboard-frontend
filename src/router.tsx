@@ -1,32 +1,67 @@
+import { lazy } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 
 import { AppLayout } from '@/components/layout';
 import { RequireAuth } from '@/components/require-auth';
 import { RouteError } from '@/components/route-error';
+// Entry pages stay eager — they're the first paint and tiny.
 import { AcceptInvitePage } from '@/pages/accept-invite';
-import { BrandDetailPage } from '@/pages/brand-detail';
-import { BrandNewPage } from '@/pages/brand-new';
-import { ChatPage } from '@/pages/chat';
-import { CompaniesPage } from '@/pages/companies';
-import { ContactsPage } from '@/pages/contacts';
-import { CustomerDetailPage } from '@/pages/customer-detail';
-import { CustomersPage } from '@/pages/customers';
-import { DashboardPage } from '@/pages/dashboard';
-import { ExportsPage } from '@/pages/exports';
-import { InquiriesPage } from '@/pages/inquiries';
-import { InvoicesPage } from '@/pages/invoices';
 import { LoginPage } from '@/pages/login';
-import { NewsletterPage } from '@/pages/newsletter';
 import { NotFoundPage } from '@/pages/not-found';
-import { OrdersPage } from '@/pages/orders';
-import { PartnersPage } from '@/pages/partners';
-import { PricingPage } from '@/pages/pricing';
-import { ProfilePage } from '@/pages/profile';
 import { ResetPasswordPage } from '@/pages/reset-password';
-import { ReviewsPage } from '@/pages/reviews';
-import { SettingsPage } from '@/pages/settings';
-import { SubscriptionsPage } from '@/pages/subscriptions';
-import { TasksPage } from '@/pages/tasks';
+
+// Authenticated pages are code-split: each loads on first navigation, so the
+// recharts-heavy dashboard and the large orders/invoices bundles don't ship on
+// the initial login paint. A single <Suspense> boundary lives in AppLayout.
+const BrandDetailPage = lazy(() =>
+  import('@/pages/brand-detail').then((m) => ({ default: m.BrandDetailPage })),
+);
+const BrandNewPage = lazy(() =>
+  import('@/pages/brand-new').then((m) => ({ default: m.BrandNewPage })),
+);
+const CallbacksPage = lazy(() =>
+  import('@/pages/callbacks').then((m) => ({ default: m.CallbacksPage })),
+);
+const ChatPage = lazy(() => import('@/pages/chat').then((m) => ({ default: m.ChatPage })));
+const CompaniesPage = lazy(() =>
+  import('@/pages/companies').then((m) => ({ default: m.CompaniesPage })),
+);
+const ContactsPage = lazy(() =>
+  import('@/pages/contacts').then((m) => ({ default: m.ContactsPage })),
+);
+const CustomerDetailPage = lazy(() =>
+  import('@/pages/customer-detail').then((m) => ({ default: m.CustomerDetailPage })),
+);
+const CustomersPage = lazy(() =>
+  import('@/pages/customers').then((m) => ({ default: m.CustomersPage })),
+);
+const DashboardPage = lazy(() =>
+  import('@/pages/dashboard').then((m) => ({ default: m.DashboardPage })),
+);
+const ExportsPage = lazy(() => import('@/pages/exports').then((m) => ({ default: m.ExportsPage })));
+const InquiriesPage = lazy(() =>
+  import('@/pages/inquiries').then((m) => ({ default: m.InquiriesPage })),
+);
+const InvoicesPage = lazy(() =>
+  import('@/pages/invoices').then((m) => ({ default: m.InvoicesPage })),
+);
+const NewsletterPage = lazy(() =>
+  import('@/pages/newsletter').then((m) => ({ default: m.NewsletterPage })),
+);
+const OrdersPage = lazy(() => import('@/pages/orders').then((m) => ({ default: m.OrdersPage })));
+const PartnersPage = lazy(() =>
+  import('@/pages/partners').then((m) => ({ default: m.PartnersPage })),
+);
+const PricingPage = lazy(() => import('@/pages/pricing').then((m) => ({ default: m.PricingPage })));
+const ProfilePage = lazy(() => import('@/pages/profile').then((m) => ({ default: m.ProfilePage })));
+const ReviewsPage = lazy(() => import('@/pages/reviews').then((m) => ({ default: m.ReviewsPage })));
+const SettingsPage = lazy(() =>
+  import('@/pages/settings').then((m) => ({ default: m.SettingsPage })),
+);
+const SubscriptionsPage = lazy(() =>
+  import('@/pages/subscriptions').then((m) => ({ default: m.SubscriptionsPage })),
+);
+const TasksPage = lazy(() => import('@/pages/tasks').then((m) => ({ default: m.TasksPage })));
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage />, errorElement: <RouteError /> },
@@ -49,6 +84,7 @@ export const router = createBrowserRouter([
           { path: 'abos', element: <SubscriptionsPage /> },
           { path: 'bewertungen', element: <ReviewsPage /> },
           { path: 'inquiries', element: <InquiriesPage /> },
+          { path: 'callbacks', element: <CallbacksPage /> },
           { path: 'contacts', element: <ContactsPage /> },
           { path: 'newsletter', element: <NewsletterPage /> },
           { path: 'tasks', element: <TasksPage /> },

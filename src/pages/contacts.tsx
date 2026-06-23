@@ -320,7 +320,7 @@ export function ContactsPage() {
                       className={cn(
                         'flex w-full flex-col gap-1 px-4 py-3 text-left transition-colors hover:bg-muted/40 sm:px-5',
                         isSelected && 'bg-muted/60',
-                        m.status === 'new' && 'border-l-2 border-l-sky-500',
+                        m.status === 'new' && 'border-l-2 border-l-info',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -445,7 +445,6 @@ function DetailPanel({
 }) {
   return (
     <Card className="sticky top-20 overflow-hidden">
-      {/* ---- Header: avatar + subject + meta pills + toolbar ----------- */}
       <header className="flex flex-col gap-3 border-b border-border/70 bg-muted/30 px-4 py-4 sm:flex-row sm:items-start sm:gap-4 sm:px-5">
         <Avatar className="size-10 shrink-0" aria-hidden="true">
           <AvatarFallback className="bg-rust/15 text-[12px] font-semibold uppercase text-rust">
@@ -487,7 +486,7 @@ function DetailPanel({
               {message.locale.toUpperCase()}
             </span>
             {message.consentMarketing ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300">
+              <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
                 <Check className="size-3" />
                 {t('contacts.detailMarketing')}
               </span>
@@ -500,7 +499,6 @@ function DetailPanel({
           </div>
         </div>
 
-        {/* Toolbar — Gmail-style icon buttons with tooltips */}
         <div className="flex shrink-0 items-center gap-2 self-start sm:gap-0.5 sm:self-center">
           <ToolbarButton
             onClick={() => onStatusChange('read')}
@@ -535,7 +533,6 @@ function DetailPanel({
         </div>
       </header>
 
-      {/* ---- Conversation ---------------------------------------------- */}
       <div className="flex flex-col gap-4 px-4 py-5 sm:px-5">
         <h3 className="sr-only">{t('contacts.conversationTitle')}</h3>
 
@@ -582,7 +579,6 @@ function DetailPanel({
         ))}
       </div>
 
-      {/* ---- Composer -------------------------------------------------- */}
       <div className="border-t border-border/70 bg-muted/20 px-4 py-4 sm:px-5">
         <ReplyComposer
           to={message.email}
@@ -772,7 +768,7 @@ function ReplyComposer({
         <div
           role="status"
           aria-live="polite"
-          className="flex items-center gap-1.5 px-3.5 pb-2 text-[12px] text-emerald-700 dark:text-emerald-300"
+          className="flex items-center gap-1.5 px-3.5 pb-2 text-[12px] text-success"
         >
           <Check className="size-3.5" />
           <span>{t('contacts.replySentToast')}</span>

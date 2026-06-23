@@ -218,7 +218,7 @@ export function LoginPage() {
                   }}
                   disabled={submitting || forgotSent}
                   placeholder={t('login.emailPlaceholder')}
-                  className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]"
+                  className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]"
                 />
               </div>
             </div>
@@ -254,7 +254,7 @@ export function LoginPage() {
                       onKeyDown={handleCapsLock}
                       disabled={submitting}
                       placeholder={t('login.passwordPlaceholder')}
-                      className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]"
+                      className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]"
                     />
                     <button
                       type="button"
@@ -267,10 +267,7 @@ export function LoginPage() {
                     </button>
                   </div>
                   {capsLockOn ? (
-                    <p
-                      role="status"
-                      className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400"
-                    >
+                    <p role="status" className="flex items-center gap-1 text-[11px] text-warning">
                       <AlertCircle className="size-3" />
                       {t('login.capsLock')}
                     </p>
@@ -291,7 +288,7 @@ export function LoginPage() {
               <div
                 role="status"
                 aria-live="polite"
-                className="flex items-start gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+                className="flex items-start gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm text-success"
               >
                 <Info className="mt-0.5 size-4 shrink-0" />
                 <span>{t('login.forgotPasswordSent')}</span>

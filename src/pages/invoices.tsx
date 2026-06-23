@@ -34,7 +34,16 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject, type CompanySlug } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
@@ -345,7 +354,7 @@ export function InvoicesPage() {
             'flex items-start justify-between gap-2 rounded-md border px-3 py-2 text-sm',
             notice.tone === 'error'
               ? 'border-destructive/40 bg-destructive/5 text-destructive'
-              : 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300',
+              : 'border-success/30 bg-success-soft text-success',
           )}
         >
           <span className="flex items-start gap-2">
@@ -402,7 +411,7 @@ export function InvoicesPage() {
           className={cn(
             'inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-9',
             overdueOnly
-              ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+              ? 'border-warning/50 bg-warning-soft text-warning'
               : 'border-border bg-card text-muted-foreground hover:text-foreground',
           )}
         >
@@ -449,34 +458,24 @@ export function InvoicesPage() {
       ) : (
         <>
           {/* Desktop: table */}
-          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('invoices.number')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('invoices.recipient')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right font-medium">
-                    {t('invoices.amount')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('invoices.filterStatus')}
-                  </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    {t('invoices.dueAt')}
-                  </th>
-                  <th scope="col" className="px-4 py-3">
+          <div className="hidden rounded-xl border border-border bg-card md:block">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b text-[11px] uppercase tracking-wider hover:bg-transparent">
+                  <TableHead>{t('invoices.number')}</TableHead>
+                  <TableHead>{t('invoices.recipient')}</TableHead>
+                  <TableHead className="text-right">{t('invoices.amount')}</TableHead>
+                  <TableHead>{t('invoices.filterStatus')}</TableHead>
+                  <TableHead>{t('invoices.dueAt')}</TableHead>
+                  <TableHead>
                     <span className="sr-only">{t('invoices.details')}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {invoices.map((inv) => (
-                  <tr key={inv.id} className="transition-colors hover:bg-muted/40">
-                    <td className="px-4 py-2.5">
+                  <TableRow key={inv.id}>
+                    <TableCell className="py-2.5">
                       <button
                         type="button"
                         onClick={() => setDetailId(inv.id)}
@@ -484,12 +483,14 @@ export function InvoicesPage() {
                       >
                         {invoiceNumber(inv)}
                       </button>
-                    </td>
-                    <td className="max-w-[18rem] truncate px-4 py-2.5">{inv.recipientName}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">
+                    </TableCell>
+                    <TableCell className="max-w-[18rem] truncate py-2.5">
+                      {inv.recipientName}
+                    </TableCell>
+                    <TableCell className="py-2.5 text-right tabular-nums">
                       {formatEur(inv.totalCents, bcp47, inv.currency)}
-                    </td>
-                    <td className="px-4 py-2.5">
+                    </TableCell>
+                    <TableCell className="py-2.5">
                       <span className="inline-flex flex-wrap items-center gap-1">
                         <StatusBadge
                           tone={STATUS_TONE[inv.status]}
@@ -502,22 +503,22 @@ export function InvoicesPage() {
                           />
                         ) : null}
                       </span>
-                    </td>
-                    <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="py-2.5 tabular-nums text-muted-foreground">
                       {inv.dueAt ? formatShortDate(inv.dueAt, bcp47) : '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
+                    </TableCell>
+                    <TableCell className="py-2.5 text-right">
                       <RowMenu
                         invoice={inv}
                         disabled={actionPending}
                         onDetails={() => setDetailId(inv.id)}
                         onAction={runAction}
                       />
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           {/* Mobile: stacked cards */}
@@ -929,9 +930,6 @@ interface LineDraft {
   unitPriceEur: string;
 }
 
-const SELECT_CLS =
-  'flex h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:h-9';
-
 function InvoiceFormSheet({
   slug,
   invoice,
@@ -1142,19 +1140,17 @@ function InvoiceFormSheet({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <FormField label={t('invoices.form.customerType')}>
-              <select
-                className={SELECT_CLS}
+              <Select
                 value={fields.customerType}
                 disabled={isEdit}
                 onChange={(e) => setField('customerType', e.target.value as 'b2c' | 'b2b')}
               >
                 <option value="b2c">B2C</option>
                 <option value="b2b">B2B</option>
-              </select>
+              </Select>
             </FormField>
             <FormField label={t('invoices.form.taxRate')}>
-              <select
-                className={SELECT_CLS}
+              <Select
                 value={String(fields.taxRatePercent)}
                 onChange={(e) =>
                   setField('taxRatePercent', Number(e.target.value) as InvoiceTaxRate)
@@ -1163,7 +1159,7 @@ function InvoiceFormSheet({
                 <option value="0">{t('invoices.form.taxRate0')}</option>
                 <option value="7">{t('invoices.form.taxRate7')}</option>
                 <option value="19">{t('invoices.form.taxRate19')}</option>
-              </select>
+              </Select>
             </FormField>
           </div>
           <FormField label={t('invoices.form.paymentTerms')}>

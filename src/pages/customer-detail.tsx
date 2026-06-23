@@ -23,6 +23,7 @@ import { StatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProject } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
@@ -410,27 +411,27 @@ function OrdersList({
   }
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <table className="w-full text-sm">
-        <tbody className="divide-y divide-border">
+      <Table>
+        <TableBody>
           {orders.map((o) => (
-            <tr key={o.id} className="hover:bg-muted/40">
-              <td className="px-4 py-3">
+            <TableRow key={o.id}>
+              <TableCell>
                 <p className="font-medium text-foreground">{o.orderNumber || `#${o.id}`}</p>
                 <p className="text-xs text-muted-foreground">{o.kind}</p>
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Badge variant="secondary">{o.status}</Badge>
-              </td>
-              <td className="px-4 py-3 text-right tabular-nums">
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
                 {formatCurrency(o.totalCents / 100, o.currency, bcp47)}
-              </td>
-              <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-muted-foreground">
+              </TableCell>
+              <TableCell className="whitespace-nowrap text-right text-xs text-muted-foreground">
                 {formatDateTime(o.createdAt, bcp47, { dateStyle: 'short' })}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -454,24 +455,24 @@ function InquiriesList({
   }
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <table className="w-full text-sm">
-        <tbody className="divide-y divide-border">
+      <Table>
+        <TableBody>
           {inquiries.map((i) => (
-            <tr key={i.id} className="hover:bg-muted/40">
-              <td className="px-4 py-3">
+            <TableRow key={i.id}>
+              <TableCell>
                 <p className="font-medium text-foreground">{i.service || t('customers.inquiry')}</p>
                 <p className="line-clamp-1 text-xs text-muted-foreground">{i.message}</p>
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Badge variant="secondary">{i.status}</Badge>
-              </td>
-              <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-muted-foreground">
+              </TableCell>
+              <TableCell className="whitespace-nowrap text-right text-xs text-muted-foreground">
                 {formatDateTime(i.createdAt, bcp47, { dateStyle: 'short' })}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -490,26 +491,26 @@ function ContactsList({
   }
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <table className="w-full text-sm">
-        <tbody className="divide-y divide-border">
+      <Table>
+        <TableBody>
           {contacts.map((c) => (
-            <tr key={c.id} className="hover:bg-muted/40">
-              <td className="px-4 py-3">
+            <TableRow key={c.id}>
+              <TableCell>
                 <p className="font-medium text-foreground">
                   {c.subject || t('customers.contactMessage')}
                 </p>
                 <p className="line-clamp-1 text-xs text-muted-foreground">{c.message}</p>
-              </td>
-              <td className="px-4 py-3">
+              </TableCell>
+              <TableCell>
                 <Badge variant="secondary">{c.status}</Badge>
-              </td>
-              <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-muted-foreground">
+              </TableCell>
+              <TableCell className="whitespace-nowrap text-right text-xs text-muted-foreground">
                 {formatDateTime(c.createdAt, bcp47, { dateStyle: 'short' })}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

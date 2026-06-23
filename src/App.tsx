@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { RouterProvider } from 'react-router-dom';
 
 import { ErrorBoundary } from '@/components/error-boundary';
+import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ProjectProvider } from '@/contexts/project-context';
 import { ThemeProvider } from '@/contexts/theme-context';
@@ -49,6 +50,7 @@ export function App() {
             <ProjectProvider>
               <TooltipProvider delayDuration={150}>
                 <RouterProvider router={router} />
+                <Toaster />
               </TooltipProvider>
             </ProjectProvider>
           </QueryClientProvider>

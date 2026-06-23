@@ -109,7 +109,7 @@ export function BrandDetailPage() {
             {!company.isActive ? (
               <>
                 {' · '}
-                <span className="font-medium text-amber-700">{t('companies.inactiveLabel')}</span>
+                <span className="font-medium text-warning">{t('companies.inactiveLabel')}</span>
               </>
             ) : null}
           </>

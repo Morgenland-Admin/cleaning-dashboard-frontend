@@ -6,10 +6,13 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number, currency = 'EUR', bcp47 = 'de-DE') {
+  // Always show cents — this renders real money (totals, lifetime spend,
+  // subscription price); rounding to whole euros misstated amounts (€149.50 → €150).
   return new Intl.NumberFormat(bcp47, {
     style: 'currency',
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 

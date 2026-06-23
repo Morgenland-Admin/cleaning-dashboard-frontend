@@ -144,6 +144,7 @@ export const de = {
     partner: 'Partner-Werkstätten',
     b2b: 'B2B-Vertrieb',
     inquiries: 'Service-Anfragen',
+    callbacks: 'Rückrufe',
     contacts: 'Kontaktanfragen',
     belege: 'Belege & Vorlagen',
     kasse: 'Kasse & Tagesabschluss',
@@ -524,6 +525,10 @@ export const de = {
       lost: 'Verloren',
       reset: 'Zurücksetzen',
     },
+    callbackOwner: {
+      human: 'Persönlicher Rückruf',
+      ai: 'KI-Rückruf',
+    },
     fields: {
       email: 'E-Mail',
       phone: 'Telefon',
@@ -536,6 +541,8 @@ export const de = {
       consentMarketing: 'Marketing-Einwilligung',
       message: 'Nachricht',
       attachments: 'Anhänge',
+      plz: 'PLZ',
+      callReason: 'Grund des Anrufs',
     },
     timeline: {
       created: 'Eingegangen',
@@ -546,6 +553,19 @@ export const de = {
     errUnauthorized: 'Bitte einloggen, um Anfragen zu sehen.',
     errForbidden: 'Keine Berechtigung für dieses Unternehmen.',
     errGeneric: 'Anfragen konnten nicht geladen werden.',
+  },
+  callbacks: {
+    title: 'Rückrufe',
+    subtitle: 'Persönliche Rückrufe im Hamburger Umkreis (≤ 100 km).',
+    listTitle: 'Offene Rückrufe',
+    flag: 'Rückruf – Hamburg',
+    countSingular: '{{count}} Rückruf',
+    countPlural: '{{count}} Rückrufe',
+    empty: 'Keine offenen Rückrufe.',
+    noPhone: 'Keine Nummer',
+    actions: {
+      reached: 'Erreicht',
+    },
   },
   partners: {
     title: 'Partner-Werkstätten',

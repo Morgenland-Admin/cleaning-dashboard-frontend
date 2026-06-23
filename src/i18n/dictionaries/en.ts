@@ -143,6 +143,7 @@ export const en: Dict = {
     partner: 'Partner workshops',
     b2b: 'B2B sales',
     inquiries: 'Inquiry requests',
+    callbacks: 'Callbacks',
     contacts: 'Contact requests',
     belege: 'Receipts & templates',
     kasse: 'Cash & day-end',
@@ -521,6 +522,10 @@ export const en: Dict = {
       lost: 'Lost',
       reset: 'Reset',
     },
+    callbackOwner: {
+      human: 'Personal callback',
+      ai: 'AI callback',
+    },
     fields: {
       email: 'Email',
       phone: 'Phone',
@@ -533,6 +538,8 @@ export const en: Dict = {
       consentMarketing: 'Marketing consent',
       message: 'Message',
       attachments: 'Attachments',
+      plz: 'Postal code',
+      callReason: 'Call reason',
     },
     timeline: {
       created: 'Received',
@@ -543,6 +550,19 @@ export const en: Dict = {
     errUnauthorized: 'Please sign in to view inquiries.',
     errForbidden: 'No permission for this company.',
     errGeneric: 'Could not load inquiries.',
+  },
+  callbacks: {
+    title: 'Callbacks',
+    subtitle: 'Personal callbacks within the Hamburg area (≤ 100 km).',
+    listTitle: 'Open callbacks',
+    flag: 'Callback – Hamburg',
+    countSingular: '{{count}} callback',
+    countPlural: '{{count}} callbacks',
+    empty: 'No open callbacks.',
+    noPhone: 'No number',
+    actions: {
+      reached: 'Reached',
+    },
   },
   partners: {
     title: 'Partner workshops',

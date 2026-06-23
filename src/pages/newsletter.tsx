@@ -19,8 +19,17 @@ import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProject, type Project, type CompanySlug } from '@/contexts/project-context';
+import { toast } from '@/hooks/use-toast';
 import { useLocale, useT } from '@/i18n';
 import {
   exportsAdminApi,
@@ -268,113 +277,104 @@ export function NewsletterPage() {
               <span>{t('newsletter.empty')}</span>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-y border-border/70 bg-muted/30 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left font-semibold sm:px-6">
-                      {t('newsletter.colEmail')}
-                    </th>
-                    <th className="hidden px-5 py-2.5 text-left font-semibold sm:table-cell">
-                      {t('brandFilter.title')}
-                    </th>
-                    <th className="hidden px-5 py-2.5 text-left font-semibold md:table-cell">
-                      {t('newsletter.colName')}
-                    </th>
-                    <th className="hidden px-5 py-2.5 text-left font-semibold lg:table-cell">
-                      {t('newsletter.colSource')}
-                    </th>
-                    <th className="px-4 py-2.5 text-left font-semibold sm:px-5">
-                      {t('newsletter.colStatus')}
-                    </th>
-                    <th className="hidden px-5 py-2.5 text-right font-semibold sm:table-cell">
-                      {t('newsletter.colCreated')}
-                    </th>
-                    <th className="px-4 py-2.5 text-right font-semibold sm:px-5">
-                      <span className="sr-only">{t('newsletter.colActions')}</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((s) => {
-                    const status = statusOf(s);
-                    const fullName = [s.firstName, s.lastName].filter(Boolean).join(' ') || null;
-                    const isThisDeleting =
-                      deleteMutation.isPending &&
-                      deleteMutation.variables?.id === s.id &&
-                      deleteMutation.variables?.companySlug === s._brand.companySlug;
-                    return (
-                      <tr
-                        key={`${s._brand.id}:${s.id}`}
-                        className="border-b border-border/50 last:border-0 hover:bg-muted/30"
-                      >
-                        <td className="px-4 py-3 align-middle sm:px-6">
-                          <div className="flex items-center gap-2">
-                            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-rust/10 text-rust">
-                              <Mail className="size-3.5" />
-                            </span>
-                            <div className="min-w-0">
-                              <a
-                                href={`mailto:${s.email}`}
-                                className="truncate font-medium text-primary hover:underline"
-                              >
-                                {s.email}
-                              </a>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground md:hidden">
-                                <BrandChip brand={s._brand} />
-                                {fullName ? <span>{fullName}</span> : null}
-                                {s.source ? <span>· {s.source}</span> : null}
-                              </div>
+            <Table>
+              <TableHeader className="border-y border-border/70 bg-muted/30 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <TableRow>
+                  <TableHead className="py-2.5 sm:px-6">{t('newsletter.colEmail')}</TableHead>
+                  <TableHead className="hidden px-5 py-2.5 sm:table-cell">
+                    {t('brandFilter.title')}
+                  </TableHead>
+                  <TableHead className="hidden px-5 py-2.5 md:table-cell">
+                    {t('newsletter.colName')}
+                  </TableHead>
+                  <TableHead className="hidden px-5 py-2.5 lg:table-cell">
+                    {t('newsletter.colSource')}
+                  </TableHead>
+                  <TableHead className="py-2.5 sm:px-5">{t('newsletter.colStatus')}</TableHead>
+                  <TableHead className="hidden px-5 py-2.5 text-right sm:table-cell">
+                    {t('newsletter.colCreated')}
+                  </TableHead>
+                  <TableHead className="py-2.5 text-right sm:px-5">
+                    <span className="sr-only">{t('newsletter.colActions')}</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((s) => {
+                  const status = statusOf(s);
+                  const fullName = [s.firstName, s.lastName].filter(Boolean).join(' ') || null;
+                  const isThisDeleting =
+                    deleteMutation.isPending &&
+                    deleteMutation.variables?.id === s.id &&
+                    deleteMutation.variables?.companySlug === s._brand.companySlug;
+                  return (
+                    <TableRow key={`${s._brand.id}:${s.id}`}>
+                      <TableCell className="sm:px-6">
+                        <div className="flex items-center gap-2">
+                          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-rust/10 text-rust">
+                            <Mail className="size-3.5" />
+                          </span>
+                          <div className="min-w-0">
+                            <a
+                              href={`mailto:${s.email}`}
+                              className="truncate font-medium text-primary hover:underline"
+                            >
+                              {s.email}
+                            </a>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground md:hidden">
+                              <BrandChip brand={s._brand} />
+                              {fullName ? <span>{fullName}</span> : null}
+                              {s.source ? <span>· {s.source}</span> : null}
                             </div>
                           </div>
-                        </td>
-                        <td className="hidden px-5 py-3 align-middle sm:table-cell">
-                          <BrandChip brand={s._brand} />
-                        </td>
-                        <td className="hidden px-5 py-3 text-sm md:table-cell">
-                          {fullName ?? '—'}
-                        </td>
-                        <td className="hidden px-5 py-3 text-xs text-muted-foreground lg:table-cell">
-                          {s.source ?? '—'}
-                        </td>
-                        <td className="px-4 py-3 sm:px-5">
-                          <Badge variant={STATUS_VARIANT[status]}>
-                            {t(STATUS_KEY[status] as never)}
-                          </Badge>
-                        </td>
-                        <td className="hidden px-5 py-3 text-right text-xs tabular-nums text-muted-foreground sm:table-cell">
-                          {formatDateTime(s.createdAt, bcp47, {
-                            dateStyle: 'short',
-                          })}
-                        </td>
-                        <td className="px-4 py-3 text-right sm:px-5">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              setConfirming({
-                                companySlug: s._brand.companySlug,
-                                id: s.id,
-                                email: s.email,
-                              })
-                            }
-                            aria-label={t('newsletter.delete')}
-                            className="text-destructive hover:text-destructive"
-                            disabled={isThisDeleting}
-                          >
-                            {isThisDeleting ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="size-4" />
-                            )}
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden px-5 sm:table-cell">
+                        <BrandChip brand={s._brand} />
+                      </TableCell>
+                      <TableCell className="hidden px-5 text-sm md:table-cell">
+                        {fullName ?? '—'}
+                      </TableCell>
+                      <TableCell className="hidden px-5 text-xs text-muted-foreground lg:table-cell">
+                        {s.source ?? '—'}
+                      </TableCell>
+                      <TableCell className="sm:px-5">
+                        <Badge variant={STATUS_VARIANT[status]}>
+                          {t(STATUS_KEY[status] as never)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden px-5 text-right text-xs tabular-nums text-muted-foreground sm:table-cell">
+                        {formatDateTime(s.createdAt, bcp47, {
+                          dateStyle: 'short',
+                        })}
+                      </TableCell>
+                      <TableCell className="text-right sm:px-5">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setConfirming({
+                              companySlug: s._brand.companySlug,
+                              id: s.id,
+                              email: s.email,
+                            })
+                          }
+                          aria-label={t('newsletter.delete')}
+                          className="text-destructive hover:text-destructive"
+                          disabled={isThisDeleting}
+                        >
+                          {isThisDeleting ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           )}
           {!isAllBrands ? (
             <InfiniteScrollSentinel
@@ -441,7 +441,7 @@ function ExportNewsletterButton() {
       setState('queued');
       setTimeout(() => setState('idle'), 4000);
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
       setState('idle');
     }
   }
@@ -457,7 +457,7 @@ function ExportNewsletterButton() {
 
   if (state === 'queued') {
     return (
-      <Button variant="outline" size="sm" asChild className="text-emerald-700">
+      <Button variant="outline" size="sm" asChild className="text-success">
         <Link to="/exports">
           <CheckCircle2 className="size-3.5" />
           {t('newsletter.exportQueued')}

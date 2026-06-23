@@ -375,11 +375,15 @@ export const partnersAdminApi = {
 
 export type InquiryStatus = 'new' | 'in_review' | 'quoted' | 'won' | 'lost';
 
+/** Who owns the callback for an inquiry; set by backend geo-routing. */
+export type CallbackOwner = 'human' | 'ai';
+
 export interface ServiceInquiry {
   id: number;
   customerId: number | null;
   name: string;
-  email: string;
+  /** Null for voice-AI phone leads with no email on file. */
+  email: string | null;
   phone: string | null;
   service: string | null;
   propertyDetails: string | null;
@@ -391,6 +395,14 @@ export interface ServiceInquiry {
   source: string | null;
   status: InquiryStatus;
   priority: string;
+  /** Service PLZ (where the cleaning happens) — drives callback routing. */
+  plz: string | null;
+  /** Free-text "Grund des Anrufs" captured by the inbound voice-AI. */
+  callReason: string | null;
+  /** 'human' (Hamburg area) | 'ai' (warm-callback queue) | null (legacy). */
+  callbackOwner: CallbackOwner | null;
+  /** User the human callback is assigned to. */
+  assignedTo: string | null;
   consentPrivacy: boolean;
   consentMarketing: boolean;
   handledByUserId: string | null;
@@ -431,6 +443,25 @@ export interface InquiryUpdate {
   quotedAmount?: string | null;
 }
 
+/** A human (Hamburg-area) callback as returned by the dashboard queue. */
+export interface HumanCallbackEntry {
+  id: number;
+  name: string;
+  phone: string | null;
+  /** Null for voice-AI phone leads with no email on file. */
+  email: string | null;
+  callReason: string | null;
+  plz: string | null;
+  service: string | null;
+  message: string;
+  status: InquiryStatus;
+  assignedTo: string | null;
+  priority: string;
+  createdAt: string;
+  brand: CompanySlug;
+  flag: string;
+}
+
 export const inquiriesApi = {
   submit(companySlug: CompanySlug, input: InquirySubmitInput) {
     return request<{ ok: true; inquiry: ServiceInquiry }>('/storefront/inquiries', {
@@ -465,6 +496,22 @@ export const inquiriesApi = {
       companySlug,
       body: patch,
     });
+  },
+  /** Human (Hamburg-area) callbacks for the dashboard. AI-owned leads stay in the AI queue. */
+  humanCallbackQueue(
+    companySlug: CompanySlug,
+    opts: { limit?: number; assignedTo?: string; includeClosed?: boolean } = {},
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.assignedTo) params.set('assignedTo', opts.assignedTo);
+    if (opts.includeClosed) params.set('includeClosed', 'true');
+    const qs = params.toString();
+    return request<{ inquiries: HumanCallbackEntry[] }>(
+      `/admin/inquiries/human-callback-queue${qs ? `?${qs}` : ''}`,
+      { companySlug, signal },
+    );
   },
 };
 
