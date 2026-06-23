@@ -62,6 +62,10 @@ export default {
           soft: 'hsl(var(--rust-soft))',
           text: 'hsl(var(--rust-text))',
         },
+        claude: {
+          DEFAULT: 'hsl(var(--claude))',
+          soft: 'hsl(var(--claude-soft))',
+        },
         success: {
           DEFAULT: 'hsl(var(--success))',
           foreground: 'hsl(var(--success-foreground))',

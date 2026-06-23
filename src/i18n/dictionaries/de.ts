@@ -18,6 +18,21 @@ export const de = {
     allBrandsHasMore:
       'Es gibt weitere Einträge — wähle ein einzelnes Unternehmen aus, um alle zu sehen.',
   },
+  ai: {
+    idleRefine: 'verbessert den aktuellen Text',
+    idleFresh: 'schreibt einen neuen Text',
+    writing: 'schreibt …',
+    placeholder: 'Sag Claude, wie der Text werden soll …',
+    send: 'An Claude senden',
+    updated: 'Übernommen.',
+    draftReply: 'Antwort entwerfen',
+    draftNote: 'Notiz entwerfen',
+    shorter: 'Kürzer',
+    friendlier: 'Freundlicher',
+    thankful: 'Dankend',
+    nextSteps: 'Nächste Schritte',
+    fresh: 'Komplett neu',
+  },
   chat: {
     pageTitle: 'Chat',
     subtitleAllBrands: 'Wähle ein einzelnes Unternehmen aus, um Konversationen zu sehen.',

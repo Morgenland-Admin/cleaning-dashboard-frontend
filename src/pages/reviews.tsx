@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 
+import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
@@ -25,9 +26,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { useProject } from '@/contexts/project-context';
+import { useProject, type CompanySlug } from '@/contexts/project-context';
 import { useLocale, useT, type DictKey } from '@/i18n';
 import { ApiError, reviewsAdminApi, type ReviewRow, type ReviewStatus } from '@/lib/api';
+import { useClaudeAssist } from '@/lib/use-claude-assist';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -315,6 +317,7 @@ export function ReviewsPage() {
           onSubmit={(value) => {
             if (flagTarget) flagMutation.mutate({ id: flagTarget.id, reason: value });
           }}
+          t={t}
         />
 
         <ReviewTextDialog
@@ -334,6 +337,8 @@ export function ReviewsPage() {
           onSubmit={(value) => {
             if (respondTarget) respondMutation.mutate({ id: respondTarget.id, response: value });
           }}
+          aiAssist={respondTarget ? { companySlug: slug, reviewId: respondTarget.id } : undefined}
+          t={t}
         />
 
         <ConfirmDialog
@@ -583,6 +588,54 @@ function SkeletonCard() {
   );
 }
 
+function ReviewResponseAssistant({
+  companySlug,
+  reviewId,
+  value,
+  setValue,
+  t,
+}: {
+  companySlug: CompanySlug;
+  reviewId: number;
+  value: string;
+  setValue: (text: string) => void;
+  t: ReturnType<typeof useT>;
+}) {
+  const assist = useClaudeAssist({
+    kind: 'review_response',
+    companySlug,
+    refId: reviewId,
+    getCurrent: () => value,
+    apply: setValue,
+    updatedLabel: t('ai.updated'),
+  });
+  return (
+    <ClaudeChatBox
+      busy={assist.busy}
+      history={assist.history}
+      placeholder={t('ai.placeholder')}
+      idleHint={value.trim() ? t('ai.idleRefine') : t('ai.idleFresh')}
+      busyHint={t('ai.writing')}
+      sendLabel={t('ai.send')}
+      quickActions={[
+        {
+          label: t('ai.draftReply'),
+          run: () => assist.run(undefined, t('ai.draftReply'), { fresh: true }),
+        },
+        {
+          label: t('ai.shorter'),
+          run: () => assist.run('Deutlich kürzer formulieren.', t('ai.shorter')),
+        },
+        {
+          label: t('ai.thankful'),
+          run: () => assist.run('Dankbarer und wertschätzender formulieren.', t('ai.thankful')),
+        },
+      ]}
+      onSend={(instruction) => assist.run(instruction, instruction)}
+    />
+  );
+}
+
 function ReviewTextDialog({
   open,
   onOpenChange,
@@ -595,6 +648,8 @@ function ReviewTextDialog({
   isPending,
   errorText,
   onSubmit,
+  aiAssist,
+  t,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -607,6 +662,9 @@ function ReviewTextDialog({
   isPending: boolean;
   errorText: string | null;
   onSubmit: (value: string) => void;
+  /** When set, shows the Claude assistant above the textarea (respond only). */
+  aiAssist?: { companySlug: CompanySlug; reviewId: number };
+  t: ReturnType<typeof useT>;
 }) {
   const [value, setValue] = useState(initialValue);
   const trimmed = value.trim();
@@ -629,14 +687,35 @@ function ReviewTextDialog({
           >
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={textareaId}>{label}</Label>
-              <Textarea
-                id={textareaId}
-                rows={5}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                required
-                disabled={isPending}
-              />
+              {aiAssist ? (
+                <div className="overflow-hidden rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring">
+                  <textarea
+                    id={textareaId}
+                    rows={6}
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    required
+                    disabled={isPending}
+                    className="block min-h-[120px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none disabled:opacity-50"
+                  />
+                  <ReviewResponseAssistant
+                    companySlug={aiAssist.companySlug}
+                    reviewId={aiAssist.reviewId}
+                    value={value}
+                    setValue={setValue}
+                    t={t}
+                  />
+                </div>
+              ) : (
+                <Textarea
+                  id={textareaId}
+                  rows={5}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  required
+                  disabled={isPending}
+                />
+              )}
             </div>
             {errorText ? (
               <div

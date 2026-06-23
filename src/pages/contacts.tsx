@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AttachmentGallery } from '@/components/attachment-gallery';
 import { BrandMark } from '@/components/brand-mark';
+import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +43,7 @@ import {
   type ContactStatus,
   ApiError,
 } from '@/lib/api';
+import { useClaudeAssist } from '@/lib/use-claude-assist';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime, formatShortDate } from '@/lib/utils';
 
@@ -582,6 +584,8 @@ function DetailPanel({
       <div className="border-t border-border/70 bg-muted/20 px-4 py-4 sm:px-5">
         <ReplyComposer
           to={message.email}
+          companySlug={brand.companySlug}
+          contactId={message.id}
           onSend={onSendReply}
           isSending={isReplying}
           error={replyError}
@@ -687,12 +691,16 @@ function initialsOf(name: string): string {
 
 function ReplyComposer({
   to,
+  companySlug,
+  contactId,
   onSend,
   isSending,
   error,
   t,
 }: {
   to: string;
+  companySlug: CompanySlug;
+  contactId: number;
   onSend: (body: string) => Promise<unknown>;
   isSending: boolean;
   error: string | null;
@@ -702,6 +710,19 @@ function ReplyComposer({
   const [localError, setLocalError] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
   const sentTimerRef = useRef<number | null>(null);
+
+  const assist = useClaudeAssist({
+    kind: 'contact_reply',
+    companySlug,
+    refId: contactId,
+    getCurrent: () => body,
+    apply: (text) => {
+      setBody(text);
+      setLocalError(null);
+      setJustSent(false);
+    },
+    updatedLabel: t('ai.updated'),
+  });
 
   useEffect(() => {
     return () => {
@@ -739,9 +760,9 @@ function ReplyComposer({
   const shownError = localError ?? error;
 
   return (
-    <div className="group rounded-2xl border border-border bg-card transition-colors focus-within:border-rust/40 focus-within:ring-2 focus-within:ring-rust/15">
+    <div className="group overflow-hidden rounded-2xl border border-border bg-card transition-colors focus-within:border-rust/40 focus-within:ring-2 focus-within:ring-rust/15">
       <Textarea
-        rows={4}
+        rows={8}
         value={body}
         onChange={(e) => {
           setBody(e.target.value);
@@ -752,7 +773,7 @@ function ReplyComposer({
         placeholder={t('contacts.replyPlaceholder')}
         disabled={isSending}
         aria-label={t('contacts.replyPlaceholder')}
-        className="resize-none border-0 bg-transparent px-3.5 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0 sm:text-[13.5px]"
+        className="min-h-[180px] resize-none border-0 bg-transparent px-3.5 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0 sm:text-[13.5px]"
       />
       {shownError ? (
         <div
@@ -774,6 +795,29 @@ function ReplyComposer({
           <span>{t('contacts.replySentToast')}</span>
         </div>
       ) : null}
+      <ClaudeChatBox
+        busy={assist.busy}
+        history={assist.history}
+        placeholder={t('ai.placeholder')}
+        idleHint={body.trim() ? t('ai.idleRefine') : t('ai.idleFresh')}
+        busyHint={t('ai.writing')}
+        sendLabel={t('ai.send')}
+        quickActions={[
+          {
+            label: t('ai.draftReply'),
+            run: () => assist.run(undefined, t('ai.draftReply'), { fresh: true }),
+          },
+          {
+            label: t('ai.shorter'),
+            run: () => assist.run('Deutlich kürzer formulieren.', t('ai.shorter')),
+          },
+          {
+            label: t('ai.friendlier'),
+            run: () => assist.run('Wärmer und freundlicher formulieren.', t('ai.friendlier')),
+          },
+        ]}
+        onSend={(instruction) => assist.run(instruction, instruction)}
+      />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3.5 py-2">
         <span className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
           <Mail className="size-3" />

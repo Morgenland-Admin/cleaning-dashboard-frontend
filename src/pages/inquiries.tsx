@@ -19,15 +19,16 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { AttachmentGallery } from '@/components/attachment-gallery';
 import { BrandMark } from '@/components/brand-mark';
+import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
 import { useProject, type CompanySlug, type Project } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
 import { inquiriesApi, type InquiryStatus, type ServiceInquiry, ApiError } from '@/lib/api';
+import { useClaudeAssist } from '@/lib/use-claude-assist';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime, formatShortDate } from '@/lib/utils';
 
@@ -403,6 +404,15 @@ function DetailPanel({
   const [notes, setNotes] = useState(inquiry.internalNotes ?? '');
   const notesDirty = notes !== (inquiry.internalNotes ?? '');
 
+  const notesAssist = useClaudeAssist({
+    kind: 'inquiry_note',
+    companySlug: inquiry._brand.companySlug,
+    refId: inquiry.id,
+    getCurrent: () => notes,
+    apply: setNotes,
+    updatedLabel: t('ai.updated'),
+  });
+
   return (
     <Card className="sticky top-20">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -606,13 +616,43 @@ function DetailPanel({
           >
             {t('inquiries.notes')}
           </label>
-          <Textarea
-            id="inquiry-internal-notes"
-            rows={4}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder={t('inquiries.notesPlaceholder')}
-          />
+          <div className="overflow-hidden rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring">
+            <textarea
+              id="inquiry-internal-notes"
+              rows={5}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={t('inquiries.notesPlaceholder')}
+              className="block min-h-[110px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+            />
+            <ClaudeChatBox
+              busy={notesAssist.busy}
+              history={notesAssist.history}
+              placeholder={t('ai.placeholder')}
+              idleHint={notes.trim() ? t('ai.idleRefine') : t('ai.idleFresh')}
+              busyHint={t('ai.writing')}
+              sendLabel={t('ai.send')}
+              quickActions={[
+                {
+                  label: t('ai.draftNote'),
+                  run: () => notesAssist.run(undefined, t('ai.draftNote'), { fresh: true }),
+                },
+                {
+                  label: t('ai.nextSteps'),
+                  run: () =>
+                    notesAssist.run(
+                      'Konzentriere dich auf konkrete nächste Schritte.',
+                      t('ai.nextSteps'),
+                    ),
+                },
+                {
+                  label: t('ai.shorter'),
+                  run: () => notesAssist.run('Deutlich kürzer fassen.', t('ai.shorter')),
+                },
+              ]}
+              onSend={(instruction) => notesAssist.run(instruction, instruction)}
+            />
+          </div>
           <div className="mt-2 flex justify-end">
             <Button
               size="sm"

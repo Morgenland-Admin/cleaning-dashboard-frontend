@@ -1296,6 +1296,30 @@ export const invitesPublicApi = {
   },
 };
 
+// --- AI text assistant (Claude) -------------------------------------------
+// Backend loads the source record by refId; we send kind + id (+ draft/instruction).
+
+export type AiAssistKind = 'contact_reply' | 'review_response' | 'inquiry_note';
+
+export interface AiAssistInput {
+  kind: AiAssistKind;
+  refId: number;
+  current?: string; // refine instead of restart
+  instruction?: string; // free-text steering, takes priority
+  fresh?: boolean; // ignore `current`, write from scratch
+}
+
+export const aiApi = {
+  assist(companySlug: CompanySlug, input: AiAssistInput, signal?: AbortSignal) {
+    return request<{ text: string }>('/admin/ai/assist', {
+      method: 'POST',
+      companySlug,
+      body: input,
+      signal,
+    });
+  },
+};
+
 export const contactApi = {
   submit(companySlug: CompanySlug, input: ContactSubmitInput) {
     return request<{ ok: true; message: ContactMessage }>('/storefront/contact', {

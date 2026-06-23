@@ -41,6 +41,10 @@
     /* Darker rust for TEXT on rust-tinted surfaces (passes AA; --rust is for fills). */
     --rust-text: 14 74% 36%;
 
+    /* Claude brand coral — marks the AI assistant surface only, never actions. */
+    --claude: 15 63% 59%;
+    --claude-soft: 15 70% 93%;
+
     /* Semantic status tokens — the single source for success/warning/info. */
     --success: 152 55% 32%;
     --success-foreground: 38 40% 97%;
@@ -99,6 +103,9 @@
     --rust: 14 68% 58%;
     --rust-soft: 14 68% 22%;
     --rust-text: 14 70% 64%;
+
+    --claude: 16 72% 64%;
+    --claude-soft: 16 40% 20%;
 
     /* Semantic status tokens (dark) — lightened for contrast on dark cards. */
     --success: 152 46% 52%;
