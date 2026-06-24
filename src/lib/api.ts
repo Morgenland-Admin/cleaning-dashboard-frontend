@@ -2050,3 +2050,101 @@ export const reviewsAdminApi = {
     });
   },
 };
+
+// --- SEO / Blog pages (admin) ----------------------------------------------
+
+export type SeoPageType = 'service' | 'city' | 'blog';
+export type SeoPageStatus = 'draft' | 'live' | 'protected';
+
+export interface SeoPageRow {
+  id: number;
+  type: SeoPageType;
+  path: string;
+  category: string | null;
+  city: string | null;
+  region: string | null;
+  title: string | null;
+  metaTitle: string | null;
+  metaDescription: string | null;
+  h1: string | null;
+  bodyHtml: string | null;
+  schemaJsonld: Record<string, unknown> | unknown[] | null;
+  faq: Array<{ question: string; answer: string }>;
+  status: SeoPageStatus;
+  gscPosition: string | null;
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SeoPageListParams {
+  type?: SeoPageType;
+  status?: SeoPageStatus;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface SeoPagePatch {
+  status?: SeoPageStatus;
+  title?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  h1?: string;
+}
+
+export const seoPagesAdminApi = {
+  list(companySlug: CompanySlug, params: SeoPageListParams = {}, signal?: AbortSignal) {
+    const qs = new URLSearchParams();
+    if (params.type) qs.set('type', params.type);
+    if (params.status) qs.set('status', params.status);
+    if (params.limit) qs.set('limit', String(params.limit));
+    if (params.cursor) qs.set('cursor', params.cursor);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<{ pages: SeoPageRow[]; nextCursor: string | null }>(
+      `/admin/seo-pages${suffix}`,
+      { companySlug, signal },
+    );
+  },
+  get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<{ page: SeoPageRow }>(`/admin/seo-pages/${id}`, { companySlug, signal });
+  },
+  update(companySlug: CompanySlug, id: number, patch: SeoPagePatch) {
+    return request<{ page: SeoPageRow }>(`/admin/seo-pages/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: patch,
+    });
+  },
+  setFeaturedImage(companySlug: CompanySlug, id: number, imageUrl: string) {
+    return request<{ page: SeoPageRow }>(`/admin/seo-pages/${id}/featured-image`, {
+      method: 'PATCH',
+      companySlug,
+      body: { imageUrl },
+    });
+  },
+  remove(companySlug: CompanySlug, id: number) {
+    return request<void>(`/admin/seo-pages/${id}`, { method: 'DELETE', companySlug });
+  },
+  /** Sign + stream a public image to S3, then store its URL as the featured image. */
+  async uploadFeaturedImage(companySlug: CompanySlug, id: number, file: File) {
+    const sign = await request<{ uploadUrl: string; key: string; publicUrl: string }>(
+      '/admin/uploads/sign-public-image',
+      {
+        method: 'POST',
+        companySlug,
+        body: {
+          filename: file.name,
+          contentType: file.type || 'application/octet-stream',
+          size: file.size,
+        },
+      },
+    );
+    const put = await fetch(sign.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+    return seoPagesAdminApi.setFeaturedImage(companySlug, id, sign.publicUrl);
+  },
+};

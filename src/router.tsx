@@ -16,6 +16,10 @@ import { ResetPasswordPage } from '@/pages/reset-password';
 const BrandDetailPage = lazy(() =>
   import('@/pages/brand-detail').then((m) => ({ default: m.BrandDetailPage })),
 );
+const BlogPage = lazy(() => import('@/pages/blog').then((m) => ({ default: m.BlogPage })));
+const BlogDetailPage = lazy(() =>
+  import('@/pages/blog-detail').then((m) => ({ default: m.BlogDetailPage })),
+);
 const BrandNewPage = lazy(() =>
   import('@/pages/brand-new').then((m) => ({ default: m.BrandNewPage })),
 );
@@ -83,6 +87,8 @@ export const router = createBrowserRouter([
           { path: 'rechnungen', element: <InvoicesPage /> },
           { path: 'abos', element: <SubscriptionsPage /> },
           { path: 'bewertungen', element: <ReviewsPage /> },
+          { path: 'blog', element: <BlogPage /> },
+          { path: 'blog/:id', element: <BlogDetailPage /> },
           { path: 'inquiries', element: <InquiriesPage /> },
           { path: 'callbacks', element: <CallbacksPage /> },
           { path: 'contacts', element: <ContactsPage /> },

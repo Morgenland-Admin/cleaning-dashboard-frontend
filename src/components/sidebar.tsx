@@ -11,6 +11,7 @@ import {
   LogOut,
   Mail,
   MessageSquare,
+  Newspaper,
   PhoneCall,
   Receipt,
   RefreshCcw,
@@ -58,6 +59,7 @@ const primaryNav: NavItem[] = [
   { to: '/callbacks', labelKey: 'nav.callbacks', icon: PhoneCall },
   { to: '/contacts', labelKey: 'nav.contacts', icon: Mail },
   { to: '/bewertungen', labelKey: 'nav.reviews', icon: Star },
+  { to: '/blog', labelKey: 'nav.blog', icon: Newspaper },
   { to: '/newsletter', labelKey: 'nav.newsletter', icon: AtSign },
   { to: '/partner', labelKey: 'nav.partner', icon: Users },
   // /chat is rendered separately so it can show a live unread badge.
