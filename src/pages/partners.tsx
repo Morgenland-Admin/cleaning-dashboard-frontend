@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { cloneElement, isValidElement, useId, useMemo, useState } from 'react';
 
+import { AddressAutocomplete } from '@/components/address-autocomplete';
 import { BrandMark } from '@/components/brand-mark';
 import { EmptyState as SharedEmptyState } from '@/components/empty-state';
 import { PageHeading } from '@/components/page-heading';
@@ -558,7 +559,17 @@ function CreatePartnerModal({
           />
         </ModalField>
         <ModalField label="Adresse">
-          <Input value={form.addressLine1 ?? ''} onChange={update('addressLine1')} />
+          <AddressAutocomplete
+            value={form.addressLine1 ?? ''}
+            onChange={(v) => setForm((f) => ({ ...f, addressLine1: v }))}
+            onPick={(a) =>
+              setForm((f) => ({
+                ...f,
+                postalCode: a.postcode || f.postalCode,
+                city: a.city || f.city,
+              }))
+            }
+          />
         </ModalField>
         <ModalField label="PLZ">
           <Input value={form.postalCode ?? ''} onChange={update('postalCode')} />

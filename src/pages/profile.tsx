@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { AddressAutocomplete } from '@/components/address-autocomplete';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -600,11 +601,14 @@ function AddressForm({
       </div>
 
       <Field label={t('profile.addressLine1')} htmlFor="addr-line1">
-        <Input
+        <AddressAutocomplete
           id="addr-line1"
           value={state.line1}
-          onChange={(e) => set('line1', e.target.value)}
-          required
+          onChange={(v) => set('line1', v)}
+          onPick={(a) => {
+            if (a.postcode) set('postalCode', a.postcode);
+            if (a.city) set('city', a.city);
+          }}
         />
       </Field>
 

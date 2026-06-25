@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { AlertCircle, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { AddressAutocomplete } from '@/components/address-autocomplete';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -467,9 +468,13 @@ export function NewOrderDialog({
               </FormField>
             </div>
             <FormField label="Adresse (optional)" hint="Für Abholung/Vor-Ort — Straße, PLZ, Ort.">
-              <Input
+              <AddressAutocomplete
                 value={line1}
-                onChange={(e) => setLine1(e.target.value)}
+                onChange={setLine1}
+                onPick={(a) => {
+                  if (a.postcode) setPostalCode(a.postcode);
+                  if (a.city) setCity(a.city);
+                }}
                 placeholder="Straße und Hausnummer"
                 className="h-9"
               />

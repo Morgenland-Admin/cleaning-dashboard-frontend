@@ -12,6 +12,7 @@ import {
 import { cloneElement, isValidElement, useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { AddressAutocomplete } from '@/components/address-autocomplete';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -295,7 +296,14 @@ export function EditBrandingForm({
 
       <Section title={t('companies.edit.sections.address')}>
         <Field label={t('companies.edit.fields.addressLine1')}>
-          <Input value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} />
+          <AddressAutocomplete
+            value={addressLine1}
+            onChange={setAddressLine1}
+            onPick={(a) => {
+              if (a.postcode) setPostalCode(a.postcode);
+              if (a.city) setCity(a.city);
+            }}
+          />
         </Field>
         <Field label={t('companies.edit.fields.addressLine2')}>
           <Input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} />

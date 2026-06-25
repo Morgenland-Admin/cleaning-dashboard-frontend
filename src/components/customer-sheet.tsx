@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { AlertCircle, Loader2, Plus } from 'lucide-react';
 import { useState } from 'react';
 
+import { AddressAutocomplete } from '@/components/address-autocomplete';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -158,10 +159,14 @@ export function CustomerSheet({
           </FormField>
 
           <FormField label={t('customers.form.addressLine1')}>
-            <Input
+            <AddressAutocomplete
               value={addressLine1}
-              onChange={(e) => setAddressLine1(e.target.value)}
-              autoComplete="address-line1"
+              onChange={setAddressLine1}
+              onPick={(a) => {
+                if (a.postcode) setPostalCode(a.postcode);
+                if (a.city) setCity(a.city);
+                if (!country.trim()) setCountry('DE');
+              }}
               className="h-11 sm:h-9"
             />
           </FormField>

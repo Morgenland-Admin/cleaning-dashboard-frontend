@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { AddressAutocomplete } from '@/components/address-autocomplete';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { FormField } from '@/components/form-field';
@@ -1084,10 +1085,14 @@ function InvoiceFormSheet({
             label={t('invoices.form.addressLine1')}
             hint={t('invoices.form.requiredForIssue')}
           >
-            <Input
+            <AddressAutocomplete
               className="h-11 md:h-9"
               value={fields.addressLine1}
-              onChange={(e) => setField('addressLine1', e.target.value)}
+              onChange={(v) => setField('addressLine1', v)}
+              onPick={(a) => {
+                if (a.postcode) setField('postalCode', a.postcode);
+                if (a.city) setField('city', a.city);
+              }}
             />
           </FormField>
           <FormField label={t('invoices.form.addressLine2')}>
