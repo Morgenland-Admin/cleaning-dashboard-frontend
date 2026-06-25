@@ -443,6 +443,32 @@ export interface InquiryUpdate {
   quotedAmount?: string | null;
 }
 
+/** Delivery status of a logged email. */
+export type InquiryEmailStatus = 'sent' | 'skipped' | 'failed';
+
+/** A single email sent to a lead from the dashboard (currently offers/quotes). */
+export interface InquiryEmail {
+  id: number;
+  inquiryId: number;
+  kind: string;
+  toAddress: string;
+  subject: string;
+  /** Rendered HTML body — preview exactly what the customer received. */
+  html: string;
+  quotedAmount: string | null;
+  status: InquiryEmailStatus;
+  emailMessageId: string | null;
+  sentByUserId: string | null;
+  sentByName: string | null;
+  createdAt: string;
+}
+
+/** Payload for sending an offer/quote email to a lead. */
+export interface InquiryQuoteInput {
+  body: string;
+  quotedAmount?: string | null;
+}
+
 /** A human (Hamburg-area) callback as returned by the dashboard queue. */
 export interface HumanCallbackEntry {
   id: number;
@@ -495,6 +521,21 @@ export const inquiriesApi = {
       method: 'PATCH',
       companySlug,
       body: patch,
+    });
+  },
+  /** Send an offer/quote email to the lead. Flips status to 'quoted' server-side. */
+  sendQuote(companySlug: CompanySlug, id: number, input: InquiryQuoteInput) {
+    return request<{ ok: true; inquiry: ServiceInquiry }>(`/admin/inquiries/${id}/quote`, {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
+  /** Email history (sent offers) for a lead, newest first. */
+  emails(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<{ emails: InquiryEmail[] }>(`/admin/inquiries/${id}/emails`, {
+      companySlug,
+      signal,
     });
   },
   /** Human (Hamburg-area) callbacks for the dashboard. AI-owned leads stay in the AI queue. */
@@ -1299,7 +1340,7 @@ export const invitesPublicApi = {
 // --- AI text assistant (Claude) -------------------------------------------
 // Backend loads the source record by refId; we send kind + id (+ draft/instruction).
 
-export type AiAssistKind = 'contact_reply' | 'review_response' | 'inquiry_note';
+export type AiAssistKind = 'contact_reply' | 'review_response' | 'inquiry_note' | 'inquiry_quote';
 
 export interface AiAssistInput {
   kind: AiAssistKind;

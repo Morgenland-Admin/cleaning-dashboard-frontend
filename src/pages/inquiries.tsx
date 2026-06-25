@@ -1,15 +1,24 @@
-import { useInfiniteQuery, useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   AlertCircle,
   Calendar,
   CalendarClock,
   CheckCheck,
+  ChevronDown,
   CircleDollarSign,
   ClipboardEdit,
   Inbox,
+  Mail,
   MapPin,
   Phone,
   RefreshCcw,
+  Send,
   Trophy,
   Wrench,
   X,
@@ -24,10 +33,19 @@ import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProject, type CompanySlug, type Project } from '@/contexts/project-context';
+import { useToast } from '@/hooks/use-toast';
 import { useLocale, useT } from '@/i18n';
-import { inquiriesApi, type InquiryStatus, type ServiceInquiry, ApiError } from '@/lib/api';
+import {
+  inquiriesApi,
+  type InquiryEmail,
+  type InquiryEmailStatus,
+  type InquiryStatus,
+  type ServiceInquiry,
+  ApiError,
+} from '@/lib/api';
 import { useClaudeAssist } from '@/lib/use-claude-assist';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime, formatShortDate } from '@/lib/utils';
@@ -44,6 +62,8 @@ const STATUS_VARIANT: Record<
   won: 'success',
   lost: 'secondary',
 };
+
+type PanelTab = 'request' | 'offer' | 'emails' | 'notes';
 
 const STATUS_KEY: Record<InquiryStatus, string> = {
   new: 'inquiries.status.new',
@@ -401,17 +421,68 @@ function DetailPanel({
   onSaveNotes: (notes: string | null) => void;
   isUpdating: boolean;
 }) {
+  const companySlug = inquiry._brand.companySlug;
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
   const [notes, setNotes] = useState(inquiry.internalNotes ?? '');
   const notesDirty = notes !== (inquiry.internalNotes ?? '');
 
   const notesAssist = useClaudeAssist({
     kind: 'inquiry_note',
-    companySlug: inquiry._brand.companySlug,
+    companySlug,
     refId: inquiry.id,
     getCurrent: () => notes,
     apply: setNotes,
     updatedLabel: t('ai.updated'),
   });
+
+  // --- Offer (quote) compose + send ---------------------------------------
+  const [offerBody, setOfferBody] = useState('');
+  const [offerAmount, setOfferAmount] = useState(inquiry.quotedAmount ?? '');
+
+  const offerAssist = useClaudeAssist({
+    kind: 'inquiry_quote',
+    companySlug,
+    refId: inquiry.id,
+    getCurrent: () => offerBody,
+    apply: setOfferBody,
+    updatedLabel: t('ai.updated'),
+  });
+
+  const sendQuoteMutation = useMutation({
+    mutationFn: () =>
+      inquiriesApi.sendQuote(companySlug, inquiry.id, {
+        body: offerBody,
+        quotedAmount: offerAmount.trim() === '' ? null : offerAmount.trim(),
+      }),
+    onSuccess: () => {
+      setOfferBody('');
+      void queryClient.invalidateQueries({ queryKey: ['inquiries-infinite'] });
+      void queryClient.invalidateQueries({ queryKey: ['inquiries'] });
+      void queryClient.invalidateQueries({ queryKey: ['inquiry-emails', companySlug, inquiry.id] });
+      toast({ title: t('inquiries.offerSent') });
+    },
+    onError: (err) => {
+      toast({
+        variant: 'destructive',
+        title: t('inquiries.offerFailed'),
+        description: err instanceof ApiError ? err.message : undefined,
+      });
+    },
+  });
+
+  // --- Email history ------------------------------------------------------
+  const emailsQuery = useQuery({
+    queryKey: ['inquiry-emails', companySlug, inquiry.id],
+    queryFn: ({ signal }) => inquiriesApi.emails(companySlug, inquiry.id, signal),
+  });
+  const emailCount = emailsQuery.data?.emails.length ?? 0;
+
+  // One workspace panel is visible at a time — keeps the card scannable and
+  // avoids mounting both AI composers (and the email iframe) at once.
+  const hasEmail = Boolean(inquiry.email);
+  const [panelTab, setPanelTab] = useState<PanelTab>('request');
 
   return (
     <Card className="sticky top-20">
@@ -541,131 +612,316 @@ function DetailPanel({
           </DetailRow>
         </div>
 
-        {inquiry.propertyDetails ? (
-          <div>
-            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <MapPin className="size-3" />
-              {t('inquiries.fields.propertyDetails')}
-            </div>
-            <div className="whitespace-pre-wrap rounded-md border bg-background p-3 text-sm leading-relaxed">
-              {inquiry.propertyDetails}
-            </div>
-          </div>
-        ) : null}
+        {/* Workspace — one panel at a time keeps the card scannable */}
+        <Tabs value={panelTab} onValueChange={(v) => setPanelTab(v as PanelTab)} className="w-full">
+          <TabsList className="flex w-full">
+            <TabsTrigger value="request" className="flex-1">
+              {t('inquiries.panelTab.request')}
+            </TabsTrigger>
+            {hasEmail ? (
+              <TabsTrigger value="offer" className="flex-1 gap-1.5">
+                <Send className="size-3.5" />
+                {t('inquiries.panelTab.offer')}
+              </TabsTrigger>
+            ) : null}
+            <TabsTrigger value="emails" className="flex-1 gap-1.5">
+              {t('inquiries.panelTab.emails')}
+              {emailCount > 0 ? (
+                <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[10px] font-medium tabular-nums">
+                  {emailCount}
+                </span>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="notes" className="flex-1 gap-1.5">
+              {t('inquiries.panelTab.notes')}
+              {notesDirty ? (
+                <span className="size-1.5 rounded-full bg-rust" aria-hidden="true" />
+              ) : null}
+            </TabsTrigger>
+          </TabsList>
 
-        {Object.keys(inquiry.metadata ?? {}).length > 0 ? (
-          <MetadataBlock metadata={inquiry.metadata} label={t('inquiries.metadataTitle')} t={t} />
-        ) : null}
-
-        <div>
-          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('inquiries.fields.message')}
-          </div>
-          <div className="whitespace-pre-wrap rounded-md border bg-background p-3 text-sm leading-relaxed">
-            {inquiry.message}
-          </div>
-        </div>
-
-        {inquiry.attachments.length > 0 ? (
-          <div>
-            <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('inquiries.fields.attachments')}
-            </div>
-            <AttachmentGallery
-              companySlug={inquiry._brand.companySlug}
-              attachments={inquiry.attachments}
-            />
-          </div>
-        ) : null}
-
-        {/* Status timeline */}
-        <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/30 p-3 text-xs">
-          <TimelineRow
-            icon={Calendar}
-            label={t('inquiries.timeline.created')}
-            value={formatDateTime(inquiry.createdAt, bcp47)}
-          />
-          {inquiry.handledAt ? (
-            <TimelineRow
-              icon={ClipboardEdit}
-              label={t('inquiries.timeline.handled')}
-              value={formatDateTime(inquiry.handledAt, bcp47)}
-            />
-          ) : null}
-          {inquiry.quotedAt ? (
-            <TimelineRow
-              icon={CircleDollarSign}
-              label={t('inquiries.timeline.quoted')}
-              value={formatDateTime(inquiry.quotedAt, bcp47)}
-            />
-          ) : null}
-          {inquiry.closedAt ? (
-            <TimelineRow
-              icon={CheckCheck}
-              label={t('inquiries.timeline.closed')}
-              value={formatDateTime(inquiry.closedAt, bcp47)}
-            />
-          ) : null}
-        </div>
-
-        {/* Internal notes */}
-        <div>
-          <label
-            htmlFor="inquiry-internal-notes"
-            className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground"
+          {/* Request — the customer's message, photos and submitted fields */}
+          <TabsContent
+            value="request"
+            className="flex flex-col gap-4 duration-200 animate-in fade-in-0"
           >
-            {t('inquiries.notes')}
-          </label>
-          <div className="overflow-hidden rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring">
-            <textarea
-              id="inquiry-internal-notes"
-              rows={5}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t('inquiries.notesPlaceholder')}
-              className="block min-h-[110px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
-            />
-            <ClaudeChatBox
-              busy={notesAssist.busy}
-              history={notesAssist.history}
-              placeholder={t('ai.placeholder')}
-              idleHint={notes.trim() ? t('ai.idleRefine') : t('ai.idleFresh')}
-              busyHint={t('ai.writing')}
-              sendLabel={t('ai.send')}
-              quickActions={[
-                {
-                  label: t('ai.draftNote'),
-                  run: () => notesAssist.run(undefined, t('ai.draftNote'), { fresh: true }),
-                },
-                {
-                  label: t('ai.nextSteps'),
-                  run: () =>
-                    notesAssist.run(
-                      'Konzentriere dich auf konkrete nächste Schritte.',
-                      t('ai.nextSteps'),
-                    ),
-                },
-                {
-                  label: t('ai.shorter'),
-                  run: () => notesAssist.run('Deutlich kürzer fassen.', t('ai.shorter')),
-                },
-              ]}
-              onSend={(instruction) => notesAssist.run(instruction, instruction)}
-            />
-          </div>
-          <div className="mt-2 flex justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!notesDirty || isUpdating}
-              onClick={() => onSaveNotes(notes.trim() === '' ? null : notes)}
-            >
-              {isUpdating ? t('common.saving') : t('inquiries.saveNotes')}
-            </Button>
-          </div>
-        </div>
+            {inquiry.propertyDetails ? (
+              <div>
+                <div className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <MapPin className="size-3" />
+                  {t('inquiries.fields.propertyDetails')}
+                </div>
+                <div className="whitespace-pre-wrap rounded-md border bg-background p-3 text-sm leading-relaxed">
+                  {inquiry.propertyDetails}
+                </div>
+              </div>
+            ) : null}
+
+            <div>
+              <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t('inquiries.fields.message')}
+              </div>
+              <div className="whitespace-pre-wrap rounded-md border bg-background p-3 text-sm leading-relaxed">
+                {inquiry.message}
+              </div>
+            </div>
+
+            {inquiry.attachments.length > 0 ? (
+              <div>
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {t('inquiries.fields.attachments')}
+                </div>
+                <AttachmentGallery
+                  companySlug={inquiry._brand.companySlug}
+                  attachments={inquiry.attachments}
+                />
+              </div>
+            ) : null}
+
+            {Object.keys(inquiry.metadata ?? {}).length > 0 ? (
+              <MetadataBlock
+                metadata={inquiry.metadata}
+                label={t('inquiries.metadataTitle')}
+                t={t}
+              />
+            ) : null}
+
+            <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/30 p-3 text-xs">
+              <TimelineRow
+                icon={Calendar}
+                label={t('inquiries.timeline.created')}
+                value={formatDateTime(inquiry.createdAt, bcp47)}
+              />
+              {inquiry.handledAt ? (
+                <TimelineRow
+                  icon={ClipboardEdit}
+                  label={t('inquiries.timeline.handled')}
+                  value={formatDateTime(inquiry.handledAt, bcp47)}
+                />
+              ) : null}
+              {inquiry.quotedAt ? (
+                <TimelineRow
+                  icon={CircleDollarSign}
+                  label={t('inquiries.timeline.quoted')}
+                  value={formatDateTime(inquiry.quotedAt, bcp47)}
+                />
+              ) : null}
+              {inquiry.closedAt ? (
+                <TimelineRow
+                  icon={CheckCheck}
+                  label={t('inquiries.timeline.closed')}
+                  value={formatDateTime(inquiry.closedAt, bcp47)}
+                />
+              ) : null}
+            </div>
+          </TabsContent>
+
+          {/* Offer — draft (with ✦ Claude) and send the quote email */}
+          {hasEmail ? (
+            <TabsContent value="offer" className="duration-200 animate-in fade-in-0">
+              <div className="overflow-hidden rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring">
+                <textarea
+                  id="inquiry-offer-body"
+                  rows={6}
+                  value={offerBody}
+                  onChange={(e) => setOfferBody(e.target.value)}
+                  placeholder={t('inquiries.offerBodyPlaceholder')}
+                  className="block min-h-[130px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+                />
+                <ClaudeChatBox
+                  busy={offerAssist.busy}
+                  history={offerAssist.history}
+                  placeholder={t('ai.placeholder')}
+                  idleHint={offerBody.trim() ? t('ai.idleRefine') : t('ai.idleFresh')}
+                  busyHint={t('ai.writing')}
+                  sendLabel={t('ai.send')}
+                  quickActions={[
+                    {
+                      label: t('ai.draftOffer'),
+                      run: () => offerAssist.run(undefined, t('ai.draftOffer'), { fresh: true }),
+                    },
+                    {
+                      label: t('ai.shorter'),
+                      run: () => offerAssist.run('Deutlich kürzer fassen.', t('ai.shorter')),
+                    },
+                    {
+                      label: t('ai.formal'),
+                      run: () => offerAssist.run('Etwas förmlicher formulieren.', t('ai.formal')),
+                    },
+                  ]}
+                  onSend={(instruction) => offerAssist.run(instruction, instruction)}
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="inquiry-offer-amount" className="text-xs text-muted-foreground">
+                    {t('inquiries.offerAmount')}
+                  </label>
+                  <Input
+                    id="inquiry-offer-amount"
+                    inputMode="decimal"
+                    value={offerAmount}
+                    onChange={(e) => setOfferAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="h-8 w-28 text-sm"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  disabled={offerBody.trim() === '' || sendQuoteMutation.isPending}
+                  onClick={() => sendQuoteMutation.mutate()}
+                >
+                  <Send className="size-3.5" />
+                  {sendQuoteMutation.isPending ? t('common.saving') : t('inquiries.sendOfferCta')}
+                </Button>
+              </div>
+            </TabsContent>
+          ) : null}
+
+          {/* Emails — what was already sent to this lead */}
+          <TabsContent value="emails" className="duration-200 animate-in fade-in-0">
+            <EmailHistory query={emailsQuery} t={t} bcp47={bcp47} />
+          </TabsContent>
+
+          {/* Notes — team-only, with ✦ Claude */}
+          <TabsContent value="notes" className="duration-200 animate-in fade-in-0">
+            <div className="overflow-hidden rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring">
+              <textarea
+                id="inquiry-internal-notes"
+                aria-label={t('inquiries.notes')}
+                rows={6}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={t('inquiries.notesPlaceholder')}
+                className="block min-h-[130px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+              />
+              <ClaudeChatBox
+                busy={notesAssist.busy}
+                history={notesAssist.history}
+                placeholder={t('ai.placeholder')}
+                idleHint={notes.trim() ? t('ai.idleRefine') : t('ai.idleFresh')}
+                busyHint={t('ai.writing')}
+                sendLabel={t('ai.send')}
+                quickActions={[
+                  {
+                    label: t('ai.draftNote'),
+                    run: () => notesAssist.run(undefined, t('ai.draftNote'), { fresh: true }),
+                  },
+                  {
+                    label: t('ai.nextSteps'),
+                    run: () =>
+                      notesAssist.run(
+                        'Konzentriere dich auf konkrete nächste Schritte.',
+                        t('ai.nextSteps'),
+                      ),
+                  },
+                  {
+                    label: t('ai.shorter'),
+                    run: () => notesAssist.run('Deutlich kürzer fassen.', t('ai.shorter')),
+                  },
+                ]}
+                onSend={(instruction) => notesAssist.run(instruction, instruction)}
+              />
+            </div>
+            <div className="mt-2 flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!notesDirty || isUpdating}
+                onClick={() => onSaveNotes(notes.trim() === '' ? null : notes)}
+              >
+                {isUpdating ? t('common.saving') : t('inquiries.saveNotes')}
+              </Button>
+            </div>
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
+  );
+}
+
+const EMAIL_STATUS_VARIANT: Record<InquiryEmailStatus, 'success' | 'secondary' | 'destructive'> = {
+  sent: 'success',
+  skipped: 'secondary',
+  failed: 'destructive',
+};
+
+function EmailHistory({
+  query,
+  t,
+  bcp47,
+}: {
+  query: ReturnType<typeof useQuery<{ emails: InquiryEmail[] }>>;
+  t: ReturnType<typeof useT>;
+  bcp47: string;
+}) {
+  const [openId, setOpenId] = useState<number | null>(null);
+  const emails = query.data?.emails ?? [];
+
+  if (query.isLoading) {
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+        {t('common.loading')}
+      </div>
+    );
+  }
+  if (emails.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-md border border-dashed bg-muted/20 px-3 py-8 text-center text-sm text-muted-foreground">
+        <Mail className="size-5 opacity-50" />
+        {t('inquiries.emailHistoryEmpty')}
+      </div>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-2">
+      {emails.map((email) => {
+        const open = openId === email.id;
+        return (
+          <li key={email.id} className="overflow-hidden rounded-md border bg-background">
+            <button
+              type="button"
+              onClick={() => setOpenId(open ? null : email.id)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/40"
+              aria-expanded={open}
+            >
+              <span className="min-w-0 flex-1 truncate font-medium">{email.subject}</span>
+              {email.quotedAmount ? (
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  {email.quotedAmount} €
+                </span>
+              ) : null}
+              <Badge variant={EMAIL_STATUS_VARIANT[email.status]} className="shrink-0">
+                {t(`inquiries.emailStatus.${email.status}` as never)}
+              </Badge>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {formatDateTime(email.createdAt, bcp47)}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'size-4 shrink-0 text-muted-foreground transition-transform',
+                  open && 'rotate-180',
+                )}
+              />
+            </button>
+            {open ? (
+              <div className="border-t bg-muted/20 p-2">
+                <div className="mb-1.5 px-1 text-xs text-muted-foreground">
+                  {t('inquiries.emailTo', { to: email.toAddress })}
+                </div>
+                <iframe
+                  title={`${t('inquiries.emailPreview')}: ${email.subject}`}
+                  srcDoc={email.html}
+                  sandbox=""
+                  className="h-96 w-full rounded border bg-white"
+                />
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -749,23 +1005,33 @@ function MetadataBlock({
   label: string;
   t: ReturnType<typeof useT>;
 }) {
+  const [open, setOpen] = useState(false);
   const entries = Object.entries(metadata).filter(
     ([, v]) => v !== null && v !== undefined && v !== '',
   );
   if (entries.length === 0) return null;
   return (
     <div>
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+      >
+        <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
         {label}
-      </div>
-      <dl className="grid grid-cols-1 gap-2 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2">
-        {entries.map(([k, v]) => (
-          <div key={k} className="flex flex-col gap-0.5">
-            <dt className="text-xs text-muted-foreground">{prettyLabel(k)}</dt>
-            <dd className="break-words text-sm">{formatMetaValue(v, t)}</dd>
-          </div>
-        ))}
-      </dl>
+        <span className="tabular-nums opacity-60">({entries.length})</span>
+      </button>
+      {open ? (
+        <dl className="mt-1 grid grid-cols-1 gap-2 rounded-md border bg-muted/30 p-3 text-sm duration-200 animate-in fade-in-0 sm:grid-cols-2">
+          {entries.map(([k, v]) => (
+            <div key={k} className="flex flex-col gap-0.5">
+              <dt className="text-xs text-muted-foreground">{prettyLabel(k)}</dt>
+              <dd className="break-words text-sm">{formatMetaValue(v, t)}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </div>
   );
 }
