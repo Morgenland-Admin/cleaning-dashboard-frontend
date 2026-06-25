@@ -68,6 +68,7 @@ export function CustomerSheet({
 
       if (editing) {
         const patch: CustomerUpdateInput = {
+          email: email.trim(),
           name: name.trim() === '' ? null : name.trim(),
           phone: phone.trim() === '' ? null : phone.trim(),
           addressLine1: addressLine1.trim() === '' ? null : addressLine1.trim(),
@@ -126,16 +127,15 @@ export function CustomerSheet({
           onSubmit={(e) => {
             e.preventDefault();
             setFormError(null);
-            if (!isEdit && !email.trim()) return;
+            if (!email.trim()) return;
             mutation.mutate();
           }}
         >
-          <FormField label={t('customers.form.email')} required={!isEdit}>
+          <FormField label={t('customers.form.email')} required>
             <Input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              disabled={isEdit}
               autoComplete="email"
               className="h-11 sm:h-9"
             />

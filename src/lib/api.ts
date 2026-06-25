@@ -1034,6 +1034,7 @@ export interface CustomerCreateInput {
 }
 
 export interface CustomerUpdateInput {
+  email?: string;
   name?: string | null;
   phone?: string | null;
   addressLine1?: string | null;
