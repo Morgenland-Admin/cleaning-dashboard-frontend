@@ -723,6 +723,26 @@ export interface OrderDetailResponse {
   allowedNextStatuses: OrderStatus[];
 }
 
+export type OrderKind = OrderRow['kind'];
+
+/** A manually-created order (admin). Total is recomputed server-side from items. */
+export interface OrderCreateInput {
+  kind: OrderKind;
+  customer: { name: string; email: string; phone?: string };
+  items: Array<{
+    code?: string;
+    label: string;
+    quantityLabel: string;
+    quantity: number;
+    unitPriceCents: number;
+  }>;
+  pickupMode?: 'pickup' | 'drop_off' | 'onsite';
+  address?: { line1: string; line2?: string; city: string; postalCode: string; country?: string };
+  preferredDate?: string;
+  customerNotes?: string;
+  internalNotes?: string;
+}
+
 export const ordersAdminApi = {
   list(
     companySlug: CompanySlug,
@@ -755,6 +775,14 @@ export const ordersAdminApi = {
   },
   get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
     return request<OrderDetailResponse>(`/admin/orders/${id}`, { companySlug, signal });
+  },
+  /** Create an order manually (offline / after-service). */
+  create(companySlug: CompanySlug, input: OrderCreateInput) {
+    return request<{ order: OrderRow }>('/admin/orders', {
+      method: 'POST',
+      body: input,
+      companySlug,
+    });
   },
   transition(
     companySlug: CompanySlug,

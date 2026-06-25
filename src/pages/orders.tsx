@@ -18,6 +18,7 @@ import {
   MessageCircle,
   NotebookPen,
   Phone,
+  Plus,
   RefreshCcw,
   Save,
   Truck,
@@ -30,6 +31,7 @@ import { useMemo, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
+import { NewOrderDialog } from '@/components/new-order-dialog';
 import { OrderCancelDialog } from '@/components/order-cancel-dialog';
 import { PageHeading } from '@/components/page-heading';
 import { Badge } from '@/components/ui/badge';
@@ -186,6 +188,7 @@ export function OrdersPage() {
 
   const [tab, setTab] = useState<OrderStatus | 'all'>('all');
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
 
   const PAGE_SIZE = 50;
 
@@ -253,16 +256,39 @@ export function OrdersPage() {
             : `Bezahlte Online-Buchungen für ${activeProject.name}.`
         }
         actions={
-          <Button variant="outline" size="sm" onClick={refetchActive} disabled={isFetching}>
-            {isFetching ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <RefreshCcw className="size-4" />
-            )}
-            Aktualisieren
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => setNewOpen(true)}
+              disabled={isAllBrands}
+              title={isAllBrands ? 'Bitte zuerst eine Marke auswählen.' : undefined}
+            >
+              <Plus className="size-4" />
+              Neue Bestellung
+            </Button>
+            <Button variant="outline" size="sm" onClick={refetchActive} disabled={isFetching}>
+              {isFetching ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="size-4" />
+              )}
+              Aktualisieren
+            </Button>
+          </div>
         }
       />
+
+      {!isAllBrands ? (
+        <NewOrderDialog
+          open={newOpen}
+          onOpenChange={setNewOpen}
+          companySlug={activeProject.companySlug}
+          onCreated={(id) => {
+            void queryClient.invalidateQueries({ queryKey: ['orders-infinite'], exact: false });
+            setSelectedId(id);
+          }}
+        />
+      ) : null}
 
       <div className="mt-6 overflow-x-auto">
         <Tabs value={tab} onValueChange={(v) => setTab(v as OrderStatus | 'all')}>
