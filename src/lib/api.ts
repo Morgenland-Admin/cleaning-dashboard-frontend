@@ -439,6 +439,8 @@ export interface InquirySubmitInput {
 export interface InquiryUpdate {
   status?: InquiryStatus;
   priority?: 'normal' | 'high';
+  email?: string | null;
+  phone?: string | null;
   internalNotes?: string | null;
   quotedAmount?: string | null;
 }

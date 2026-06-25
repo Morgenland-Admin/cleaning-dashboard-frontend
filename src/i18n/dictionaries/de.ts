@@ -533,6 +533,12 @@ export const de = {
       emails: 'E-Mails',
       notes: 'Notizen',
     },
+    contactTitle: 'Kontaktdaten',
+    emailPlaceholder: 'kunde@beispiel.de',
+    phonePlaceholder: 'z. B. 0151 23456789',
+    invalidEmail: 'Bitte eine gültige E-Mail-Adresse eingeben.',
+    contactSaved: 'Kontaktdaten aktualisiert.',
+    contactSaveFailed: 'Kontaktdaten konnten nicht gespeichert werden.',
     offerBodyPlaceholder:
       'Angebotstext für den Kunden … Tipp: Lass Claude unten einen Entwurf schreiben.',
     offerAmount: 'Summe (€)',

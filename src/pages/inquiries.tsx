@@ -16,6 +16,7 @@ import {
   Inbox,
   Mail,
   MapPin,
+  Pencil,
   Phone,
   RefreshCcw,
   Send,
@@ -484,6 +485,40 @@ function DetailPanel({
   const hasEmail = Boolean(inquiry.email);
   const [panelTab, setPanelTab] = useState<PanelTab>('request');
 
+  // --- Editable contact details (admin-only correction) -------------------
+  const [editingContact, setEditingContact] = useState(false);
+  const [emailDraft, setEmailDraft] = useState(inquiry.email ?? '');
+  const [phoneDraft, setPhoneDraft] = useState(inquiry.phone ?? '');
+  const emailValid =
+    emailDraft.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDraft.trim());
+
+  const contactMutation = useMutation({
+    mutationFn: () =>
+      inquiriesApi.update(companySlug, inquiry.id, {
+        email: emailDraft.trim() === '' ? null : emailDraft.trim(),
+        phone: phoneDraft.trim() === '' ? null : phoneDraft.trim(),
+      }),
+    onSuccess: () => {
+      setEditingContact(false);
+      void queryClient.invalidateQueries({ queryKey: ['inquiries-infinite'] });
+      void queryClient.invalidateQueries({ queryKey: ['inquiries'] });
+      toast({ title: t('inquiries.contactSaved') });
+    },
+    onError: (err) => {
+      toast({
+        variant: 'destructive',
+        title: t('inquiries.contactSaveFailed'),
+        description: err instanceof ApiError ? err.message : undefined,
+      });
+    },
+  });
+
+  function startContactEdit() {
+    setEmailDraft(inquiry.email ?? '');
+    setPhoneDraft(inquiry.phone ?? '');
+    setEditingContact(true);
+  }
+
   return (
     <Card className="sticky top-20">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -556,60 +591,128 @@ function DetailPanel({
           ) : null}
         </div>
 
-        {/* Contact + service info */}
-        <div className="grid grid-cols-1 gap-2 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2">
-          <DetailRow label={t('inquiries.fields.email')}>
-            <a href={`mailto:${inquiry.email}`} className="text-primary hover:underline">
-              {inquiry.email}
-            </a>
-          </DetailRow>
-          {inquiry.phone ? (
-            <DetailRow label={t('inquiries.fields.phone')}>
-              <a
-                href={`tel:${inquiry.phone}`}
-                className="inline-flex items-center gap-1 text-primary hover:underline"
+        {/* Contact + service info — email/phone are admin-editable */}
+        <div className="rounded-md border bg-muted/30 p-3 text-sm">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t('inquiries.contactTitle')}
+            </span>
+            {editingContact ? (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setEditingContact(false)}
+                  disabled={contactMutation.isPending}
+                >
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => contactMutation.mutate()}
+                  disabled={contactMutation.isPending || !emailValid}
+                >
+                  {contactMutation.isPending ? t('common.saving') : t('common.save')}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+                onClick={startContactEdit}
               >
-                <Phone className="size-3" />
-                {inquiry.phone}
-              </a>
+                <Pencil className="size-3" />
+                {t('common.edit')}
+              </Button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <DetailRow label={t('inquiries.fields.email')}>
+              {editingContact ? (
+                <div className="flex flex-col gap-1">
+                  <Input
+                    type="email"
+                    inputMode="email"
+                    value={emailDraft}
+                    onChange={(e) => setEmailDraft(e.target.value)}
+                    placeholder={t('inquiries.emailPlaceholder')}
+                    aria-invalid={!emailValid}
+                    className="h-8 text-sm"
+                  />
+                  {!emailValid ? (
+                    <span className="text-xs text-destructive">{t('inquiries.invalidEmail')}</span>
+                  ) : null}
+                </div>
+              ) : inquiry.email ? (
+                <a href={`mailto:${inquiry.email}`} className="text-primary hover:underline">
+                  {inquiry.email}
+                </a>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
             </DetailRow>
-          ) : null}
-          {inquiry.service ? (
-            <DetailRow label={t('inquiries.fields.service')} icon={Wrench}>
-              {inquiry.service}
+            {editingContact || inquiry.phone ? (
+              <DetailRow label={t('inquiries.fields.phone')}>
+                {editingContact ? (
+                  <Input
+                    type="tel"
+                    inputMode="tel"
+                    value={phoneDraft}
+                    onChange={(e) => setPhoneDraft(e.target.value)}
+                    placeholder={t('inquiries.phonePlaceholder')}
+                    className="h-8 text-sm"
+                  />
+                ) : (
+                  <a
+                    href={`tel:${inquiry.phone}`}
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <Phone className="size-3" />
+                    {inquiry.phone}
+                  </a>
+                )}
+              </DetailRow>
+            ) : null}
+            {inquiry.service ? (
+              <DetailRow label={t('inquiries.fields.service')} icon={Wrench}>
+                {inquiry.service}
+              </DetailRow>
+            ) : null}
+            {inquiry.plz ? (
+              <DetailRow label={t('inquiries.fields.plz')} icon={MapPin}>
+                {inquiry.plz}
+              </DetailRow>
+            ) : null}
+            {inquiry.callReason ? (
+              <DetailRow label={t('inquiries.fields.callReason')} icon={Phone}>
+                {inquiry.callReason}
+              </DetailRow>
+            ) : null}
+            {inquiry.preferredDate ? (
+              <DetailRow label={t('inquiries.fields.preferredDate')} icon={CalendarClock}>
+                {formatShortDate(inquiry.preferredDate, bcp47)}
+              </DetailRow>
+            ) : null}
+            {inquiry.budget ? (
+              <DetailRow label={t('inquiries.fields.budget')} icon={CircleDollarSign}>
+                {inquiry.budget}
+              </DetailRow>
+            ) : null}
+            {inquiry.quotedAmount ? (
+              <DetailRow label={t('inquiries.fields.quotedAmount')}>
+                {inquiry.quotedAmount} €
+              </DetailRow>
+            ) : null}
+            {inquiry.source ? (
+              <DetailRow label={t('inquiries.fields.source')}>{inquiry.source}</DetailRow>
+            ) : null}
+            <DetailRow label={t('inquiries.fields.consentMarketing')}>
+              {inquiry.consentMarketing ? t('common.yes') : t('common.no')}
             </DetailRow>
-          ) : null}
-          {inquiry.plz ? (
-            <DetailRow label={t('inquiries.fields.plz')} icon={MapPin}>
-              {inquiry.plz}
-            </DetailRow>
-          ) : null}
-          {inquiry.callReason ? (
-            <DetailRow label={t('inquiries.fields.callReason')} icon={Phone}>
-              {inquiry.callReason}
-            </DetailRow>
-          ) : null}
-          {inquiry.preferredDate ? (
-            <DetailRow label={t('inquiries.fields.preferredDate')} icon={CalendarClock}>
-              {formatShortDate(inquiry.preferredDate, bcp47)}
-            </DetailRow>
-          ) : null}
-          {inquiry.budget ? (
-            <DetailRow label={t('inquiries.fields.budget')} icon={CircleDollarSign}>
-              {inquiry.budget}
-            </DetailRow>
-          ) : null}
-          {inquiry.quotedAmount ? (
-            <DetailRow label={t('inquiries.fields.quotedAmount')}>
-              {inquiry.quotedAmount} €
-            </DetailRow>
-          ) : null}
-          {inquiry.source ? (
-            <DetailRow label={t('inquiries.fields.source')}>{inquiry.source}</DetailRow>
-          ) : null}
-          <DetailRow label={t('inquiries.fields.consentMarketing')}>
-            {inquiry.consentMarketing ? t('common.yes') : t('common.no')}
-          </DetailRow>
+          </div>
         </div>
 
         {/* Workspace — one panel at a time keeps the card scannable */}
