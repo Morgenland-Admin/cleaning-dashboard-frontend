@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject } from '@/contexts/project-context';
+import { toast } from '@/hooks/use-toast';
 import { useLocale } from '@/i18n';
 import {
   ordersAdminApi,
@@ -81,6 +82,41 @@ const STATUS_VARIANT: Record<
   cancelled: 'destructive',
   refunded: 'destructive',
 };
+
+// Transitions the backend emails the customer about — surfaced in the confirm copy.
+const CUSTOMER_NOTIFYING: ReadonlySet<OrderTransitionStatus> = new Set([
+  'accepted',
+  'picked_up',
+  'in_cleaning',
+  'ready',
+  'delivered',
+  'completed',
+]);
+
+/** Confirmation dialog copy for a pending status transition. */
+function transitionConfirmCopy(
+  status: OrderTransitionStatus,
+  order: OrderRow,
+): { title: string; description: string; isDangerous: boolean } {
+  const title = `Auf „${STATUS_LABEL[status]}“ setzen?`;
+  if (status === 'refunded') {
+    return {
+      title,
+      description:
+        order.paymentProvider === 'paypal'
+          ? 'PayPal-Zahlungen müssen direkt in PayPal erstattet werden — hier wird keine Rückerstattung ausgelöst.'
+          : 'Dies löst eine volle Stripe-Rückerstattung aus, falls eine Zahlung vorhanden ist.',
+      isDangerous: true,
+    };
+  }
+  return {
+    title,
+    description: CUSTOMER_NOTIFYING.has(status)
+      ? 'Der Kunde wird per E-Mail über den neuen Status informiert.'
+      : 'Möchtest du den Status dieser Bestellung wirklich ändern?',
+    isDangerous: false,
+  };
+}
 
 const STATUS_ACCENT: Record<OrderStatus, string> = {
   pending: 'bg-gradient-to-b from-slate-300 to-slate-400 dark:from-slate-500 dark:to-slate-700',
@@ -491,10 +527,13 @@ function OrderDetail({
   const transition = useMutation({
     mutationFn: (toStatus: OrderTransitionStatus) =>
       ordersAdminApi.transition(companySlug, orderId, { toStatus }),
-    onSuccess: async () => {
+    onSuccess: async (_res, toStatus) => {
       await queryClient.invalidateQueries({ queryKey: detailKey });
       await queryClient.invalidateQueries({ queryKey: listKeyPrefix, exact: false });
+      toast.success(`Status auf „${STATUS_LABEL[toStatus]}“ gesetzt.`);
     },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : 'Statusänderung fehlgeschlagen.'),
   });
 
   const saveNotes = useMutation({
@@ -503,7 +542,12 @@ function OrderDetail({
     onSuccess: async () => {
       setNotesDirty(false);
       await queryClient.invalidateQueries({ queryKey: detailKey });
+      toast.success('Notizen gespeichert.');
     },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : 'Notizen konnten nicht gespeichert werden.',
+      ),
   });
 
   const syncStripe = useMutation({
@@ -520,7 +564,10 @@ function OrderDetail({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: detailKey });
       await queryClient.invalidateQueries({ queryKey: listKeyPrefix, exact: false });
+      toast.success('Termin bestätigt — der Kunde wurde benachrichtigt.');
     },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : 'Termin konnte nicht bestätigt werden.'),
   });
 
   if (detail.isLoading) {
@@ -621,11 +668,13 @@ function DetailBody({
 }) {
   const { order, items, statusLog, allowedNextStatuses } = data;
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [refundStatus, setRefundStatus] = useState<OrderTransitionStatus | null>(null);
+  // Every status change is confirmed first; `pendingStatus` is the one awaiting it.
+  const [pendingStatus, setPendingStatus] = useState<OrderTransitionStatus | null>(null);
   // Cancellation goes through the policy-aware dialog (/cancel), not the
   // bare /transition path — /transition doesn't refund on `cancelled`.
   const cancelOffered = allowedNextStatuses.includes('cancelled');
   const transitionStatuses = allowedNextStatuses.filter((s) => s !== 'cancelled');
+  const pendingCopy = pendingStatus ? transitionConfirmCopy(pendingStatus, order) : null;
 
   return (
     <div className="space-y-5 overflow-hidden rounded-2xl border border-border bg-card">
@@ -864,13 +913,7 @@ function DetailBody({
                     size="sm"
                     variant={isDangerous ? 'outline' : 'default'}
                     disabled={isTransitioning}
-                    onClick={() => {
-                      if (isDangerous) {
-                        setRefundStatus(s as OrderTransitionStatus);
-                        return;
-                      }
-                      onTransition(s as OrderTransitionStatus);
-                    }}
+                    onClick={() => setPendingStatus(s as OrderTransitionStatus)}
                   >
                     {isTransitioning ? (
                       <Loader2 className="size-3.5 animate-spin" />
@@ -907,22 +950,18 @@ function DetailBody({
         />
 
         <ConfirmDialog
-          open={refundStatus !== null}
+          open={pendingStatus !== null}
           onOpenChange={(open) => {
-            if (!open) setRefundStatus(null);
+            if (!open) setPendingStatus(null);
           }}
-          title={refundStatus ? `Auf „${STATUS_LABEL[refundStatus]}" setzen?` : ''}
-          description={
-            order.paymentProvider === 'paypal'
-              ? 'PayPal-Zahlungen müssen direkt in PayPal erstattet werden — hier wird keine Rückerstattung ausgelöst.'
-              : 'Dies löst eine volle Stripe-Rückerstattung aus, falls eine Zahlung vorhanden ist.'
-          }
+          title={pendingCopy?.title ?? ''}
+          description={pendingCopy?.description ?? ''}
           confirmLabel="Bestätigen"
-          isDangerous
+          isDangerous={pendingCopy?.isDangerous ?? false}
           isPending={isTransitioning}
           onConfirm={() => {
-            if (refundStatus) onTransition(refundStatus);
-            setRefundStatus(null);
+            if (pendingStatus) onTransition(pendingStatus);
+            setPendingStatus(null);
           }}
         />
 
