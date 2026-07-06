@@ -21,14 +21,16 @@ import {
   Plus,
   RefreshCcw,
   Save,
+  Send,
   Truck,
   User,
   Wallet,
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { NewOrderDialog } from '@/components/new-order-dialog';
@@ -49,6 +51,7 @@ import {
   type OrderTransitionStatus,
   ApiError,
 } from '@/lib/api';
+import { useClaudeAssist } from '@/lib/use-claude-assist';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -596,6 +599,31 @@ function OrderDetail({
       toast.error(err instanceof ApiError ? err.message : 'Termin konnte nicht bestätigt werden.'),
   });
 
+  const proposeSlots = useMutation({
+    mutationFn: (slots: string[]) => ordersAdminApi.proposeSlots(companySlug, orderId, slots),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: detailKey });
+      await queryClient.invalidateQueries({ queryKey: listKeyPrefix, exact: false });
+      toast.success('Terminvorschläge gespeichert.');
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : 'Vorschläge konnten nicht gespeichert werden.',
+      ),
+  });
+
+  const sendMessage = useMutation({
+    mutationFn: (body: string) => ordersAdminApi.sendMessage(companySlug, orderId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: detailKey });
+      toast.success('Nachricht an den Kunden gesendet.');
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : 'Nachricht konnte nicht gesendet werden.',
+      ),
+  });
+
   if (detail.isLoading) {
     return (
       <div className="flex items-center justify-center rounded-2xl border border-border bg-card p-12">
@@ -639,6 +667,10 @@ function OrderDetail({
       isSyncing={syncStripe.isPending}
       onConfirmAppointment={(slot) => confirmAppointment.mutate(slot)}
       isConfirmingAppointment={confirmAppointment.isPending}
+      onProposeSlots={(slots) => proposeSlots.mutate(slots)}
+      isProposingSlots={proposeSlots.isPending}
+      onSendMessage={(body) => sendMessage.mutateAsync(body)}
+      isSendingMessage={sendMessage.isPending}
       syncResult={syncStripe.data ?? null}
       syncError={
         syncStripe.error instanceof ApiError
@@ -667,6 +699,10 @@ function DetailBody({
   isSyncing,
   onConfirmAppointment,
   isConfirmingAppointment,
+  onProposeSlots,
+  isProposingSlots,
+  onSendMessage,
+  isSendingMessage,
   syncResult,
   syncError,
 }: {
@@ -685,6 +721,10 @@ function DetailBody({
   isSyncing: boolean;
   onConfirmAppointment: (slot: string) => void;
   isConfirmingAppointment: boolean;
+  onProposeSlots: (slots: string[]) => void;
+  isProposingSlots: boolean;
+  onSendMessage: (body: string) => Promise<unknown>;
+  isSendingMessage: boolean;
   syncResult: {
     order: OrderRow | null;
     stripe: { sessionStatus: string; paymentStatus: string };
@@ -783,69 +823,14 @@ function DetailBody({
           </div>
         </div>
 
-        {order.metadata?.preferredSlots?.length ? (
-          <div>
-            <SectionLabel icon={CalendarClock}>Wunschtermine</SectionLabel>
-            {order.metadata.confirmedSlot ? (
-              <div className="mt-2 flex items-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm">
-                <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-success">
-                    Bestätigter Termin
-                  </div>
-                  <div className="font-medium tabular-nums">
-                    {formatSlotDe(order.metadata.confirmedSlot)}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Vom Kunden gewünscht — bitte einen Termin bestätigen. Der Kunde erhält dann eine
-                Bestätigungs-E-Mail.
-              </p>
-            )}
-            <ul className="mt-2 space-y-1.5">
-              {order.metadata.preferredSlots.map((slot) => {
-                const isConfirmed = order.metadata?.confirmedSlot === slot;
-                return (
-                  <li
-                    key={slot}
-                    className={cn(
-                      'flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm',
-                      isConfirmed ? 'border-success/30 bg-success-soft' : 'border-border',
-                    )}
-                  >
-                    <span className="flex items-center gap-2 tabular-nums">
-                      <CalendarClock
-                        className="size-3.5 shrink-0 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      {formatSlotDe(slot)}
-                    </span>
-                    {isConfirmed ? (
-                      <span className="flex items-center gap-1 text-xs font-medium text-success">
-                        <Check className="size-3.5" aria-hidden="true" /> Bestätigt
-                      </span>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isConfirmingAppointment}
-                        onClick={() => onConfirmAppointment(slot)}
-                      >
-                        {isConfirmingAppointment ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          'Bestätigen'
-                        )}
-                      </Button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ) : null}
+        <AppointmentSection
+          key={`appt:${order.id}:${order.updatedAt}`}
+          order={order}
+          onConfirmAppointment={onConfirmAppointment}
+          isConfirmingAppointment={isConfirmingAppointment}
+          onProposeSlots={onProposeSlots}
+          isProposingSlots={isProposingSlots}
+        />
 
         <div>
           <SectionLabel icon={ClipboardList}>Positionen</SectionLabel>
@@ -910,6 +895,14 @@ function DetailBody({
             </Button>
           </div>
         </div>
+
+        <OrderMessageComposer
+          companySlug={companySlug}
+          order={order}
+          bcp47={bcp47}
+          onSend={onSendMessage}
+          isSending={isSendingMessage}
+        />
 
         {order.paymentMode === 'after_service' ? (
           <AfterServicePaymentBlock companySlug={companySlug} order={order} bcp47={bcp47} />
@@ -1019,6 +1012,325 @@ function DetailBody({
             </ol>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Termine: confirmed-slot banner, the proposed-slot list (each confirmable),
+// and — when nothing is confirmed yet — an operator input to propose up to 3
+// times directly from the panel (independent of what the booking carried).
+function AppointmentSection({
+  order,
+  onConfirmAppointment,
+  isConfirmingAppointment,
+  onProposeSlots,
+  isProposingSlots,
+}: {
+  order: OrderRow;
+  onConfirmAppointment: (slot: string) => void;
+  isConfirmingAppointment: boolean;
+  onProposeSlots: (slots: string[]) => void;
+  isProposingSlots: boolean;
+}) {
+  const confirmedSlot = order.metadata?.confirmedSlot ?? null;
+  const slots = useMemo(() => order.metadata?.preferredSlots ?? [], [order.metadata]);
+
+  const [drafts, setDrafts] = useState<string[]>(() => {
+    const base = slots.slice(0, 3);
+    return [base[0] ?? '', base[1] ?? '', base[2] ?? ''];
+  });
+  // Open the editor straight away when there's nothing to confirm yet.
+  const [proposing, setProposing] = useState(slots.length === 0);
+
+  const cleaned = drafts.map((s) => s.trim()).filter(Boolean);
+  const changed = JSON.stringify(cleaned) !== JSON.stringify(slots);
+  const canSave = cleaned.length > 0 && changed;
+
+  return (
+    <div>
+      <SectionLabel icon={CalendarClock}>Termine</SectionLabel>
+
+      {confirmedSlot ? (
+        <div className="mt-2 flex items-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm">
+          <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-success">
+              Bestätigter Termin
+            </div>
+            <div className="font-medium tabular-nums">{formatSlotDe(confirmedSlot)}</div>
+          </div>
+        </div>
+      ) : slots.length > 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Vorgeschlagene Termine — bitte einen bestätigen. Der Kunde erhält dann eine
+          Bestätigungs-E-Mail.
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Noch keine Termine hinterlegt. Schlage bis zu 3 Zeiten vor — danach bestätigst du einen
+          davon.
+        </p>
+      )}
+
+      {slots.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {slots.map((slot) => {
+            const isConfirmed = confirmedSlot === slot;
+            return (
+              <li
+                key={slot}
+                className={cn(
+                  'flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm',
+                  isConfirmed ? 'border-success/30 bg-success-soft' : 'border-border',
+                )}
+              >
+                <span className="flex items-center gap-2 tabular-nums">
+                  <CalendarClock
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  {formatSlotDe(slot)}
+                </span>
+                {isConfirmed ? (
+                  <span className="flex items-center gap-1 text-xs font-medium text-success">
+                    <Check className="size-3.5" aria-hidden="true" /> Bestätigt
+                  </span>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isConfirmingAppointment}
+                    onClick={() => onConfirmAppointment(slot)}
+                  >
+                    {isConfirmingAppointment ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      'Bestätigen'
+                    )}
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {!confirmedSlot &&
+        (proposing ? (
+          <div className="mt-3 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Terminvorschläge (bis zu 3)
+            </div>
+            {drafts.map((value, i) => (
+              <input
+                // Fixed 3 rows — index key is stable and correct here.
+
+                key={i}
+                type="datetime-local"
+                value={value}
+                onChange={(e) => setDrafts((d) => d.map((v, j) => (j === i ? e.target.value : v)))}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+              />
+            ))}
+            <div className="flex items-center justify-end gap-2">
+              {slots.length > 0 && (
+                <Button size="sm" variant="ghost" onClick={() => setProposing(false)}>
+                  Abbrechen
+                </Button>
+              )}
+              <Button
+                size="sm"
+                disabled={!canSave || isProposingSlots}
+                onClick={() => onProposeSlots(cleaned)}
+              >
+                {isProposingSlots ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
+                Vorschläge speichern
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-2">
+            <Button size="sm" variant="outline" onClick={() => setProposing(true)}>
+              <CalendarClock className="size-3.5" />
+              Termine vorschlagen
+            </Button>
+          </div>
+        ))}
+    </div>
+  );
+}
+
+// "✦ Claude" compose + send box for the order — mirrors the Kontaktanfragen /
+// Anfragen composer. Sends under the order's own brand; shows recent messages.
+function OrderMessageComposer({
+  companySlug,
+  order,
+  bcp47,
+  onSend,
+  isSending,
+}: {
+  companySlug: CompanySlug;
+  order: OrderRow;
+  bcp47: string;
+  onSend: (body: string) => Promise<unknown>;
+  isSending: boolean;
+}) {
+  const [body, setBody] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [justSent, setJustSent] = useState(false);
+  const sentTimerRef = useRef<number | null>(null);
+
+  const assist = useClaudeAssist({
+    kind: 'order_message',
+    companySlug,
+    refId: order.id,
+    getCurrent: () => body,
+    apply: (text) => {
+      setBody(text);
+      setLocalError(null);
+      setJustSent(false);
+    },
+    updatedLabel: 'Entwurf aktualisiert.',
+  });
+
+  useEffect(() => {
+    return () => {
+      if (sentTimerRef.current !== null) window.clearTimeout(sentTimerRef.current);
+    };
+  }, []);
+
+  async function handleSend() {
+    if (!body.trim()) {
+      setLocalError('Bitte zuerst eine Nachricht verfassen.');
+      return;
+    }
+    setLocalError(null);
+    try {
+      await onSend(body);
+      setBody('');
+      setJustSent(true);
+      if (sentTimerRef.current !== null) window.clearTimeout(sentTimerRef.current);
+      sentTimerRef.current = window.setTimeout(() => setJustSent(false), 2400);
+    } catch {
+      /* error surfaced via toast in the parent mutation */
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      void handleSend();
+    }
+  }
+
+  const sent = order.metadata?.messages ?? [];
+
+  return (
+    <div>
+      <SectionLabel icon={Mail}>Nachricht an den Kunden</SectionLabel>
+
+      {sent.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {sent.slice(-3).map((m, i) => (
+            <li key={i} className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs">
+              <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>{m.sentByName ?? 'Team'}</span>
+                <time className="tabular-nums">{formatDateTime(m.sentAt, bcp47)}</time>
+              </div>
+              <p className="whitespace-pre-wrap text-[13px] text-foreground/90">{m.body}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="group mt-2 overflow-hidden rounded-2xl border border-border bg-card transition-colors focus-within:border-rust/40 focus-within:ring-2 focus-within:ring-rust/15">
+        <Textarea
+          rows={5}
+          value={body}
+          onChange={(e) => {
+            setBody(e.target.value);
+            if (localError) setLocalError(null);
+            if (justSent) setJustSent(false);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Nachricht an den Kunden …"
+          disabled={isSending}
+          aria-label="Nachricht an den Kunden"
+          className="min-h-[120px] resize-none border-0 bg-transparent px-3.5 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0 sm:text-[13.5px]"
+        />
+        {localError && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex items-start gap-1.5 px-3.5 pb-2 text-[12px] text-destructive"
+          >
+            <AlertCircle className="mt-0.5 size-3 shrink-0" />
+            <span>{localError}</span>
+          </div>
+        )}
+        {justSent && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-1.5 px-3.5 pb-2 text-[12px] text-success"
+          >
+            <Check className="size-3.5" />
+            <span>Nachricht gesendet.</span>
+          </div>
+        )}
+        <ClaudeChatBox
+          busy={assist.busy}
+          history={assist.history}
+          placeholder="Claude bitten, eine Nachricht zu schreiben oder anzupassen …"
+          idleHint={
+            body.trim() ? 'Verbessert deinen Entwurf' : 'Schreibt eine Nachricht zum Auftrag'
+          }
+          busyHint="schreibt …"
+          sendLabel="An Claude senden"
+          quickActions={[
+            {
+              label: 'Nachricht entwerfen',
+              run: () => assist.run(undefined, 'Nachricht entwerfen', { fresh: true }),
+            },
+            { label: 'Kürzer', run: () => assist.run('Deutlich kürzer formulieren.', 'Kürzer') },
+            {
+              label: 'Freundlicher',
+              run: () => assist.run('Wärmer und freundlicher formulieren.', 'Freundlicher'),
+            },
+          ]}
+          onSend={(instruction) => assist.run(instruction, instruction)}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3.5 py-2">
+          <span className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+            <Mail className="size-3" />
+            <span>
+              An <span className="font-medium text-foreground/80">{order.customerEmail}</span>
+            </span>
+          </span>
+          <div className="flex items-center gap-2">
+            <kbd className="hidden items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
+              ⌘↩
+            </kbd>
+            <Button size="sm" onClick={handleSend} disabled={isSending || body.trim() === ''}>
+              {isSending ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Senden …
+                </>
+              ) : (
+                <>
+                  <Send className="size-3.5" />
+                  Senden
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

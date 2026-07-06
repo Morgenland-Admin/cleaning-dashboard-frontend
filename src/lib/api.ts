@@ -672,10 +672,18 @@ export interface OrderRow {
   locale: string;
   source: string | null;
   metadata: {
-    /** Up to 3 customer-preferred on-site slots, "YYYY-MM-DDTHH:mm". */
+    /** Up to 3 proposed on-site slots, "YYYY-MM-DDTHH:mm" (customer- or operator-set). */
     preferredSlots?: string[];
     /** The slot the admin confirmed. */
     confirmedSlot?: string;
+    /** Operator messages sent to the customer from the panel (newest last). */
+    messages?: Array<{
+      body: string;
+      sentByName: string | null;
+      sentByUserId?: string;
+      sentAt: string;
+      emailMessageId?: string | null;
+    }>;
     [key: string]: unknown;
   } | null;
   createdAt: string;
@@ -806,6 +814,22 @@ export const ordersAdminApi = {
     return request<{ order: OrderRow }>(`/admin/orders/${id}/confirm-appointment`, {
       method: 'POST',
       body: { slot },
+      companySlug,
+    });
+  },
+  /** Operator proposes up to 3 pickup/appointment times ("YYYY-MM-DDTHH:mm") from the panel. */
+  proposeSlots(companySlug: CompanySlug, id: number, slots: string[]) {
+    return request<{ order: OrderRow }>(`/admin/orders/${id}/propose-slots`, {
+      method: 'POST',
+      body: { slots },
+      companySlug,
+    });
+  },
+  /** Send a free-form message to the customer about an order (under the order's brand). */
+  sendMessage(companySlug: CompanySlug, id: number, body: string) {
+    return request<{ order: OrderRow }>(`/admin/orders/${id}/message`, {
+      method: 'POST',
+      body: { body },
       companySlug,
     });
   },
@@ -1371,7 +1395,12 @@ export const invitesPublicApi = {
 // --- AI text assistant (Claude) -------------------------------------------
 // Backend loads the source record by refId; we send kind + id (+ draft/instruction).
 
-export type AiAssistKind = 'contact_reply' | 'review_response' | 'inquiry_note' | 'inquiry_quote';
+export type AiAssistKind =
+  | 'contact_reply'
+  | 'review_response'
+  | 'inquiry_note'
+  | 'inquiry_quote'
+  | 'order_message';
 
 export interface AiAssistInput {
   kind: AiAssistKind;
