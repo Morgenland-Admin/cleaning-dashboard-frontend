@@ -4,6 +4,8 @@ import {
   Ban,
   BellRing,
   CheckCircle2,
+  Download,
+  Eye,
   FileText,
   History,
   Info,
@@ -50,6 +52,7 @@ import { useProject, type CompanySlug } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
 import {
   ApiError,
+  errMessage,
   invoicesAdminApi,
   type InvoiceCreateInput,
   type InvoiceLineItem,
@@ -719,6 +722,55 @@ function InvoiceDetailSheet({
     queryFn: ({ signal }) => invoicesAdminApi.log(slug, invoice.id, signal),
   });
 
+  // Lazily fetched invoice PDF (blob object URL) for on-screen preview + download.
+  // Fetched on first use, cached for the sheet's lifetime, revoked on unmount.
+  const [pdf, setPdf] = useState<{
+    url: string | null;
+    loading: boolean;
+    error: string | null;
+    show: boolean;
+  }>({ url: null, loading: false, error: null, show: false });
+
+  useEffect(() => {
+    return () => {
+      if (pdf.url) URL.revokeObjectURL(pdf.url);
+    };
+  }, [pdf.url]);
+
+  const ensurePdf = async (): Promise<string | null> => {
+    if (pdf.url) return pdf.url;
+    setPdf((p) => ({ ...p, loading: true, error: null }));
+    try {
+      const blob = await invoicesAdminApi.pdf(slug, invoice.id);
+      const url = URL.createObjectURL(blob);
+      setPdf((p) => ({ ...p, url, loading: false }));
+      return url;
+    } catch (e) {
+      setPdf((p) => ({ ...p, loading: false, error: errMessage(e) }));
+      return null;
+    }
+  };
+
+  const togglePreview = async () => {
+    if (pdf.show) {
+      setPdf((p) => ({ ...p, show: false }));
+      return;
+    }
+    const url = await ensurePdf();
+    if (url) setPdf((p) => ({ ...p, show: true }));
+  };
+
+  const downloadPdf = async () => {
+    const url = await ensurePdf();
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Rechnung-${invoice.number ?? invoice.id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   return (
     <Sheet
       open
@@ -852,6 +904,65 @@ function InvoiceDetailSheet({
               </span>
             </div>
           </div>
+        </section>
+
+        <section>
+          <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <FileText className="size-3" aria-hidden="true" />
+            {t('invoices.document')}
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-11 md:min-h-8"
+              disabled={pdf.loading}
+              onClick={togglePreview}
+            >
+              {pdf.loading ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <Eye className="size-3.5" aria-hidden="true" />
+              )}
+              {pdf.show ? t('invoices.pdfHide') : t('invoices.pdfPreview')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-11 md:min-h-8"
+              disabled={pdf.loading}
+              onClick={downloadPdf}
+            >
+              <Download className="size-3.5" aria-hidden="true" />
+              {t('invoices.pdfDownload')}
+            </Button>
+          </div>
+          {pdf.error ? (
+            <p className="mt-2 flex items-start gap-2 text-xs text-destructive">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              {pdf.error}
+            </p>
+          ) : null}
+          {pdf.show && pdf.url ? (
+            <object
+              data={pdf.url}
+              type="application/pdf"
+              className="mt-3 h-96 w-full rounded-md border bg-white"
+              aria-label={t('invoices.document')}
+            >
+              <p className="p-3 text-xs text-muted-foreground">
+                {t('invoices.pdfUnavailable')}{' '}
+                <a
+                  href={pdf.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium underline underline-offset-2"
+                >
+                  {t('invoices.pdfOpen')}
+                </a>
+              </p>
+            </object>
+          ) : null}
         </section>
 
         <section className="grid gap-1.5 rounded-md border bg-muted/30 p-3">

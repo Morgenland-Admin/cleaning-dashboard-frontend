@@ -922,6 +922,12 @@ export const en: Dict = {
     history: 'History',
     details: 'Details',
     immutableHint: 'Issued invoices are immutable (GoBD).',
+    document: 'Document (PDF)',
+    pdfPreview: 'Preview',
+    pdfHide: 'Hide preview',
+    pdfDownload: 'Download',
+    pdfUnavailable: 'Preview unavailable.',
+    pdfOpen: 'Open PDF',
     form: {
       recipientName: 'Recipient name',
       recipientEmail: 'Email',

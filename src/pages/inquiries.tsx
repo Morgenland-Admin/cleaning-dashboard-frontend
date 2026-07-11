@@ -337,7 +337,10 @@ export function InquiriesPage() {
                           </Badge>
                         </div>
                       </div>
-                      <div className="truncate text-[11px] text-muted-foreground">{i.email}</div>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="shrink-0 font-mono">{i.inquiryNumber}</span>
+                        <span className="truncate">{i.email}</span>
+                      </div>
                       <div className="flex items-center justify-between gap-2 text-[13px]">
                         <span className="truncate text-muted-foreground">
                           {i.service ? (
@@ -530,6 +533,9 @@ function DetailPanel({
               date: formatDateTime(inquiry.createdAt, bcp47),
             })}
           </CardDescription>
+          <div className="mt-0.5 font-mono text-xs text-muted-foreground">
+            {inquiry.inquiryNumber}
+          </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {showBrand ? <BrandChip brand={inquiry._brand} /> : null}
             <Badge variant={STATUS_VARIANT[inquiry.status]}>

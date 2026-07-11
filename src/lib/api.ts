@@ -380,6 +380,8 @@ export type CallbackOwner = 'human' | 'ai';
 
 export interface ServiceInquiry {
   id: number;
+  /** Customer-facing inquiry number "ANF-2026-000123", derived from id + creation year. */
+  inquiryNumber: string;
   customerId: number | null;
   name: string;
   /** Null for voice-AI phone leads with no email on file. */
@@ -1984,6 +1986,26 @@ export const invoicesAdminApi = {
       companySlug,
       signal,
     });
+  },
+  /** Fetch the rendered invoice PDF as a Blob (for preview + download). */
+  async pdf(companySlug: CompanySlug, id: number, signal?: AbortSignal): Promise<Blob> {
+    const res = await fetch(`${API_BASE}/admin/invoices/${id}/pdf`, {
+      headers: { Accept: 'application/pdf', 'X-Company-Slug': companySlug },
+      credentials: 'include',
+      signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      const parsed = text ? safeJson(text) : null;
+      const msg =
+        (parsed && typeof parsed === 'object' && 'error' in parsed
+          ? String((parsed as { error?: unknown }).error)
+          : null) ??
+        res.statusText ??
+        `Request failed (${res.status})`;
+      throw new ApiError(res.status, msg, parsed);
+    }
+    return res.blob();
   },
 };
 

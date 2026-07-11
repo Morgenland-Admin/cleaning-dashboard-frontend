@@ -926,6 +926,12 @@ export const de = {
     history: 'Verlauf',
     details: 'Details',
     immutableHint: 'Ausgestellte Rechnungen sind unveränderlich (GoBD).',
+    document: 'Beleg (PDF)',
+    pdfPreview: 'Vorschau',
+    pdfHide: 'Vorschau ausblenden',
+    pdfDownload: 'Herunterladen',
+    pdfUnavailable: 'Vorschau nicht verfügbar.',
+    pdfOpen: 'PDF öffnen',
     form: {
       recipientName: 'Empfängername',
       recipientEmail: 'E-Mail',
