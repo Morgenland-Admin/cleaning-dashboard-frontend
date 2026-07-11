@@ -718,6 +718,9 @@ export const en: Dict = {
       disposable_domain: 'Disposable address',
     },
     importShowRejects: 'Show {{n}} rejected rows',
+    importConsentLabel:
+      'I confirm every imported contact has valid, documented marketing consent (UWG §7). Rows are imported as confirmed.',
+    importConsentRequired: 'Please confirm consent to complete the import.',
     export: 'Export',
     exportPickBrand: 'Pick a brand — export is per-brand.',
     exportQueued: 'Export queued — view exports',

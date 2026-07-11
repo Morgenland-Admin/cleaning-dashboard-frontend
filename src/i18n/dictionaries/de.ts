@@ -722,6 +722,9 @@ export const de = {
       disposable_domain: 'Wegwerf-Adresse',
     },
     importShowRejects: '{{n}} verworfene Zeilen anzeigen',
+    importConsentLabel:
+      'Ich bestätige, dass für alle importierten Kontakte eine gültige Werbeeinwilligung (UWG §7) vorliegt und nachweisbar ist. Zeilen werden als bestätigt übernommen.',
+    importConsentRequired: 'Bitte die Einwilligung bestätigen, um den Import abzuschließen.',
     export: 'Export',
     exportPickBrand: 'Marke wählen — Export ist pro Marke.',
     exportQueued: 'Export läuft — Exporte ansehen',

@@ -2,6 +2,7 @@ import { AlertCircle, Check, Loader2, Upload, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Sheet,
   SheetClose,
@@ -41,6 +42,7 @@ export function CsvImportSheet({
   headerChip,
   disabled,
   disabledTitle,
+  requireConsentAttestation,
 }: {
   companySlug: CompanySlug;
   brandName: string;
@@ -48,13 +50,19 @@ export function CsvImportSheet({
   sampleHref: string;
   importFn: (
     companySlug: CompanySlug,
-    body: { csv: string; dryRun?: boolean },
+    body: { csv: string; dryRun?: boolean; attestConsent?: boolean },
   ) => Promise<{ summary: CsvImportSummary }>;
   onImported: () => void;
   triggerClassName?: string;
   headerChip?: ReactNode;
   disabled?: boolean;
   disabledTitle?: string;
+  /**
+   * When set, renders a required consent-attestation checkbox (UWG §7) and
+   * forwards `attestConsent` to `importFn`. Apply is blocked until it's ticked.
+   * Used by the newsletter import so admins can mark rows as confirmed.
+   */
+  requireConsentAttestation?: boolean;
 }) {
   const t = useT();
   const { bcp47 } = useLocale();
@@ -68,6 +76,7 @@ export function CsvImportSheet({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<CsvImportSummary | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [attested, setAttested] = useState(false);
 
   function reset() {
     setFileText('');
@@ -76,6 +85,7 @@ export function CsvImportSheet({
     setDone(null);
     setError(null);
     setDragOver(false);
+    setAttested(false);
   }
 
   async function readFile(f: File) {
@@ -89,7 +99,11 @@ export function CsvImportSheet({
     setBusy('preview');
     setError(null);
     try {
-      const res = await importFn(companySlug, { csv: fileText, dryRun: true });
+      const res = await importFn(companySlug, {
+        csv: fileText,
+        dryRun: true,
+        ...(requireConsentAttestation ? { attestConsent: attested } : {}),
+      });
       setPreview(res.summary);
     } catch (err) {
       setError(errMessage(err));
@@ -103,7 +117,10 @@ export function CsvImportSheet({
     setBusy('apply');
     setError(null);
     try {
-      const res = await importFn(companySlug, { csv: fileText });
+      const res = await importFn(companySlug, {
+        csv: fileText,
+        ...(requireConsentAttestation ? { attestConsent: attested } : {}),
+      });
       setDone(res.summary);
       onImported();
     } catch (err) {
@@ -263,21 +280,44 @@ export function CsvImportSheet({
                 </Button>
               </SheetClose>
             ) : (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  disabled={!fileText || busy !== false}
-                  onClick={runPreview}
-                >
-                  {busy === 'preview' ? <Loader2 className="size-3.5 animate-spin" /> : null}
-                  {t(k('importPreview'))}
-                </Button>
-                <Button className="flex-1" disabled={!preview || busy !== false} onClick={apply}>
-                  {busy === 'apply' ? <Loader2 className="size-3.5 animate-spin" /> : null}
-                  {t(k('importApply'), { n: preview ? preview.parsedRows - preview.skipped : 0 })}
-                </Button>
-              </div>
+              <>
+                {requireConsentAttestation ? (
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3 text-[12px] leading-snug text-muted-foreground">
+                    <Checkbox
+                      checked={attested}
+                      onChange={(e) => setAttested(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>{t(k('importConsentLabel'))}</span>
+                  </label>
+                ) : null}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    disabled={!fileText || busy !== false}
+                    onClick={runPreview}
+                  >
+                    {busy === 'preview' ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                    {t(k('importPreview'))}
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    disabled={
+                      !preview || busy !== false || (requireConsentAttestation && !attested)
+                    }
+                    title={
+                      requireConsentAttestation && !attested
+                        ? t(k('importConsentRequired'))
+                        : undefined
+                    }
+                    onClick={apply}
+                  >
+                    {busy === 'apply' ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                    {t(k('importApply'), { n: preview ? preview.parsedRows - preview.skipped : 0 })}
+                  </Button>
+                </div>
+              </>
             )}
           </div>
         </SheetContent>

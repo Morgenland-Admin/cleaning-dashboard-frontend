@@ -203,6 +203,7 @@ export function NewsletterPage() {
               sampleHref="/admin/newsletter/import/sample"
               importFn={(cs, body) => newsletterAdminApi.import(cs, body)}
               onImported={refreshAll}
+              requireConsentAttestation
               disabled={isAllBrands}
               disabledTitle={t('newsletter.importPickBrand')}
               headerChip={

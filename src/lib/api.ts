@@ -1000,7 +1000,7 @@ export const newsletterAdminApi = {
   /** ALL_68 — bulk CSV import. dryRun:true returns the summary without writing. */
   import(
     companySlug: CompanySlug,
-    body: { csv: string; dryRun?: boolean; tag?: string; source?: string },
+    body: { csv: string; dryRun?: boolean; tag?: string; source?: string; attestConsent?: boolean },
   ) {
     return request<{
       summary: NewsletterImportSummary;
