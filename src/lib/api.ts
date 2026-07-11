@@ -1037,6 +1037,7 @@ export interface Customer {
   loyaltyTier: LoyaltyTier;
   tags: string[];
   internalNotes: string | null;
+  defaultPaymentTermsDays: number | null;
   firstOrderAt: string | null;
   lastOrderAt: string | null;
   marketingOptIn: boolean;
@@ -1057,6 +1058,7 @@ export interface CustomerCreateInput {
   tags?: string[];
   internalNotes?: string;
   marketingOptIn?: boolean;
+  defaultPaymentTermsDays?: number | null;
 }
 
 export interface CustomerUpdateInput {
@@ -1072,6 +1074,7 @@ export interface CustomerUpdateInput {
   tags?: string[];
   internalNotes?: string | null;
   marketingOptIn?: boolean;
+  defaultPaymentTermsDays?: number | null;
 }
 
 export type NewsletterProfileStatus = 'confirmed' | 'pending' | 'unsubscribed' | 'none';
@@ -1839,6 +1842,8 @@ export interface InvoiceLineItem {
   label: string;
   quantity: number;
   unitPriceCents: number;
+  /** Render as a bold package/section header line on the invoice. */
+  isPackage?: boolean;
 }
 
 export interface InvoiceRow {

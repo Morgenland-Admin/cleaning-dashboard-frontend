@@ -5,6 +5,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Domain of synthetic placeholder addresses on imported customers with no real
+ * email. Mirrors the backend guard in email/service.ts — these are never mailed.
+ */
+export const NONCONTACTABLE_EMAIL_DOMAIN = 'import.cleanilo.local';
+
+/** True if `email` is a synthetic placeholder (imported customer, no real email). */
+export function isNonContactableEmail(email: string | null | undefined): boolean {
+  return !!email && email.trim().toLowerCase().endsWith(`@${NONCONTACTABLE_EMAIL_DOMAIN}`);
+}
+
 export function formatCurrency(amount: number, currency = 'EUR', bcp47 = 'de-DE') {
   // Always show cents — this renders real money (totals, lifetime spend,
   // subscription price); rounding to whole euros misstated amounts (€149.50 → €150).

@@ -37,7 +37,13 @@ import {
   type ServiceInquiry,
 } from '@/lib/api';
 import { usePageTitle } from '@/lib/use-page-title';
-import { cn, formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
+import {
+  cn,
+  formatCurrency,
+  formatDateTime,
+  formatNumber,
+  isNonContactableEmail,
+} from '@/lib/utils';
 
 const TIER_TONE: Record<LoyaltyTier, 'neutral' | 'info' | 'success'> = {
   neukunde: 'neutral',
@@ -134,6 +140,7 @@ export function CustomerDetailPage() {
   }
 
   const { customer, orders, inquiries, contacts, newsletter, stats } = query.data;
+  const noEmail = isNonContactableEmail(customer.email);
   const fullAddress = [
     customer.addressLine1,
     customer.addressLine2,
@@ -158,17 +165,24 @@ export function CustomerDetailPage() {
             <h1 className="font-serif text-2xl font-semibold tracking-tight">
               {customer.name ?? customer.email}
             </h1>
-            <a
-              href={`mailto:${customer.email}`}
-              className="text-sm text-muted-foreground hover:text-primary hover:underline"
-            >
-              {customer.email}
-            </a>
+            {noEmail ? (
+              <span className="text-sm text-muted-foreground">{t('customers.noEmail')}</span>
+            ) : (
+              <a
+                href={`mailto:${customer.email}`}
+                className="text-sm text-muted-foreground hover:text-primary hover:underline"
+              >
+                {customer.email}
+              </a>
+            )}
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <StatusBadge
                 label={t(`customers.tier.${customer.loyaltyTier}` as never)}
                 tone={TIER_TONE[customer.loyaltyTier]}
               />
+              {noEmail ? (
+                <StatusBadge label={t('customers.nonContactable')} tone="warning" />
+              ) : null}
               {customer.tags.map((tag) => (
                 <Badge key={tag} variant="secondary">
                   {tag}
@@ -246,7 +260,10 @@ export function CustomerDetailPage() {
             <CardTitle className="text-base">{t('customers.profile')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 text-sm">
-            <ProfileRow icon={<Mail className="size-4" />} value={customer.email} />
+            <ProfileRow
+              icon={<Mail className="size-4" />}
+              value={noEmail ? t('customers.noEmail') : customer.email}
+            />
             <ProfileRow icon={<Phone className="size-4" />} value={customer.phone} />
             <ProfileRow icon={<MapPin className="size-4" />} value={fullAddress || null} />
             <div className="flex items-center justify-between border-t border-border pt-3 text-xs">

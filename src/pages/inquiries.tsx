@@ -14,6 +14,7 @@ import {
   CircleDollarSign,
   ClipboardEdit,
   Inbox,
+  ListPlus,
   Mail,
   MapPin,
   Pencil,
@@ -31,6 +32,7 @@ import { AttachmentGallery } from '@/components/attachment-gallery';
 import { BrandMark } from '@/components/brand-mark';
 import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
+import { LineItemsEditor } from '@/components/line-items-editor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,6 +49,14 @@ import {
   type ServiceInquiry,
   ApiError,
 } from '@/lib/api';
+import {
+  emptyLine,
+  grossFromNetCents,
+  toCents,
+  toQuantity,
+  type LineDraft,
+  type PriceMode,
+} from '@/lib/line-items';
 import { useClaudeAssist } from '@/lib/use-claude-assist';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime, formatShortDate } from '@/lib/utils';
@@ -73,6 +83,21 @@ const STATUS_KEY: Record<InquiryStatus, string> = {
   won: 'inquiries.status.won',
   lost: 'inquiries.status.lost',
 };
+
+/** German small-business default VAT, used to gross up net-entered offer lines. */
+const OFFER_VAT = 19;
+const OFFER_ITEMS_MARKER = '\n\n— Positionen —\n';
+
+function offerEur(cents: number, bcp47: string): string {
+  return new Intl.NumberFormat(bcp47, { style: 'currency', currency: 'EUR' }).format(cents / 100);
+}
+
+/** Gross cents for one offer line (grosses up net-entered prices at OFFER_VAT). */
+function offerLineGrossCents(l: LineDraft, priceMode: PriceMode): number {
+  const unit = toCents(l.unitPriceEur);
+  const grossUnit = priceMode === 'gross' ? unit : grossFromNetCents(unit, OFFER_VAT);
+  return Math.round(toQuantity(l.quantity) * grossUnit);
+}
 
 function CallbackOwnerBadge({
   owner,
@@ -444,6 +469,36 @@ function DetailPanel({
   // --- Offer (quote) compose + send ---------------------------------------
   const [offerBody, setOfferBody] = useState('');
   const [offerAmount, setOfferAmount] = useState(inquiry.quotedAmount ?? '');
+  // Optional itemized positions → drive the offer total + an itemization block.
+  // Offers quote the customer a gross price, so the editor defaults to gross.
+  const [showOfferItems, setShowOfferItems] = useState(false);
+  const [offerLines, setOfferLines] = useState<LineDraft[]>(() => [emptyLine()]);
+  const [offerPriceMode, setOfferPriceMode] = useState<PriceMode>('gross');
+  const offerItemsGrossCents = useMemo(
+    () => offerLines.reduce((sum, l) => sum + offerLineGrossCents(l, offerPriceMode), 0),
+    [offerLines, offerPriceMode],
+  );
+
+  // Write the priced positions into the offer body + amount. Idempotent: an
+  // existing positions block (below the marker) is rebuilt, never stacked.
+  function applyOfferItems() {
+    const items = offerLines.filter((l) => l.label.trim() && toCents(l.unitPriceEur) !== 0);
+    if (items.length === 0) return;
+    const rows = items.map((l) => {
+      const q = toQuantity(l.quantity) || 1;
+      const bullet = l.isPackage ? '★ ' : '• ';
+      return `${bullet}${l.label.trim()}: ${q} × ${offerEur(
+        offerLineGrossCents({ ...l, quantity: '1' }, offerPriceMode),
+        bcp47,
+      )} = ${offerEur(offerLineGrossCents(l, offerPriceMode), bcp47)}`;
+    });
+    const block = `${OFFER_ITEMS_MARKER}${rows.join('\n')}\n${t(
+      'inquiries.offerItemsTotal',
+    )}: ${offerEur(offerItemsGrossCents, bcp47)}`;
+    const base = offerBody.split(OFFER_ITEMS_MARKER)[0]!.trimEnd();
+    setOfferBody(base + block);
+    setOfferAmount((offerItemsGrossCents / 100).toFixed(2));
+  }
 
   const offerAssist = useClaudeAssist({
     kind: 'inquiry_quote',
@@ -861,6 +916,43 @@ function DetailPanel({
                   onSend={(instruction) => offerAssist.run(instruction, instruction)}
                 />
               </div>
+              {/* Optional: price the offer by position → fills the total + body */}
+              {showOfferItems ? (
+                <div className="mt-2 rounded-md border border-border p-3">
+                  <LineItemsEditor
+                    lines={offerLines}
+                    onLinesChange={setOfferLines}
+                    priceMode={offerPriceMode}
+                    onPriceModeChange={setOfferPriceMode}
+                    taxRatePercent={OFFER_VAT}
+                  />
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium tabular-nums">
+                      {t('inquiries.offerItemsTotal')}: {offerEur(offerItemsGrossCents, bcp47)}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={offerItemsGrossCents === 0}
+                      onClick={applyOfferItems}
+                    >
+                      {t('inquiries.applyOfferItems')}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="mt-2"
+                  onClick={() => setShowOfferItems(true)}
+                >
+                  <ListPlus className="size-3.5" aria-hidden="true" />
+                  {t('inquiries.addOfferItems')}
+                </Button>
+              )}
               <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
                 <div className="flex items-center gap-1.5">
                   <label htmlFor="inquiry-offer-amount" className="text-xs text-muted-foreground">

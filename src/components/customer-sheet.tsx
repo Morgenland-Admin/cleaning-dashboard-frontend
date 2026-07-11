@@ -56,6 +56,9 @@ export function CustomerSheet({
   const [tags, setTags] = useState((editing?.tags ?? []).join(', '));
   const [internalNotes, setInternalNotes] = useState(editing?.internalNotes ?? '');
   const [marketingOptIn, setMarketingOptIn] = useState(editing?.marketingOptIn ?? false);
+  const [defaultPaymentTermsDays, setDefaultPaymentTermsDays] = useState(
+    editing?.defaultPaymentTermsDays != null ? String(editing.defaultPaymentTermsDays) : '',
+  );
   const [formError, setFormError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -65,6 +68,10 @@ export function CustomerSheet({
         .map((s) => s.trim())
         .filter(Boolean);
       const cc = country.trim().toUpperCase();
+      const termRaw = defaultPaymentTermsDays.trim();
+      const termParsed = termRaw === '' ? null : Number(termRaw);
+      const defaultTerm =
+        termParsed != null && Number.isFinite(termParsed) ? Math.round(termParsed) : null;
 
       if (editing) {
         const patch: CustomerUpdateInput = {
@@ -80,6 +87,7 @@ export function CustomerSheet({
           tags: tagsArr,
           internalNotes: internalNotes.trim() === '' ? null : internalNotes.trim(),
           marketingOptIn,
+          defaultPaymentTermsDays: defaultTerm,
         };
         return customersAdminApi.update(slug, editing.id, patch);
       }
@@ -98,6 +106,7 @@ export function CustomerSheet({
       if (city.trim()) payload.city = city.trim();
       if (cc.length === 2) payload.country = cc;
       if (internalNotes.trim()) payload.internalNotes = internalNotes.trim();
+      if (defaultTerm != null) payload.defaultPaymentTermsDays = defaultTerm;
       return customersAdminApi.create(slug, payload);
     },
     onSuccess: (res) => onSaved(res.customer),
@@ -216,6 +225,21 @@ export function CustomerSheet({
                 </option>
               ))}
             </Select>
+          </FormField>
+          <FormField
+            label={t('customers.form.defaultPaymentTerms')}
+            hint={t('customers.form.defaultPaymentTermsHint')}
+          >
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              value={defaultPaymentTermsDays}
+              onChange={(e) => setDefaultPaymentTermsDays(e.target.value)}
+              placeholder="7"
+              className="h-11 w-28 sm:h-9"
+            />
           </FormField>
           <FormField label={t('customers.form.tags')} hint={t('customers.form.tagsHint')}>
             <Input

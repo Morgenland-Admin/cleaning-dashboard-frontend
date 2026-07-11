@@ -11,11 +11,11 @@ import {
   Info,
   Loader2,
   MoreHorizontal,
+  Package,
   Pencil,
   Plus,
   RefreshCcw,
   Send,
-  Trash2,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -26,6 +26,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { FormField } from '@/components/form-field';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
+import { LineItemsEditor } from '@/components/line-items-editor';
 import { PageHeading } from '@/components/page-heading';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,7 @@ import { useProject, type CompanySlug } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
 import {
   ApiError,
+  customersAdminApi,
   errMessage,
   invoicesAdminApi,
   type InvoiceCreateInput,
@@ -62,6 +64,14 @@ import {
   type InvoiceTaxRate,
   type InvoiceUpdateInput,
 } from '@/lib/api';
+import {
+  computeSubtotalCents,
+  emptyLine,
+  lineNetCents,
+  toQuantity,
+  type LineDraft,
+  type PriceMode,
+} from '@/lib/line-items';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime, formatShortDate } from '@/lib/utils';
 
@@ -120,16 +130,6 @@ function formatEur(cents: number, bcp47: string, currency = 'EUR'): string {
 
 function invoiceNumber(inv: InvoiceRow): string {
   return inv.number ?? `#${inv.id}`;
-}
-
-function toCents(eur: string): number {
-  const n = Number(eur.replace(',', '.'));
-  return Number.isFinite(n) ? Math.round(n * 100) : 0;
-}
-
-function toQuantity(value: string): number {
-  const n = Number(value.replace(',', '.'));
-  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 export function InvoicesPage() {
@@ -888,11 +888,16 @@ function InvoiceDetailSheet({
           <ul className="divide-y rounded-md border">
             {invoice.lineItems.map((li, i) => (
               <li key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                <span className="min-w-0 flex-1 truncate">{li.label}</span>
+                <span className={cn('min-w-0 flex-1 truncate', li.isPackage && 'font-semibold')}>
+                  {li.isPackage ? (
+                    <Package className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
+                  ) : null}
+                  {li.label}
+                </span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                   {li.quantity} ×
                 </span>
-                <span className="shrink-0 tabular-nums">
+                <span className={cn('shrink-0 tabular-nums', li.isPackage && 'font-semibold')}>
                   {formatEur(li.unitPriceCents, bcp47, invoice.currency)}
                 </span>
               </li>
@@ -1052,12 +1057,6 @@ function InvoiceDetailSheet({
   );
 }
 
-interface LineDraft {
-  label: string;
-  quantity: string;
-  unitPriceEur: string;
-}
-
 function InvoiceFormSheet({
   slug,
   invoice,
@@ -1091,40 +1090,56 @@ function InvoiceFormSheet({
     paymentMethod: (invoice?.paymentMethod ?? 'transfer') as InvoicePaymentMethod,
     notes: invoice?.notes ?? '',
   }));
+  // Line prices are stored net; the editor shows them net by default. Operators
+  // can flip to gross entry (VAT-inclusive) and the net/VAT are backed out live.
+  const [priceMode, setPriceMode] = useState<PriceMode>('net');
   const [lines, setLines] = useState<LineDraft[]>(() =>
     invoice && invoice.lineItems.length > 0
       ? invoice.lineItems.map((li) => ({
           label: li.label,
           quantity: String(li.quantity),
           unitPriceEur: (li.unitPriceCents / 100).toFixed(2),
+          isPackage: li.isPackage ?? false,
         }))
-      : [{ label: '', quantity: '1', unitPriceEur: '' }],
+      : [emptyLine()],
   );
   const [error, setError] = useState<string | null>(null);
+  // Whether the operator has manually touched the payment term (suppresses the
+  // customer-default auto-fill once they've made a deliberate choice).
+  const [termTouched, setTermTouched] = useState(false);
 
   function setField<K extends keyof typeof fields>(key: K, value: (typeof fields)[K]) {
     setFields((f) => ({ ...f, [key]: value }));
   }
 
-  function setLine(idx: number, patch: Partial<LineDraft>) {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  /** Best-effort: pull the recipient customer's default payment term into a new
+   *  invoice (unless the operator already picked one). */
+  async function maybePrefillTermFromCustomer() {
+    if (isEdit || termTouched) return;
+    const email = fields.recipientEmail.trim().toLowerCase();
+    if (!email) return;
+    try {
+      const res = await customersAdminApi.list(slug, { email, limit: 1 });
+      const term = res.customers[0]?.defaultPaymentTermsDays;
+      if (term != null && !termTouched) setField('paymentTermsDays', String(term));
+    } catch {
+      // ignore lookup failures — the field keeps its current value
+    }
   }
 
   const totals = useMemo(() => {
-    const subtotal = lines.reduce(
-      (sum, l) => sum + Math.round(toQuantity(l.quantity) * toCents(l.unitPriceEur)),
-      0,
-    );
+    const subtotal = computeSubtotalCents(lines, priceMode, fields.taxRatePercent);
     const tax = Math.round((subtotal * fields.taxRatePercent) / 100);
     return { subtotal, tax, total: subtotal + tax };
-  }, [lines, fields.taxRatePercent]);
+  }, [lines, fields.taxRatePercent, priceMode]);
 
   const mutation = useMutation({
     mutationFn: () => {
       const lineItems: InvoiceLineItem[] = lines.map((l) => ({
         label: l.label.trim(),
         quantity: toQuantity(l.quantity) || 1,
-        unitPriceCents: toCents(l.unitPriceEur),
+        unitPriceCents: lineNetCents(l, priceMode, fields.taxRatePercent),
+        ...(l.isPackage ? { isPackage: true } : {}),
       }));
       const paymentTermsDays = Number(fields.paymentTermsDays);
       // Leistungsdatum only when the toggle is on; otherwise it's not stored/shown.
@@ -1215,6 +1230,7 @@ function InvoiceFormSheet({
               className="h-11 md:h-9"
               value={fields.recipientEmail}
               onChange={(e) => setField('recipientEmail', e.target.value)}
+              onBlur={() => void maybePrefillTermFromCustomer()}
             />
           </FormField>
           <FormField
@@ -1339,76 +1355,21 @@ function InvoiceFormSheet({
                 className="h-11 md:h-9"
                 disabled={fields.paymentMethod !== 'transfer'}
                 value={fields.paymentTermsDays}
-                onChange={(e) => setField('paymentTermsDays', e.target.value)}
+                onChange={(e) => {
+                  setTermTouched(true);
+                  setField('paymentTermsDays', e.target.value);
+                }}
               />
             </FormField>
           </div>
 
-          <fieldset>
-            <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('invoices.form.lineItems')}
-            </legend>
-            <div className="mt-2 flex flex-col gap-3">
-              {lines.map((line, idx) => (
-                <div key={idx} className="flex flex-col gap-2 rounded-lg border border-border p-3">
-                  <FormField label={t('invoices.form.label')} required>
-                    <Input
-                      className="h-11 md:h-9"
-                      value={line.label}
-                      onChange={(e) => setLine(idx, { label: e.target.value })}
-                    />
-                  </FormField>
-                  <div className="flex items-end gap-2">
-                    <FormField label={t('invoices.form.quantity')} required className="w-24">
-                      <Input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        inputMode="decimal"
-                        className="h-11 md:h-9"
-                        value={line.quantity}
-                        onChange={(e) => setLine(idx, { quantity: e.target.value })}
-                      />
-                    </FormField>
-                    <FormField label={t('invoices.form.unitPrice')} required className="flex-1">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        inputMode="decimal"
-                        className="h-11 md:h-9"
-                        value={line.unitPriceEur}
-                        onChange={(e) => setLine(idx, { unitPriceEur: e.target.value })}
-                      />
-                    </FormField>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-11 w-11 shrink-0 text-muted-foreground hover:text-destructive md:h-9 md:w-9"
-                      aria-label={t('invoices.form.removeLine')}
-                      disabled={lines.length === 1}
-                      onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))}
-                    >
-                      <Trash2 className="size-4" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="min-h-11 self-start md:min-h-8"
-                onClick={() =>
-                  setLines((prev) => [...prev, { label: '', quantity: '1', unitPriceEur: '' }])
-                }
-              >
-                <Plus className="size-3.5" aria-hidden="true" />
-                {t('invoices.form.addLine')}
-              </Button>
-            </div>
-          </fieldset>
+          <LineItemsEditor
+            lines={lines}
+            onLinesChange={setLines}
+            priceMode={priceMode}
+            onPriceModeChange={setPriceMode}
+            taxRatePercent={fields.taxRatePercent}
+          />
 
           <div className="grid gap-1 rounded-lg border border-border bg-muted/30 p-3 text-sm">
             <div className="flex justify-between gap-3">

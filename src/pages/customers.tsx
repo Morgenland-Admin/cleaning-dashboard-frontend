@@ -46,7 +46,13 @@ import {
   type LoyaltyTier,
 } from '@/lib/api';
 import { usePageTitle } from '@/lib/use-page-title';
-import { cn, formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
+import {
+  cn,
+  formatCurrency,
+  formatDateTime,
+  formatNumber,
+  isNonContactableEmail,
+} from '@/lib/utils';
 
 type TierFilter = LoyaltyTier | 'all';
 
@@ -362,18 +368,23 @@ function CustomerCard({
   onDelete: () => void;
 }) {
   const t = useT();
+  const noEmail = isNonContactableEmail(customer.email);
   return (
     <li className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-2">
         <Link to={`/customers/${customer.id}`} className="min-w-0 hover:underline">
           <p className="truncate font-medium text-foreground">{customer.name ?? '—'}</p>
-          <p className="truncate text-xs text-muted-foreground">{customer.email}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {noEmail ? t('customers.noEmail') : customer.email}
+          </p>
         </Link>
-        <StatusBadge
-          label={t(`customers.tier.${customer.loyaltyTier}` as never)}
-          tone={TIER_TONE[customer.loyaltyTier]}
-          className="shrink-0"
-        />
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <StatusBadge
+            label={t(`customers.tier.${customer.loyaltyTier}` as never)}
+            tone={TIER_TONE[customer.loyaltyTier]}
+          />
+          {noEmail ? <StatusBadge label={t('customers.nonContactable')} tone="warning" /> : null}
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         {customer.phone ? <span>{customer.phone}</span> : null}
@@ -417,6 +428,7 @@ function CustomerTableRow({
   onDelete: () => void;
 }) {
   const t = useT();
+  const noEmail = isNonContactableEmail(customer.email);
   return (
     <TableRow>
       <TableCell className="max-w-[18rem]">
@@ -428,7 +440,9 @@ function CustomerTableRow({
             <p className="truncate font-medium text-foreground group-hover:underline">
               {customer.name ?? '—'}
             </p>
-            <p className="truncate text-xs text-muted-foreground">{customer.email}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {noEmail ? t('customers.noEmail') : customer.email}
+            </p>
           </div>
         </Link>
       </TableCell>
@@ -442,10 +456,13 @@ function CustomerTableRow({
         {formatCurrency(customer.totalSpentCents / 100, 'EUR', bcp47)}
       </TableCell>
       <TableCell>
-        <StatusBadge
-          label={t(`customers.tier.${customer.loyaltyTier}` as never)}
-          tone={TIER_TONE[customer.loyaltyTier]}
-        />
+        <div className="flex flex-wrap items-center gap-1">
+          <StatusBadge
+            label={t(`customers.tier.${customer.loyaltyTier}` as never)}
+            tone={TIER_TONE[customer.loyaltyTier]}
+          />
+          {noEmail ? <StatusBadge label={t('customers.nonContactable')} tone="warning" /> : null}
+        </div>
       </TableCell>
       <TableCell className="whitespace-nowrap text-muted-foreground">
         {formatDateTime(customer.createdAt, bcp47, { dateStyle: 'medium' })}
