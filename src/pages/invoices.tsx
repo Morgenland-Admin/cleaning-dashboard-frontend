@@ -56,6 +56,7 @@ import {
   invoicesAdminApi,
   type InvoiceCreateInput,
   type InvoiceLineItem,
+  type InvoicePaymentMethod,
   type InvoiceRow,
   type InvoiceStatus,
   type InvoiceTaxRate,
@@ -862,7 +863,22 @@ function InvoiceDetailSheet({
           <DetailRow label={t('invoices.form.customerType')}>
             {invoice.customerType === 'b2b' ? 'B2B' : 'B2C'}
           </DetailRow>
-          <DetailRow label={t('invoices.form.paymentTerms')}>{invoice.paymentTermsDays}</DetailRow>
+          <DetailRow label={t('invoices.form.paymentMethod')}>
+            {t(
+              `invoices.form.payment${
+                invoice.paymentMethod === 'card'
+                  ? 'Card'
+                  : invoice.paymentMethod === 'cash'
+                    ? 'Cash'
+                    : 'Transfer'
+              }` as never,
+            )}
+          </DetailRow>
+          {invoice.paymentMethod === 'transfer' ? (
+            <DetailRow label={t('invoices.form.paymentTerms')}>
+              {invoice.paymentTermsDays}
+            </DetailRow>
+          ) : null}
         </section>
 
         <section>
@@ -1066,9 +1082,13 @@ function InvoiceFormSheet({
     city: invoice?.recipientCity ?? '',
     serviceDate: invoice?.serviceDate ?? '',
     serviceDateEnd: invoice?.serviceDateEnd ?? '',
+    // Show the Leistungsdatum on the invoice? On for new invoices; for existing
+    // ones, on only if a date is already set.
+    showServiceDate: invoice ? Boolean(invoice.serviceDate) : true,
     customerType: (invoice?.customerType ?? 'b2c') as 'b2c' | 'b2b',
     taxRatePercent: (invoice?.taxRatePercent ?? 19) as InvoiceTaxRate,
-    paymentTermsDays: String(invoice?.paymentTermsDays ?? 14),
+    paymentTermsDays: String(invoice?.paymentTermsDays ?? 7),
+    paymentMethod: (invoice?.paymentMethod ?? 'transfer') as InvoicePaymentMethod,
     notes: invoice?.notes ?? '',
   }));
   const [lines, setLines] = useState<LineDraft[]>(() =>
@@ -1107,6 +1127,9 @@ function InvoiceFormSheet({
         unitPriceCents: toCents(l.unitPriceEur),
       }));
       const paymentTermsDays = Number(fields.paymentTermsDays);
+      // Leistungsdatum only when the toggle is on; otherwise it's not stored/shown.
+      const svcDate = fields.showServiceDate ? fields.serviceDate || null : null;
+      const svcDateEnd = fields.showServiceDate ? fields.serviceDateEnd || null : null;
 
       if (invoice) {
         const patch: InvoiceUpdateInput = {
@@ -1116,11 +1139,12 @@ function InvoiceFormSheet({
           recipientAddressLine2: fields.addressLine2.trim() || null,
           recipientPostalCode: fields.postalCode.trim() || null,
           recipientCity: fields.city.trim() || null,
-          serviceDate: fields.serviceDate || null,
-          serviceDateEnd: fields.serviceDateEnd || null,
+          serviceDate: svcDate,
+          serviceDateEnd: svcDateEnd,
           lineItems,
           taxRatePercent: fields.taxRatePercent,
-          paymentTermsDays: Number.isFinite(paymentTermsDays) ? paymentTermsDays : 14,
+          paymentTermsDays: Number.isFinite(paymentTermsDays) ? paymentTermsDays : 7,
+          paymentMethod: fields.paymentMethod,
           notes: fields.notes.trim() || null,
         };
         return invoicesAdminApi.update(slug, invoice.id, patch);
@@ -1131,15 +1155,16 @@ function InvoiceFormSheet({
         customerType: fields.customerType,
         lineItems,
         taxRatePercent: fields.taxRatePercent,
-        paymentTermsDays: Number.isFinite(paymentTermsDays) ? paymentTermsDays : 14,
+        paymentTermsDays: Number.isFinite(paymentTermsDays) ? paymentTermsDays : 7,
+        paymentMethod: fields.paymentMethod,
       };
       if (fields.recipientEmail.trim()) input.recipientEmail = fields.recipientEmail.trim();
       if (fields.addressLine1.trim()) input.recipientAddressLine1 = fields.addressLine1.trim();
       if (fields.addressLine2.trim()) input.recipientAddressLine2 = fields.addressLine2.trim();
       if (fields.postalCode.trim()) input.recipientPostalCode = fields.postalCode.trim();
       if (fields.city.trim()) input.recipientCity = fields.city.trim();
-      if (fields.serviceDate) input.serviceDate = fields.serviceDate;
-      if (fields.serviceDateEnd) input.serviceDateEnd = fields.serviceDateEnd;
+      if (svcDate) input.serviceDate = svcDate;
+      if (svcDateEnd) input.serviceDateEnd = svcDateEnd;
       if (fields.notes.trim()) input.notes = fields.notes.trim();
       return invoicesAdminApi.create(slug, input);
     },
@@ -1233,27 +1258,38 @@ function InvoiceFormSheet({
               />
             </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField
-              label={t('invoices.form.serviceDate')}
-              hint={t('invoices.form.requiredForIssue')}
-            >
-              <Input
-                type="date"
-                className="h-11 md:h-9"
-                value={fields.serviceDate}
-                onChange={(e) => setField('serviceDate', e.target.value)}
-              />
-            </FormField>
-            <FormField label={t('invoices.form.serviceDateEnd')}>
-              <Input
-                type="date"
-                className="h-11 md:h-9"
-                value={fields.serviceDateEnd}
-                onChange={(e) => setField('serviceDateEnd', e.target.value)}
-              />
-            </FormField>
-          </div>
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={fields.showServiceDate}
+              onChange={(e) => setField('showServiceDate', e.target.checked)}
+            />
+            {t('invoices.form.showServiceDate')}
+          </label>
+          {fields.showServiceDate ? (
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label={t('invoices.form.serviceDate')}>
+                <Input
+                  type="date"
+                  className="h-11 md:h-9"
+                  value={fields.serviceDate}
+                  onChange={(e) => setField('serviceDate', e.target.value)}
+                />
+              </FormField>
+              <FormField
+                label={t('invoices.form.serviceDateEnd')}
+                hint={t('invoices.form.serviceDateEndHint')}
+              >
+                <Input
+                  type="date"
+                  className="h-11 md:h-9"
+                  value={fields.serviceDateEnd}
+                  onChange={(e) => setField('serviceDateEnd', e.target.value)}
+                />
+              </FormField>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <FormField label={t('invoices.form.customerType')}>
               <Select
@@ -1278,17 +1314,35 @@ function InvoiceFormSheet({
               </Select>
             </FormField>
           </div>
-          <FormField label={t('invoices.form.paymentTerms')}>
-            <Input
-              type="number"
-              min={0}
-              step={1}
-              inputMode="numeric"
-              className="h-11 md:h-9"
-              value={fields.paymentTermsDays}
-              onChange={(e) => setField('paymentTermsDays', e.target.value)}
-            />
-          </FormField>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label={t('invoices.form.paymentMethod')}>
+              <Select
+                value={fields.paymentMethod}
+                onChange={(e) => setField('paymentMethod', e.target.value as InvoicePaymentMethod)}
+              >
+                <option value="transfer">{t('invoices.form.paymentTransfer')}</option>
+                <option value="card">{t('invoices.form.paymentCard')}</option>
+                <option value="cash">{t('invoices.form.paymentCash')}</option>
+              </Select>
+            </FormField>
+            <FormField
+              label={t('invoices.form.paymentTerms')}
+              hint={
+                fields.paymentMethod !== 'transfer' ? t('invoices.form.paidNoTerms') : undefined
+              }
+            >
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                className="h-11 md:h-9"
+                disabled={fields.paymentMethod !== 'transfer'}
+                value={fields.paymentTermsDays}
+                onChange={(e) => setField('paymentTermsDays', e.target.value)}
+              />
+            </FormField>
+          </div>
 
           <fieldset>
             <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

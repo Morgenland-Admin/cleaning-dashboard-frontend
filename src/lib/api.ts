@@ -1832,6 +1832,8 @@ export const ordersCancellationApi = {
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'void';
 export type InvoiceTaxRate = 0 | 7 | 19;
+/** How the invoice is settled — drives the payment text + bank block. */
+export type InvoicePaymentMethod = 'transfer' | 'card' | 'cash';
 
 export interface InvoiceLineItem {
   label: string;
@@ -1863,6 +1865,7 @@ export interface InvoiceRow {
   totalCents: number;
   lineItems: InvoiceLineItem[];
   paymentTermsDays: number;
+  paymentMethod: InvoicePaymentMethod;
   dueAt: string | null;
   sentAt: string | null;
   paidAt: string | null;
@@ -1890,6 +1893,7 @@ export interface InvoiceCreateInput {
   lineItems: InvoiceLineItem[];
   taxRatePercent?: InvoiceTaxRate;
   paymentTermsDays?: number;
+  paymentMethod?: InvoicePaymentMethod;
   notes?: string;
 }
 
@@ -1907,6 +1911,7 @@ export interface InvoiceUpdateInput {
   lineItems?: InvoiceLineItem[];
   taxRatePercent?: InvoiceTaxRate;
   paymentTermsDays?: number;
+  paymentMethod?: InvoicePaymentMethod;
   notes?: string | null;
   status?: InvoiceStatus;
   odooInvoiceId?: string | null;
