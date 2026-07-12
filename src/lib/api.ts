@@ -2281,3 +2281,122 @@ export const seoPagesAdminApi = {
     return seoPagesAdminApi.setFeaturedImage(companySlug, id, sign.publicUrl);
   },
 };
+
+// --- Price adjustments (record-only pricing log) ---------------------------
+
+export type PriceAdjustmentScope = 'global' | 'service' | 'zone';
+
+export interface PriceAdjustment {
+  id: number;
+  scope: PriceAdjustmentScope;
+  scopeKey: string | null;
+  adjustmentPercent: string;
+  reason: string | null;
+  active: boolean;
+  validFrom: string | null;
+  validTo: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+}
+
+export interface PriceAdjustmentInput {
+  scope: PriceAdjustmentScope;
+  scopeKey?: string;
+  adjustmentPercent: number;
+  reason?: string;
+  active?: boolean;
+  validFrom?: string;
+  validTo?: string;
+}
+
+export const priceAdjustmentsAdminApi = {
+  list(companySlug: CompanySlug, activeOnly?: boolean, signal?: AbortSignal) {
+    const qs = activeOnly !== undefined ? `?active=${String(activeOnly)}` : '';
+    return request<{ adjustments: PriceAdjustment[]; note: string }>(
+      `/admin/price-adjustments${qs}`,
+      { companySlug, signal },
+    );
+  },
+  create(companySlug: CompanySlug, input: PriceAdjustmentInput) {
+    return request<{ adjustment: PriceAdjustment }>('/admin/price-adjustments', {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
+  setActive(companySlug: CompanySlug, id: number, active: boolean) {
+    return request<{ adjustment: PriceAdjustment }>(`/admin/price-adjustments/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: { active },
+    });
+  },
+};
+
+// --- City status (expansion / SEO rollout tracker) -------------------------
+
+export type CityStatusValue = 'locked' | 'soft_launch' | 'active' | 'scaling';
+
+export interface CityStatus {
+  id: number;
+  city: string;
+  plzPrefix: string;
+  status: CityStatusValue;
+  seoPageGenerated: boolean;
+  googleAdsActive: boolean;
+  notes: string | null;
+  partnerCount: number;
+  activePartnerCount: number;
+  orderCount30d: number;
+  ordersPerPartner: string | null;
+  lastStatusChange: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CityStatusCreateInput {
+  city: string;
+  plzPrefix: string;
+  status?: CityStatusValue;
+  seoPageGenerated?: boolean;
+  googleAdsActive?: boolean;
+  notes?: string;
+}
+
+export interface CityStatusUpdateInput {
+  city?: string;
+  status?: CityStatusValue;
+  seoPageGenerated?: boolean;
+  googleAdsActive?: boolean;
+  notes?: string | null;
+}
+
+export const cityStatusAdminApi = {
+  list(companySlug: CompanySlug, status?: CityStatusValue, signal?: AbortSignal) {
+    const qs = status ? `?status=${status}` : '';
+    return request<{ cities: CityStatus[] }>(`/admin/city-status${qs}`, { companySlug, signal });
+  },
+  create(companySlug: CompanySlug, input: CityStatusCreateInput) {
+    return request<{ city: CityStatus }>('/admin/city-status', {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
+  update(companySlug: CompanySlug, id: number, input: CityStatusUpdateInput) {
+    return request<{ city: CityStatus }>(`/admin/city-status/${id}`, {
+      method: 'PATCH',
+      companySlug,
+      body: input,
+    });
+  },
+  recompute(companySlug: CompanySlug, id: number) {
+    return request<{ city: CityStatus }>(`/admin/city-status/${id}/recompute`, {
+      method: 'POST',
+      companySlug,
+    });
+  },
+  remove(companySlug: CompanySlug, id: number) {
+    return request<void>(`/admin/city-status/${id}`, { method: 'DELETE', companySlug });
+  },
+};

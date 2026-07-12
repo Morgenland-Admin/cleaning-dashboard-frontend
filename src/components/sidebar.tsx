@@ -10,8 +10,10 @@ import {
   LayoutGrid,
   LogOut,
   Mail,
+  MapPin,
   MessageSquare,
   Newspaper,
+  Percent,
   PhoneCall,
   Receipt,
   RefreshCcw,
@@ -66,6 +68,8 @@ const primaryNav: NavItem[] = [
   { to: '/tasks', labelKey: 'nav.tasks', icon: CheckSquare },
   { to: '/exports', labelKey: 'nav.exports', icon: Database },
   { to: '/pricing', labelKey: 'nav.pricing', icon: Tag },
+  { to: '/preis-anpassungen', labelKey: 'nav.priceAdjustments', icon: Percent },
+  { to: '/staedte', labelKey: 'nav.cityStatus', icon: MapPin },
   { to: '/companies', labelKey: 'nav.companies', icon: Building2 },
 ];
 

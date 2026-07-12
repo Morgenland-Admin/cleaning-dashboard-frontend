@@ -57,6 +57,12 @@ const PartnersPage = lazy(() =>
   import('@/pages/partners').then((m) => ({ default: m.PartnersPage })),
 );
 const PricingPage = lazy(() => import('@/pages/pricing').then((m) => ({ default: m.PricingPage })));
+const PriceAdjustmentsPage = lazy(() =>
+  import('@/pages/price-adjustments').then((m) => ({ default: m.PriceAdjustmentsPage })),
+);
+const CityStatusPage = lazy(() =>
+  import('@/pages/city-status').then((m) => ({ default: m.CityStatusPage })),
+);
 const ProfilePage = lazy(() => import('@/pages/profile').then((m) => ({ default: m.ProfilePage })));
 const ReviewsPage = lazy(() => import('@/pages/reviews').then((m) => ({ default: m.ReviewsPage })));
 const SettingsPage = lazy(() =>
@@ -96,6 +102,8 @@ export const router = createBrowserRouter([
           { path: 'tasks', element: <TasksPage /> },
           { path: 'exports', element: <ExportsPage /> },
           { path: 'pricing', element: <PricingPage /> },
+          { path: 'preis-anpassungen', element: <PriceAdjustmentsPage /> },
+          { path: 'staedte', element: <CityStatusPage /> },
           { path: 'chat', element: <ChatPage /> },
           { path: 'partner', element: <PartnersPage /> },
           { path: 'companies', element: <CompaniesPage /> },
