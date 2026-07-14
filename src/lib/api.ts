@@ -1415,12 +1415,34 @@ export interface AiAssistInput {
   fresh?: boolean; // ignore `current`, write from scratch
 }
 
+/** One service position extracted from inquiry/offer text by Claude. */
+export interface ExtractedOfferItem {
+  label: string;
+  quantity: number;
+  /** Gross unit price in euros, or null when the text names no price. */
+  unitPriceGross: number | null;
+}
+
 export const aiApi = {
   assist(companySlug: CompanySlug, input: AiAssistInput, signal?: AbortSignal) {
     return request<{ text: string }>('/admin/ai/assist', {
       method: 'POST',
       companySlug,
       body: input,
+      signal,
+    });
+  },
+  /** Extract offer line items from an inquiry's request + drafted offer text. */
+  extractOfferItems(
+    companySlug: CompanySlug,
+    refId: number,
+    current?: string,
+    signal?: AbortSignal,
+  ) {
+    return request<{ items: ExtractedOfferItem[] }>('/admin/ai/extract-offer-items', {
+      method: 'POST',
+      companySlug,
+      body: { refId, current },
       signal,
     });
   },
@@ -1976,6 +1998,14 @@ export const invoicesAdminApi = {
       `/admin/invoices/${id}/send`,
       { method: 'POST', companySlug, body: {} },
     );
+  },
+  /** Issue a draft without emailing it (offline / print flow). */
+  issue(companySlug: CompanySlug, id: number) {
+    return request<{ invoice: InvoiceRow }>(`/admin/invoices/${id}/issue`, {
+      method: 'POST',
+      companySlug,
+      body: {},
+    });
   },
   markPaid(companySlug: CompanySlug, id: number) {
     return request<{ invoice: InvoiceRow }>(`/admin/invoices/${id}/mark-paid`, {

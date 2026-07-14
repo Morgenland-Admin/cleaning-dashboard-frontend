@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
-import { type CompanySlug } from '@/contexts/project-context';
+import { useProject, type CompanySlug } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
 import {
   ApiError,
@@ -77,7 +77,15 @@ export function InvoiceFormSheet({
 }) {
   const t = useT();
   const { bcp47 } = useLocale();
+  const { projects, setActiveProjectId } = useProject();
   const isEdit = invoice != null;
+
+  // Which brand this new invoice belongs to. Drives the tenant it's created in
+  // and therefore the invoice-number prefix (HT-, CL-, TR-). Defaults to the
+  // brand the operator is currently viewing; ignored when editing (an issued
+  // or draft invoice can't be moved to another brand's ledger).
+  const [createSlug, setCreateSlug] = useState<CompanySlug>(slug);
+  const targetSlug = isEdit ? slug : createSlug;
 
   const [fields, setFields] = useState(() => ({
     recipientName: invoice?.recipientName ?? prefill?.recipientName ?? '',
@@ -126,7 +134,7 @@ export function InvoiceFormSheet({
     const email = fields.recipientEmail.trim().toLowerCase();
     if (!email) return;
     try {
-      const res = await customersAdminApi.list(slug, { email, limit: 1 });
+      const res = await customersAdminApi.list(targetSlug, { email, limit: 1 });
       const term = res.customers[0]?.defaultPaymentTermsDays;
       if (term != null && !termTouched) setField('paymentTermsDays', String(term));
     } catch {
@@ -188,9 +196,17 @@ export function InvoiceFormSheet({
       if (svcDate) input.serviceDate = svcDate;
       if (svcDateEnd) input.serviceDateEnd = svcDateEnd;
       if (fields.notes.trim()) input.notes = fields.notes.trim();
-      return invoicesAdminApi.create(slug, input);
+      return invoicesAdminApi.create(targetSlug, input);
     },
-    onSuccess: onSaved,
+    onSuccess: () => {
+      // A new invoice may target a brand other than the one in view — switch to
+      // it so the freshly-created draft shows up in the (brand-scoped) list.
+      if (!isEdit && createSlug !== slug) {
+        const created = projects.find((p) => p.companySlug === createSlug);
+        if (created) setActiveProjectId(created.id);
+      }
+      onSaved();
+    },
     onError: (err) => setError(err instanceof ApiError ? err.message : (err as Error).message),
   });
 
@@ -224,6 +240,25 @@ export function InvoiceFormSheet({
             mutation.mutate();
           }}
         >
+          {!isEdit ? (
+            <FormField
+              label={t('invoices.form.brand')}
+              hint={t('invoices.form.brandHint')}
+              required
+            >
+              <Select
+                className="h-11 md:h-9"
+                value={createSlug}
+                onChange={(e) => setCreateSlug(e.target.value)}
+              >
+                {projects.map((p) => (
+                  <option key={p.companySlug} value={p.companySlug}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          ) : null}
           <FormField label={t('invoices.form.recipientName')} required>
             <Input
               className="h-11 md:h-9"

@@ -15,12 +15,14 @@ import {
   ClipboardEdit,
   Inbox,
   ListPlus,
+  Loader2,
   Mail,
   MapPin,
   Pencil,
   Phone,
   RefreshCcw,
   Send,
+  Sparkles,
   Trophy,
   Wrench,
   X,
@@ -42,6 +44,7 @@ import { useProject, type CompanySlug, type Project } from '@/contexts/project-c
 import { useToast } from '@/hooks/use-toast';
 import { useLocale, useT } from '@/i18n';
 import {
+  aiApi,
   inquiriesApi,
   type InquiryEmail,
   type InquiryEmailStatus,
@@ -52,6 +55,7 @@ import {
 import {
   emptyLine,
   grossFromNetCents,
+  netFromGrossCents,
   toCents,
   toQuantity,
   type LineDraft,
@@ -509,6 +513,50 @@ function DetailPanel({
     updatedLabel: t('ai.updated'),
   });
 
+  // Let Claude read the request + offer text and fill the line items. Prices are
+  // set only when the text names one; missing prices stay blank for the operator.
+  const extractItemsMutation = useMutation({
+    mutationFn: () =>
+      aiApi.extractOfferItems(companySlug, inquiry.id, offerBody.trim() || undefined),
+    onSuccess: ({ items }) => {
+      if (items.length === 0) {
+        toast({ title: t('inquiries.extractItemsEmpty') });
+        return;
+      }
+      const drafts: LineDraft[] = items.map((it) => {
+        // Extracted prices are gross; convert to the editor's active mode.
+        const grossCents = it.unitPriceGross == null ? null : Math.round(it.unitPriceGross * 100);
+        const unitPriceEur =
+          grossCents == null
+            ? ''
+            : offerPriceMode === 'gross'
+              ? (grossCents / 100).toFixed(2)
+              : (netFromGrossCents(grossCents, OFFER_VAT) / 100).toFixed(2);
+        return {
+          label: it.label,
+          quantity: String(it.quantity > 0 ? it.quantity : 1),
+          unitPriceEur,
+          isPackage: false,
+        };
+      });
+      setShowOfferItems(true);
+      setOfferLines((prev) => {
+        // Append when the operator already has real rows; otherwise replace the
+        // empty placeholder line(s).
+        const hasContent = prev.some((l) => l.label.trim() || toCents(l.unitPriceEur) !== 0);
+        return hasContent ? [...prev, ...drafts] : drafts;
+      });
+      toast({ title: t('inquiries.extractItemsDone', { count: drafts.length }) });
+    },
+    onError: (err) => {
+      toast({
+        variant: 'destructive',
+        title: t('inquiries.extractItemsFailed'),
+        description: err instanceof ApiError ? err.message : undefined,
+      });
+    },
+  });
+
   const sendQuoteMutation = useMutation({
     mutationFn: () =>
       inquiriesApi.sendQuote(companySlug, inquiry.id, {
@@ -883,7 +931,14 @@ function DetailPanel({
           {/* Offer — draft (with ✦ Claude) and send the quote email */}
           {hasEmail ? (
             <TabsContent value="offer" className="duration-200 animate-in fade-in-0">
+              <p className="mb-1.5 text-xs text-muted-foreground">{t('inquiries.offerAutoNote')}</p>
               <div className="overflow-hidden rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring">
+                {/* Faded preview of the auto-added greeting: shows the operator that
+                    their text is only the middle of the letter (see inquiryQuoteEmail). */}
+                <div className="select-none space-y-0.5 border-b border-input/60 px-3 pb-2 pt-2.5 text-sm leading-relaxed text-muted-foreground/70">
+                  <p>{t('inquiries.offerGreeting', { name: inquiry.name || '…' })}</p>
+                  <p>{t('inquiries.offerIntro')}</p>
+                </div>
                 <textarea
                   id="inquiry-offer-body"
                   rows={6}
@@ -892,6 +947,11 @@ function DetailPanel({
                   placeholder={t('inquiries.offerBodyPlaceholder')}
                   className="block min-h-[130px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
                 />
+                {/* Faded preview of the auto-added sign-off. */}
+                <div className="select-none space-y-0.5 border-t border-input/60 px-3 pb-2.5 pt-2 text-sm leading-relaxed text-muted-foreground/70">
+                  <p>{t('inquiries.offerClosing')}</p>
+                  <p>{inquiry._brand.name}</p>
+                </div>
                 <ClaudeChatBox
                   busy={offerAssist.busy}
                   history={offerAssist.history}
@@ -919,6 +979,24 @@ function DetailPanel({
               {/* Optional: price the offer by position → fills the total + body */}
               {showOfferItems ? (
                 <div className="mt-2 rounded-md border border-border p-3">
+                  <div className="mb-3 flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={extractItemsMutation.isPending}
+                      onClick={() => extractItemsMutation.mutate()}
+                    >
+                      {extractItemsMutation.isPending ? (
+                        <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Sparkles className="size-3.5" aria-hidden="true" />
+                      )}
+                      {extractItemsMutation.isPending
+                        ? t('inquiries.extractItemsBusy')
+                        : t('inquiries.extractItemsCta')}
+                    </Button>
+                  </div>
                   <LineItemsEditor
                     lines={offerLines}
                     onLinesChange={setOfferLines}
@@ -942,16 +1020,33 @@ function DetailPanel({
                   </div>
                 </div>
               ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="mt-2"
-                  onClick={() => setShowOfferItems(true)}
-                >
-                  <ListPlus className="size-3.5" aria-hidden="true" />
-                  {t('inquiries.addOfferItems')}
-                </Button>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowOfferItems(true)}
+                  >
+                    <ListPlus className="size-3.5" aria-hidden="true" />
+                    {t('inquiries.addOfferItems')}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={extractItemsMutation.isPending}
+                    onClick={() => extractItemsMutation.mutate()}
+                  >
+                    {extractItemsMutation.isPending ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Sparkles className="size-3.5" aria-hidden="true" />
+                    )}
+                    {extractItemsMutation.isPending
+                      ? t('inquiries.extractItemsBusy')
+                      : t('inquiries.extractItemsCta')}
+                  </Button>
+                </div>
               )}
               <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
                 <div className="flex items-center gap-1.5">

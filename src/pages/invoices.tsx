@@ -1,25 +1,21 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   Ban,
   BellRing,
   CheckCircle2,
-  Download,
-  Eye,
   FileText,
-  History,
-  Info,
-  Loader2,
   MoreHorizontal,
-  Package,
   Pencil,
   Plus,
+  Printer,
   RefreshCcw,
   Send,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
@@ -35,7 +31,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import {
   Table,
   TableBody,
@@ -44,17 +39,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useProject, type CompanySlug } from '@/contexts/project-context';
+import { useProject } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
-import {
-  ApiError,
-  errMessage,
-  invoicesAdminApi,
-  type InvoiceRow,
-  type InvoiceStatus,
-} from '@/lib/api';
+import { ApiError, invoicesAdminApi, type InvoiceRow, type InvoiceStatus } from '@/lib/api';
 import { usePageTitle } from '@/lib/use-page-title';
-import { cn, formatDateTime, formatShortDate } from '@/lib/utils';
+import { cn, formatShortDate } from '@/lib/utils';
 
 const PAGE_SIZE = 50;
 
@@ -75,11 +64,14 @@ const STATUS_TONE: Record<InvoiceStatus, 'info' | 'warning' | 'success' | 'dange
   void: 'neutral',
 };
 
-type InvoiceAction = 'edit' | 'send' | 'resend' | 'markPaid' | 'dunning' | 'void';
+// Quick actions available from the list. `edit` opens the form sheet in place;
+// everything richer (preview, issue & print, history) lives on the detail page.
+type InvoiceAction = 'edit' | 'send' | 'issuePrint' | 'resend' | 'markPaid' | 'dunning' | 'void';
 
 const ACTION_META: Record<InvoiceAction, { labelKey: string; icon: LucideIcon }> = {
   edit: { labelKey: 'invoices.edit', icon: Pencil },
   send: { labelKey: 'invoices.send', icon: Send },
+  issuePrint: { labelKey: 'invoices.issuePrint', icon: Printer },
   resend: { labelKey: 'invoices.resend', icon: Send },
   markPaid: { labelKey: 'invoices.markPaid', icon: CheckCircle2 },
   dunning: { labelKey: 'invoices.dunning', icon: BellRing },
@@ -89,7 +81,7 @@ const ACTION_META: Record<InvoiceAction, { labelKey: string; icon: LucideIcon }>
 function actionsFor(status: InvoiceStatus): InvoiceAction[] {
   switch (status) {
     case 'draft':
-      return ['edit', 'send', 'void'];
+      return ['edit', 'send', 'issuePrint', 'void'];
     case 'sent':
     case 'overdue':
       return ['resend', 'markPaid', 'dunning', 'void'];
@@ -99,8 +91,7 @@ function actionsFor(status: InvoiceStatus): InvoiceAction[] {
   }
 }
 
-// Cent-precision money formatting (utils' formatCurrency rounds to whole euros;
-// orders.tsx uses the same local-helper pattern for cent amounts).
+// Cent-precision money formatting (utils' formatCurrency rounds to whole euros).
 function formatEur(cents: number, bcp47: string, currency = 'EUR'): string {
   return (cents / 100).toLocaleString(bcp47, {
     style: 'currency',
@@ -118,18 +109,18 @@ export function InvoicesPage() {
   const { bcp47 } = useLocale();
   const { activeProject, isAllBrands } = useProject();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   usePageTitle(t('invoices.title'));
 
   const slug = activeProject.companySlug;
 
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
-  const [detailId, setDetailId] = useState<number | null>(null);
   const [formState, setFormState] = useState<
     { mode: 'create' } | { mode: 'edit'; invoice: InvoiceRow } | null
   >(null);
   const [confirmState, setConfirmState] = useState<{
-    action: 'send' | 'void' | 'dunning';
+    action: 'send' | 'issuePrint' | 'void' | 'dunning';
     id: number;
   } | null>(null);
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
@@ -159,11 +150,14 @@ export function InvoicesPage() {
   });
 
   const invoices = useMemo(() => list.data?.pages.flatMap((p) => p.invoices) ?? [], [list.data]);
-  const detail = detailId != null ? (invoices.find((inv) => inv.id === detailId) ?? null) : null;
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['invoices'], exact: false });
     void queryClient.invalidateQueries({ queryKey: ['invoice-log'], exact: false });
+  }
+
+  function openDetail(id: number) {
+    navigate(`/rechnungen/${id}`);
   }
 
   function surfaceError(err: unknown) {
@@ -182,6 +176,20 @@ export function InvoicesPage() {
         tone: 'success',
         text: res.emailSent ? t('invoices.emailSent') : t('invoices.emailSkipped'),
       });
+    },
+    onError: (err) => {
+      setConfirmState(null);
+      surfaceError(err);
+    },
+  });
+
+  // Issue without email, then jump to the detail page so the operator can print.
+  const issueMutation = useMutation({
+    mutationFn: (id: number) => invoicesAdminApi.issue(slug, id),
+    onSuccess: (res) => {
+      invalidate();
+      setConfirmState(null);
+      openDetail(res.invoice.id);
     },
     onError: (err) => {
       setConfirmState(null);
@@ -221,6 +229,7 @@ export function InvoicesPage() {
 
   const actionPending =
     sendMutation.isPending ||
+    issueMutation.isPending ||
     markPaidMutation.isPending ||
     dunningMutation.isPending ||
     voidMutation.isPending;
@@ -232,6 +241,9 @@ export function InvoicesPage() {
         break;
       case 'send':
         setConfirmState({ action: 'send', id: inv.id });
+        break;
+      case 'issuePrint':
+        setConfirmState({ action: 'issuePrint', id: inv.id });
         break;
       case 'resend':
         sendMutation.mutate(inv.id);
@@ -273,6 +285,14 @@ export function InvoicesPage() {
             isDangerous: false,
             isPending: sendMutation.isPending,
             run: () => sendMutation.mutate(confirmState.id),
+          },
+          issuePrint: {
+            title: t('invoices.issuePrint'),
+            description: t('invoices.confirmIssue'),
+            confirmLabel: t('invoices.issuePrint'),
+            isDangerous: false,
+            isPending: issueMutation.isPending,
+            run: () => issueMutation.mutate(confirmState.id),
           },
           void: {
             title: t('invoices.voidAction'),
@@ -464,7 +484,7 @@ export function InvoicesPage() {
                     <TableCell className="py-2.5">
                       <button
                         type="button"
-                        onClick={() => setDetailId(inv.id)}
+                        onClick={() => openDetail(inv.id)}
                         className="rounded font-mono text-[13px] font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {invoiceNumber(inv)}
@@ -497,7 +517,7 @@ export function InvoicesPage() {
                       <RowMenu
                         invoice={inv}
                         disabled={actionPending}
-                        onDetails={() => setDetailId(inv.id)}
+                        onDetails={() => openDetail(inv.id)}
                         onAction={runAction}
                       />
                     </TableCell>
@@ -514,7 +534,7 @@ export function InvoicesPage() {
                 <div className="flex items-start gap-2">
                   <button
                     type="button"
-                    onClick={() => setDetailId(inv.id)}
+                    onClick={() => openDetail(inv.id)}
                     className="min-h-11 min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -542,7 +562,7 @@ export function InvoicesPage() {
                   <RowMenu
                     invoice={inv}
                     disabled={actionPending}
-                    onDetails={() => setDetailId(inv.id)}
+                    onDetails={() => openDetail(inv.id)}
                     onAction={runAction}
                   />
                 </div>
@@ -559,17 +579,6 @@ export function InvoicesPage() {
           />
         </>
       )}
-
-      {detail ? (
-        <InvoiceDetailSheet
-          slug={slug}
-          invoice={detail}
-          bcp47={bcp47}
-          actionPending={actionPending}
-          onClose={() => setDetailId(null)}
-          onAction={runAction}
-        />
-      ) : null}
 
       {formState ? (
         <InvoiceFormSheet
@@ -668,372 +677,5 @@ function RowMenu({
         })}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
-      <span className="min-w-0 text-right text-sm">{children}</span>
-    </div>
-  );
-}
-
-function InvoiceDetailSheet({
-  slug,
-  invoice,
-  bcp47,
-  actionPending,
-  onClose,
-  onAction,
-}: {
-  slug: CompanySlug;
-  invoice: InvoiceRow;
-  bcp47: string;
-  actionPending: boolean;
-  onClose: () => void;
-  onAction: (action: InvoiceAction, inv: InvoiceRow) => void;
-}) {
-  const t = useT();
-  const statusLabel = (s: InvoiceStatus) => t(`invoices.status.${s}` as never);
-  const actions = actionsFor(invoice.status);
-
-  const logQuery = useQuery({
-    queryKey: ['invoice-log', slug, invoice.id] as const,
-    queryFn: ({ signal }) => invoicesAdminApi.log(slug, invoice.id, signal),
-  });
-
-  // Lazily fetched invoice PDF (blob object URL) for on-screen preview + download.
-  // Fetched on first use, cached for the sheet's lifetime, revoked on unmount.
-  const [pdf, setPdf] = useState<{
-    url: string | null;
-    loading: boolean;
-    error: string | null;
-    show: boolean;
-  }>({ url: null, loading: false, error: null, show: false });
-
-  useEffect(() => {
-    return () => {
-      if (pdf.url) URL.revokeObjectURL(pdf.url);
-    };
-  }, [pdf.url]);
-
-  const ensurePdf = async (): Promise<string | null> => {
-    if (pdf.url) return pdf.url;
-    setPdf((p) => ({ ...p, loading: true, error: null }));
-    try {
-      const blob = await invoicesAdminApi.pdf(slug, invoice.id);
-      const url = URL.createObjectURL(blob);
-      setPdf((p) => ({ ...p, url, loading: false }));
-      return url;
-    } catch (e) {
-      setPdf((p) => ({ ...p, loading: false, error: errMessage(e) }));
-      return null;
-    }
-  };
-
-  const togglePreview = async () => {
-    if (pdf.show) {
-      setPdf((p) => ({ ...p, show: false }));
-      return;
-    }
-    const url = await ensurePdf();
-    if (url) setPdf((p) => ({ ...p, show: true }));
-  };
-
-  const downloadPdf = async () => {
-    const url = await ensurePdf();
-    if (!url) return;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Rechnung-${invoice.number ?? invoice.id}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  };
-
-  return (
-    <Sheet
-      open
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-    >
-      <SheetContent
-        side="right"
-        className="w-full gap-5 overflow-y-auto bg-card p-5 text-foreground sm:max-w-md"
-      >
-        <div className="pr-8">
-          <SheetTitle className="not-sr-only font-serif text-xl tracking-tight">
-            {invoiceNumber(invoice)}
-          </SheetTitle>
-          <SheetDescription className="not-sr-only text-sm text-muted-foreground">
-            {invoice.recipientName}
-          </SheetDescription>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <StatusBadge tone={STATUS_TONE[invoice.status]} label={statusLabel(invoice.status)} />
-            {invoice.dunningLevel > 0 ? (
-              <StatusBadge
-                tone="warning"
-                label={t('invoices.dunningLevel', { n: invoice.dunningLevel })}
-              />
-            ) : null}
-          </div>
-        </div>
-
-        {actions.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {actions.map((action) => {
-              const meta = ACTION_META[action];
-              const Icon = meta.icon;
-              return (
-                <Button
-                  key={action}
-                  size="sm"
-                  variant={action === 'send' || action === 'resend' ? 'default' : 'outline'}
-                  className={cn(
-                    'min-h-11 md:min-h-8',
-                    action === 'void' && 'text-destructive hover:text-destructive',
-                  )}
-                  disabled={actionPending}
-                  onClick={() => onAction(action, invoice)}
-                >
-                  <Icon className="size-3.5" aria-hidden="true" />
-                  {t(meta.labelKey as never)}
-                </Button>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            {t('invoices.immutableHint')}
-          </p>
-        )}
-
-        <section className="grid gap-1.5 rounded-md border bg-muted/30 p-3">
-          <DetailRow label={t('invoices.recipient')}>{invoice.recipientName}</DetailRow>
-          <DetailRow label={t('invoices.form.recipientEmail')}>
-            {invoice.recipientEmail ?? '—'}
-          </DetailRow>
-          <DetailRow label={t('invoices.form.addressLine1')}>
-            {invoice.recipientAddressLine1 ? (
-              <>
-                {invoice.recipientAddressLine1}
-                {invoice.recipientAddressLine2 ? <>, {invoice.recipientAddressLine2}</> : null}
-                <br />
-                {invoice.recipientPostalCode ?? ''} {invoice.recipientCity ?? ''}
-              </>
-            ) : (
-              '—'
-            )}
-          </DetailRow>
-          <DetailRow label={t('invoices.form.serviceDate')}>
-            {invoice.serviceDate ? (
-              <>
-                {formatShortDate(invoice.serviceDate, bcp47)}
-                {invoice.serviceDateEnd ? (
-                  <> – {formatShortDate(invoice.serviceDateEnd, bcp47)}</>
-                ) : null}
-              </>
-            ) : (
-              '—'
-            )}
-          </DetailRow>
-          <DetailRow label={t('invoices.form.customerType')}>
-            {invoice.customerType === 'b2b' ? 'B2B' : 'B2C'}
-          </DetailRow>
-          <DetailRow label={t('invoices.form.paymentMethod')}>
-            {t(
-              `invoices.form.payment${
-                invoice.paymentMethod === 'card'
-                  ? 'Card'
-                  : invoice.paymentMethod === 'cash'
-                    ? 'Cash'
-                    : 'Transfer'
-              }` as never,
-            )}
-          </DetailRow>
-          {invoice.paymentMethod === 'transfer' ? (
-            <DetailRow label={t('invoices.form.paymentTerms')}>
-              {invoice.paymentTermsDays}
-            </DetailRow>
-          ) : null}
-        </section>
-
-        <section>
-          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {t('invoices.form.lineItems')}
-          </h3>
-          <ul className="divide-y rounded-md border">
-            {invoice.lineItems.map((li, i) => (
-              <li key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                <span className={cn('min-w-0 flex-1 truncate', li.isPackage && 'font-semibold')}>
-                  {li.isPackage ? (
-                    <Package className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
-                  ) : null}
-                  {li.label}
-                </span>
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {li.quantity} ×
-                </span>
-                <span className={cn('shrink-0 tabular-nums', li.isPackage && 'font-semibold')}>
-                  {formatEur(li.unitPriceCents, bcp47, invoice.currency)}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-2 grid gap-1 rounded-md border bg-muted/30 p-3 text-sm">
-            <div className="flex justify-between gap-3">
-              <span className="text-xs text-muted-foreground">{t('invoices.form.subtotal')}</span>
-              <span className="tabular-nums">
-                {formatEur(invoice.subtotalCents, bcp47, invoice.currency)}
-              </span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-xs text-muted-foreground">
-                {t('invoices.form.tax')} ({invoice.taxRatePercent} %)
-              </span>
-              <span className="tabular-nums">
-                {formatEur(invoice.taxCents, bcp47, invoice.currency)}
-              </span>
-            </div>
-            <div className="mt-1 flex justify-between gap-3 border-t pt-2 font-semibold">
-              <span className="text-xs uppercase tracking-wide">{t('invoices.form.total')}</span>
-              <span className="tabular-nums">
-                {formatEur(invoice.totalCents, bcp47, invoice.currency)}
-              </span>
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            <FileText className="size-3" aria-hidden="true" />
-            {t('invoices.document')}
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="min-h-11 md:min-h-8"
-              disabled={pdf.loading}
-              onClick={togglePreview}
-            >
-              {pdf.loading ? (
-                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-              ) : (
-                <Eye className="size-3.5" aria-hidden="true" />
-              )}
-              {pdf.show ? t('invoices.pdfHide') : t('invoices.pdfPreview')}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="min-h-11 md:min-h-8"
-              disabled={pdf.loading}
-              onClick={downloadPdf}
-            >
-              <Download className="size-3.5" aria-hidden="true" />
-              {t('invoices.pdfDownload')}
-            </Button>
-          </div>
-          {pdf.error ? (
-            <p className="mt-2 flex items-start gap-2 text-xs text-destructive">
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              {pdf.error}
-            </p>
-          ) : null}
-          {pdf.show && pdf.url ? (
-            <object
-              data={pdf.url}
-              type="application/pdf"
-              className="mt-3 h-96 w-full rounded-md border bg-white"
-              aria-label={t('invoices.document')}
-            >
-              <p className="p-3 text-xs text-muted-foreground">
-                {t('invoices.pdfUnavailable')}{' '}
-                <a
-                  href={pdf.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium underline underline-offset-2"
-                >
-                  {t('invoices.pdfOpen')}
-                </a>
-              </p>
-            </object>
-          ) : null}
-        </section>
-
-        <section className="grid gap-1.5 rounded-md border bg-muted/30 p-3">
-          <DetailRow label={t('invoices.createdAt')}>
-            {formatDateTime(invoice.createdAt, bcp47)}
-          </DetailRow>
-          <DetailRow label={t('invoices.sentAt')}>
-            {invoice.sentAt ? formatDateTime(invoice.sentAt, bcp47) : '—'}
-          </DetailRow>
-          <DetailRow label={t('invoices.dueAt')}>
-            {invoice.dueAt ? formatShortDate(invoice.dueAt, bcp47) : '—'}
-          </DetailRow>
-          <DetailRow label={t('invoices.paidAt')}>
-            {invoice.paidAt ? formatDateTime(invoice.paidAt, bcp47) : '—'}
-          </DetailRow>
-        </section>
-
-        {invoice.notes ? (
-          <section>
-            <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              {t('invoices.form.notes')}
-            </h3>
-            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{invoice.notes}</p>
-          </section>
-        ) : null}
-
-        <section>
-          <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            <History className="size-3" aria-hidden="true" />
-            {t('invoices.history')}
-          </h3>
-          {logQuery.isLoading ? (
-            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-              <span>{t('common.loading')}</span>
-            </div>
-          ) : logQuery.error ? (
-            <p className="flex items-start gap-2 text-xs text-destructive">
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              {logQuery.error instanceof ApiError
-                ? logQuery.error.message
-                : (logQuery.error as Error).message}
-            </p>
-          ) : (logQuery.data?.log ?? []).length === 0 ? (
-            <p className="text-xs text-muted-foreground">—</p>
-          ) : (
-            <ol className="ml-1 space-y-3 border-l border-border pl-4">
-              {logQuery.data!.log.map((entry) => (
-                <li key={entry.id} className="relative">
-                  <span
-                    aria-hidden="true"
-                    className="absolute -left-[1.3rem] top-1.5 size-2 rounded-full bg-primary"
-                  />
-                  <p className="text-sm font-medium">
-                    {entry.fromStatus ? <>{statusLabel(entry.fromStatus)} → </> : null}
-                    {statusLabel(entry.toStatus)}
-                  </p>
-                  {entry.reason ? (
-                    <p className="text-xs text-muted-foreground">{entry.reason}</p>
-                  ) : null}
-                  <p className="text-[11px] tabular-nums text-muted-foreground">
-                    {formatDateTime(entry.createdAt, bcp47)}
-                  </p>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-      </SheetContent>
-    </Sheet>
   );
 }

@@ -49,6 +49,9 @@ const InquiriesPage = lazy(() =>
 const InvoicesPage = lazy(() =>
   import('@/pages/invoices').then((m) => ({ default: m.InvoicesPage })),
 );
+const InvoiceDetailPage = lazy(() =>
+  import('@/pages/invoice-detail').then((m) => ({ default: m.InvoiceDetailPage })),
+);
 const NewsletterPage = lazy(() =>
   import('@/pages/newsletter').then((m) => ({ default: m.NewsletterPage })),
 );
@@ -91,6 +94,7 @@ export const router = createBrowserRouter([
           { path: 'customers/:id', element: <CustomerDetailPage /> },
           { path: 'auftraege', element: <OrdersPage /> },
           { path: 'rechnungen', element: <InvoicesPage /> },
+          { path: 'rechnungen/:id', element: <InvoiceDetailPage /> },
           { path: 'abos', element: <SubscriptionsPage /> },
           { path: 'bewertungen', element: <ReviewsPage /> },
           { path: 'blog', element: <BlogPage /> },
