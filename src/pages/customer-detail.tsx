@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Briefcase,
   ClipboardList,
+  FileText,
   Loader2,
   Mail,
   MapPin,
@@ -19,6 +20,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { CustomerSheet } from '@/components/customer-sheet';
 import { EmptyState } from '@/components/empty-state';
+import { InvoiceFormSheet, type InvoicePrefill } from '@/components/invoice-form-sheet';
 import { StatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -69,6 +71,7 @@ export function CustomerDetailPage() {
   const slug = activeProject.companySlug;
 
   const [editing, setEditing] = useState(false);
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -193,6 +196,10 @@ export function CustomerDetailPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" className="h-11 sm:h-9" onClick={() => setCreatingInvoice(true)}>
+            <FileText className="size-3.5" aria-hidden="true" />
+            {t('invoices.newInvoice')}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -340,6 +347,31 @@ export function CustomerDetailPage() {
             setEditing(false);
             void queryClient.invalidateQueries({ queryKey: ['customer-overview', slug, id] });
             void queryClient.invalidateQueries({ queryKey: ['customers', slug] });
+          }}
+        />
+      ) : null}
+
+      {creatingInvoice ? (
+        <InvoiceFormSheet
+          slug={slug}
+          invoice={null}
+          prefill={
+            {
+              recipientName: customer.name ?? undefined,
+              recipientEmail: noEmail ? undefined : customer.email,
+              addressLine1: customer.addressLine1 ?? undefined,
+              addressLine2: customer.addressLine2 ?? undefined,
+              postalCode: customer.postalCode ?? undefined,
+              city: customer.city ?? undefined,
+              paymentTermsDays: customer.defaultPaymentTermsDays,
+            } satisfies InvoicePrefill
+          }
+          onClose={() => setCreatingInvoice(false)}
+          onSaved={() => {
+            setCreatingInvoice(false);
+            // The new draft lives on the invoices page — take the operator there
+            // to review and issue it.
+            navigate('/rechnungen');
           }}
         />
       ) : null}
