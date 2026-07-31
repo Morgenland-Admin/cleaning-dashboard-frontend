@@ -14,7 +14,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
@@ -115,6 +115,10 @@ export function InvoicesPage() {
   const slug = activeProject.companySlug;
 
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
+  // The list scrolls inside its own box so a few hundred rows stay navigable
+  // without the page growing to many screens tall. The table header sticks to
+  // the top of that box.
+  const listScrollRef = useRef<HTMLDivElement>(null);
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [formState, setFormState] = useState<
     { mode: 'create' } | { mode: 'edit'; invoice: InvoiceRow } | null
@@ -150,6 +154,11 @@ export function InvoicesPage() {
   });
 
   const invoices = useMemo(() => list.data?.pages.flatMap((p) => p.invoices) ?? [], [list.data]);
+
+  // Switching filter or brand shows a different list — start it at the top.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [statusFilter, overdueOnly, slug]);
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['invoices'], exact: false });
@@ -462,11 +471,14 @@ export function InvoicesPage() {
           />
         </div>
       ) : (
-        <>
+        <div
+          ref={listScrollRef}
+          className="flex max-h-[calc(100svh-17rem)] flex-col gap-5 overflow-y-auto overscroll-contain"
+        >
           {/* Desktop: table */}
           <div className="hidden rounded-xl border border-border bg-card md:block">
-            <Table>
-              <TableHeader>
+            <Table containerClassName="w-full">
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
                 <TableRow className="border-b text-[11px] uppercase tracking-wider hover:bg-transparent">
                   <TableHead>{t('invoices.number')}</TableHead>
                   <TableHead>{t('invoices.recipient')}</TableHead>
@@ -576,8 +588,9 @@ export function InvoicesPage() {
             onIntersect={() => {
               void list.fetchNextPage();
             }}
+            rootRef={listScrollRef}
           />
-        </>
+        </div>
       )}
 
       {formState ? (

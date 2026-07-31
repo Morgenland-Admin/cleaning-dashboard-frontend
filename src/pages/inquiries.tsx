@@ -28,7 +28,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AttachmentGallery } from '@/components/attachment-gallery';
 import { BrandMark } from '@/components/brand-mark';
@@ -131,6 +131,10 @@ export function InquiriesPage() {
     id: number;
   } | null>(null);
 
+  // The inbox list scrolls inside its own box so it can grow to hundreds of
+  // rows without pushing the sticky detail panel out of reach.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+
   const PAGE_SIZE = 50;
 
   const singleInfinite = useInfiniteQuery({
@@ -184,6 +188,11 @@ export function InquiriesPage() {
     if (tab === 'all') return inquiries;
     return inquiries.filter((i) => i.status === tab);
   }, [inquiries, tab]);
+
+  // Switching tab or brand shows a different list — start it at the top.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [tab, activeProject.companySlug, isAllBrands]);
 
   const selectedRow = useMemo(
     () =>
@@ -311,7 +320,7 @@ export function InquiriesPage() {
       ) : null}
 
       <div className={cn('grid grid-cols-1 gap-4', selectedRow && 'lg:grid-cols-5')}>
-        <Card className={cn(selectedRow && 'lg:col-span-2')}>
+        <Card className={cn('overflow-hidden', selectedRow && 'lg:col-span-2')}>
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle>{t('inquiries.inboxTitle')}</CardTitle>
@@ -322,7 +331,10 @@ export function InquiriesPage() {
               </CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent
+            ref={listScrollRef}
+            className="max-h-[calc(100svh-15rem)] overflow-y-auto overscroll-contain p-0"
+          >
             {isLoading ? (
               <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
                 {t('inquiries.loading')}
@@ -393,6 +405,7 @@ export function InquiriesPage() {
                 hasMore={!!singleInfinite.hasNextPage}
                 isLoading={singleInfinite.isFetchingNextPage}
                 onIntersect={loadMore}
+                rootRef={listScrollRef}
               />
             ) : null}
             {allBrandsHasMore ? (
@@ -626,7 +639,7 @@ function DetailPanel({
   }
 
   return (
-    <Card className="sticky top-20">
+    <Card className="sticky top-20 max-h-[calc(100svh-6rem)] overflow-y-auto overscroll-contain">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="min-w-0">
           <CardTitle className="truncate">{inquiry.name}</CardTitle>

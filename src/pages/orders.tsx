@@ -193,6 +193,10 @@ export function OrdersPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [newOpen, setNewOpen] = useState(false);
 
+  // The list scrolls inside its own box so it can grow to hundreds of rows
+  // without pushing the sticky detail panel out of reach.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+
   const PAGE_SIZE = 50;
 
   const infinite = useInfiniteQuery({
@@ -226,6 +230,11 @@ export function OrdersPage() {
     return infinite.data?.pages.flatMap((p) => p.orders) ?? [];
   }, [infinite.data]);
   const crossOrders = cross.data?.orders ?? [];
+
+  // Switching tab or brand shows a different list — start it at the top.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [tab, activeProject.companySlug, isAllBrands]);
 
   function brandFor(slug: CompanySlug) {
     return projects.find((p) => p.companySlug === slug);
@@ -311,7 +320,10 @@ export function OrdersPage() {
           selectedId != null && 'lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]',
         )}
       >
-        <div>
+        <div
+          ref={listScrollRef}
+          className="max-h-[calc(100svh-16rem)] overflow-y-auto overscroll-contain pr-1"
+        >
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -368,6 +380,7 @@ export function OrdersPage() {
                 }}
                 hasMore={!!infinite.hasNextPage}
                 isLoading={infinite.isFetchingNextPage}
+                rootRef={listScrollRef}
               />
               {infinite.isFetchingNextPage && (
                 <div className="flex items-center justify-center py-4">
@@ -379,7 +392,7 @@ export function OrdersPage() {
         </div>
 
         {selectedId != null && (
-          <aside className="lg:sticky lg:top-6 lg:self-start">
+          <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100svh-3rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">
             <OrderDetail
               companySlug={activeProject.companySlug}
               orderId={selectedId}

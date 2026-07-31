@@ -19,7 +19,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { cloneElement, isValidElement, useId, useMemo, useState } from 'react';
+import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { AddressAutocomplete } from '@/components/address-autocomplete';
 import { BrandMark } from '@/components/brand-mark';
@@ -71,6 +71,10 @@ export function PartnersPage() {
   const { bcp47 } = useLocale();
   usePageTitle(t('partners.title'));
   const [tab, setTab] = useState<PartnerStatus | 'all'>('all');
+
+  // The list scrolls inside its own box so it can grow to hundreds of rows
+  // without pushing the sticky detail panel out of reach.
+  const listScrollRef = useRef<HTMLDivElement>(null);
   const [selectionKey, setSelectionKey] = useState<string | null>(null);
   const [modal, setModal] = useState<'invite' | 'create' | null>(null);
 
@@ -110,6 +114,11 @@ export function PartnersPage() {
     if (tab === 'all') return partners;
     return partners.filter((p) => p.status === tab);
   }, [partners, tab]);
+
+  // Switching tab or brand shows a different list — start it at the top.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [tab, activeProject.companySlug, isAllBrands]);
 
   const selected = useMemo(
     () => partners.find((p) => keyOf(p) === selectionKey) ?? null,
@@ -245,7 +254,7 @@ export function PartnersPage() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
+        <Card className="overflow-hidden lg:col-span-3">
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle>{t('partners.inboxTitle')}</CardTitle>
@@ -256,7 +265,10 @@ export function PartnersPage() {
               </CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent
+            ref={listScrollRef}
+            className="max-h-[calc(100svh-15rem)] overflow-y-auto overscroll-contain p-0"
+          >
             {isLoading ? (
               <div
                 role="status"
@@ -725,7 +737,7 @@ function PartnerDetail({
   const notesDirty = notes !== (partner.internalNotes ?? '');
 
   return (
-    <Card className="sticky top-20">
+    <Card className="sticky top-20 max-h-[calc(100svh-6rem)] overflow-y-auto overscroll-contain">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="min-w-0">
           <CardTitle className="truncate">

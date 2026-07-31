@@ -2,13 +2,23 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="w-full overflow-x-auto">
-      <table ref={ref} className={cn("w-full text-sm", className)} {...props} />
-    </div>
-  ),
-);
+const Table = React.forwardRef<
+  HTMLTableElement,
+  React.HTMLAttributes<HTMLTableElement> & {
+    /**
+     * Replaces the wrapper classes (default `w-full overflow-x-auto`). Pass
+     * `"w-full"` when an ancestor is the scroll container: the default wrapper
+     * is a scrollport in both axes — `overflow-x: auto` forces the computed
+     * `overflow-y` to `auto` too — which would anchor a sticky `<thead>` to
+     * itself instead of to that ancestor. The ancestor then scrolls both axes.
+     */
+    containerClassName?: string;
+  }
+>(({ className, containerClassName, ...props }, ref) => (
+  <div className={containerClassName ?? "w-full overflow-x-auto"}>
+    <table ref={ref} className={cn("w-full text-sm", className)} {...props} />
+  </div>
+));
 Table.displayName = "Table";
 
 const TableHeader = React.forwardRef<

@@ -12,7 +12,7 @@ import {
   Star,
   Trash2,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { ConfirmDialog } from '@/components/confirm-dialog';
@@ -66,6 +66,10 @@ export function ReviewsPage() {
 
   const slug = activeProject.companySlug;
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | 'all'>('all');
+
+  // The list scrolls inside its own box so a few hundred rows stay navigable
+  // without the page growing to many screens tall.
+  const listScrollRef = useRef<HTMLDivElement>(null);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [flagTarget, setFlagTarget] = useState<ReviewRow | null>(null);
   const [respondTarget, setRespondTarget] = useState<ReviewRow | null>(null);
@@ -99,6 +103,11 @@ export function ReviewsPage() {
       void listQuery.fetchNextPage();
     }
   }, [listQuery]);
+
+  // Switching filter or brand shows a different list — start it at the top.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [statusFilter, slug]);
 
   const invalidate = useCallback(
     () => void queryClient.invalidateQueries({ queryKey: ['reviews', slug] }),
@@ -271,7 +280,10 @@ export function ReviewsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div
+            ref={listScrollRef}
+            className="flex max-h-[calc(100svh-15rem)] flex-col gap-4 overflow-y-auto overscroll-contain pr-1"
+          >
             {reviews.map((review) => (
               <ReviewCard
                 key={review.id}
@@ -296,6 +308,7 @@ export function ReviewsPage() {
               hasMore={!!listQuery.hasNextPage}
               isLoading={listQuery.isFetchingNextPage}
               onIntersect={loadMore}
+              rootRef={listScrollRef}
             />
           </div>
         )}

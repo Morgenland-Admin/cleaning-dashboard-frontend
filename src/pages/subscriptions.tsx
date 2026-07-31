@@ -14,7 +14,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
@@ -94,6 +94,10 @@ export function SubscriptionsPage() {
 
   const slug = activeProject.companySlug;
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  // The list scrolls inside its own box so a few hundred rows stay navigable
+  // without the page growing to many screens tall. The table header sticks to
+  // the top of that box.
+  const listScrollRef = useRef<HTMLDivElement>(null);
   const [sheet, setSheet] = useState<
     { mode: 'create' } | { mode: 'edit'; sub: SubscriptionRow } | null
   >(null);
@@ -124,6 +128,11 @@ export function SubscriptionsPage() {
     () => (listQuery.data?.pages ?? []).flatMap((p) => p.subscriptions),
     [listQuery.data],
   );
+
+  // Switching filter or brand shows a different list — start it at the top.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [statusFilter, slug]);
 
   const lifecycle = useMutation({
     mutationFn: (vars: { id: number; action: SubscriptionAction }) =>
@@ -277,7 +286,10 @@ export function SubscriptionsPage() {
           }
         />
       ) : (
-        <>
+        <div
+          ref={listScrollRef}
+          className="flex max-h-[calc(100svh-17rem)] flex-col gap-5 overflow-y-auto overscroll-contain"
+        >
           {/* Mobile: stacked cards */}
           <ul className="flex flex-col gap-2 md:hidden">
             {rows.map((sub) => (
@@ -293,9 +305,9 @@ export function SubscriptionsPage() {
           </ul>
 
           {/* Desktop: table */}
-          <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
-            <Table>
-              <TableHeader>
+          <div className="hidden rounded-xl border border-border bg-card md:block">
+            <Table containerClassName="w-full">
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
                 <TableRow className="border-b border-border text-[11px] uppercase tracking-wide hover:bg-transparent">
                   <TableHead>{t('subscriptions.plan')}</TableHead>
                   <TableHead>{t('subscriptions.customer')}</TableHead>
@@ -328,8 +340,9 @@ export function SubscriptionsPage() {
             onIntersect={() => {
               if (!listQuery.isFetchingNextPage) void listQuery.fetchNextPage();
             }}
+            rootRef={listScrollRef}
           />
-        </>
+        </div>
       )}
 
       {confirm ? (

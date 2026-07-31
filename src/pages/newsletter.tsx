@@ -9,7 +9,7 @@ import {
   RefreshCcw,
   Trash2,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { BrandMark } from '@/components/brand-mark';
@@ -69,6 +69,10 @@ export function NewsletterPage() {
   const { bcp47 } = useLocale();
   usePageTitle(t('newsletter.title'));
   const [tab, setTab] = useState<SubscriberStatus | 'all'>('all');
+  // The list scrolls inside its own box so a few hundred rows stay navigable
+  // without the page growing to many screens tall. The table header sticks to
+  // the top of that box.
+  const listScrollRef = useRef<HTMLDivElement>(null);
   const [confirming, setConfirming] = useState<{
     companySlug: CompanySlug;
     id: number;
@@ -128,6 +132,11 @@ export function NewsletterPage() {
     () => (tab === 'all' ? rows : rows.filter((s) => statusOf(s) === tab)),
     [rows, tab],
   );
+
+  // Switching tab or brand shows a different list — start it at the top.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [tab, activeProject.companySlug, isAllBrands]);
 
   const counts = useMemo(() => {
     const c: Record<SubscriberStatus | 'all', number> = {
@@ -266,7 +275,10 @@ export function NewsletterPage() {
               : t('newsletter.countPlural', { count: filtered.length })}
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent
+          ref={listScrollRef}
+          className="max-h-[calc(100svh-17rem)] overflow-y-auto overscroll-contain p-0"
+        >
           {isLoading ? (
             <div className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
@@ -278,8 +290,8 @@ export function NewsletterPage() {
               <span>{t('newsletter.empty')}</span>
             </div>
           ) : (
-            <Table>
-              <TableHeader className="border-y border-border/70 bg-muted/30 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <Table containerClassName="w-full">
+              <TableHeader className="sticky top-0 z-10 border-y border-border/70 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border/70 [&_th]:bg-muted">
                 <TableRow>
                   <TableHead className="py-2.5 sm:px-6">{t('newsletter.colEmail')}</TableHead>
                   <TableHead className="hidden px-5 py-2.5 sm:table-cell">
@@ -382,6 +394,7 @@ export function NewsletterPage() {
               hasMore={!!singleInfinite.hasNextPage}
               isLoading={singleInfinite.isFetchingNextPage}
               onIntersect={loadMore}
+              rootRef={listScrollRef}
             />
           ) : null}
           {allBrandsHasMore ? (

@@ -78,6 +78,10 @@ export function ContactsPage() {
     id: number;
   } | null>(null);
 
+  // The inbox list scrolls inside its own box so it can grow to hundreds of
+  // rows without pushing the sticky detail panel out of reach.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+
   const PAGE_SIZE = 50;
 
   const singleInfinite = useInfiniteQuery({
@@ -131,6 +135,11 @@ export function ContactsPage() {
     if (tab === 'all') return messages;
     return messages.filter((m) => m.status === tab);
   }, [messages, tab]);
+
+  // Switching tab or brand shows a different list — start it at the top.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [tab, activeProject.companySlug, isAllBrands]);
 
   const selectedRow = useMemo(
     () =>
@@ -285,7 +294,7 @@ export function ContactsPage() {
       ) : null}
 
       <div className={cn('grid grid-cols-1 gap-4', selectedRow && 'lg:grid-cols-5')}>
-        <Card className={cn(selectedRow && 'lg:col-span-2')}>
+        <Card className={cn('overflow-hidden', selectedRow && 'lg:col-span-2')}>
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle>{t('contacts.inboxTitle')}</CardTitle>
@@ -297,7 +306,10 @@ export function ContactsPage() {
               </CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent
+            ref={listScrollRef}
+            className="max-h-[calc(100svh-15rem)] overflow-y-auto overscroll-contain p-0"
+          >
             {isLoading ? (
               <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
                 {t('contacts.inboxLoading')}
@@ -363,6 +375,7 @@ export function ContactsPage() {
                 hasMore={!!singleInfinite.hasNextPage}
                 isLoading={singleInfinite.isFetchingNextPage}
                 onIntersect={loadMore}
+                rootRef={listScrollRef}
               />
             ) : null}
             {allBrandsHasMore ? (
@@ -446,7 +459,7 @@ function DetailPanel({
   replyError: string | null;
 }) {
   return (
-    <Card className="sticky top-20 overflow-hidden">
+    <Card className="sticky top-20 max-h-[calc(100svh-6rem)] overflow-y-auto overscroll-contain">
       <header className="flex flex-col gap-3 border-b border-border/70 bg-muted/30 px-4 py-4 sm:flex-row sm:items-start sm:gap-4 sm:px-5">
         <Avatar className="size-10 shrink-0" aria-hidden="true">
           <AvatarFallback className="bg-rust/15 text-[12px] font-semibold uppercase text-rust">

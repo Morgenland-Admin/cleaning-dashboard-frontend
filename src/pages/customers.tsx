@@ -14,7 +14,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
@@ -74,6 +74,10 @@ export function CustomersPage() {
   const slug = activeProject.companySlug;
   const [tier, setTier] = useState<TierFilter>('all');
   const [search, setSearch] = useState('');
+  // The list scrolls inside its own box so a few hundred rows stay navigable
+  // without the page growing to many screens tall. The table header sticks to
+  // the top of that box.
+  const listScrollRef = useRef<HTMLDivElement>(null);
   const [sheet, setSheet] = useState<{ mode: 'create' } | null>(null);
   const [confirming, setConfirming] = useState<Customer | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -103,6 +107,11 @@ export function CustomersPage() {
       (c) => c.email.toLowerCase().includes(q) || (c.name ?? '').toLowerCase().includes(q),
     );
   }, [rows, search]);
+
+  // Switching filter, search or brand shows a different list — start it at the top.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [tier, search, slug]);
 
   const deleteMutation = useMutation({
     mutationFn: (customer: Customer) => customersAdminApi.delete(slug, customer.id),
@@ -272,7 +281,10 @@ export function CustomersPage() {
           }
         />
       ) : (
-        <>
+        <div
+          ref={listScrollRef}
+          className="flex max-h-[calc(100svh-17rem)] flex-col gap-5 overflow-y-auto overscroll-contain"
+        >
           <ul className="flex flex-col gap-2 md:hidden">
             {filtered.map((c) => (
               <CustomerCard
@@ -284,9 +296,9 @@ export function CustomersPage() {
             ))}
           </ul>
 
-          <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
-            <Table>
-              <TableHeader>
+          <div className="hidden rounded-xl border border-border bg-card md:block">
+            <Table containerClassName="w-full">
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
                 <TableRow className="border-b border-border text-[11px] uppercase tracking-wide hover:bg-transparent">
                   <TableHead>{t('customers.colCustomer')}</TableHead>
                   <TableHead>{t('customers.colPhone')}</TableHead>
@@ -319,8 +331,9 @@ export function CustomersPage() {
             onIntersect={() => {
               if (!listQuery.isFetchingNextPage) void listQuery.fetchNextPage();
             }}
+            rootRef={listScrollRef}
           />
-        </>
+        </div>
       )}
 
       <ConfirmDialog
