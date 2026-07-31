@@ -1423,6 +1423,21 @@ export interface ExtractedOfferItem {
   unitPriceGross: number | null;
 }
 
+/** One editable assistant prompt for the active brand. */
+export interface AiPrompt {
+  kind: AiAssistKind;
+  /** Current instruction text — the brand's override, or the default. */
+  body: string;
+  /** Shipped default, for the reset button. */
+  defaultBody: string;
+  /** Appended on every call; not editable. */
+  lockedRules: string;
+  isCustom: boolean;
+  updatedAt: string | null;
+  /** Brand name that replaces {{brand}} at call time. */
+  brand: string;
+}
+
 export const aiApi = {
   assist(companySlug: CompanySlug, input: AiAssistInput, signal?: AbortSignal) {
     return request<{ text: string }>('/admin/ai/assist', {
@@ -1445,6 +1460,24 @@ export const aiApi = {
       body: { refId, current },
       signal,
     });
+  },
+  /** All editable prompts for the active brand (defaults included). */
+  prompts(companySlug: CompanySlug, signal?: AbortSignal) {
+    return request<{ prompts: AiPrompt[] }>('/admin/ai/prompts', { companySlug, signal });
+  },
+  /** Save an edited prompt. Saving the unchanged default clears the override. */
+  savePrompt(companySlug: CompanySlug, kind: AiAssistKind, body: string) {
+    return request<{ kind: AiAssistKind; isCustom: boolean; body: string }>(
+      `/admin/ai/prompts/${kind}`,
+      { method: 'PATCH', companySlug, body: { body } },
+    );
+  },
+  /** Drop the override and fall back to the shipped default. */
+  resetPrompt(companySlug: CompanySlug, kind: AiAssistKind) {
+    return request<{ kind: AiAssistKind; isCustom: boolean; body: string }>(
+      `/admin/ai/prompts/${kind}`,
+      { method: 'DELETE', companySlug },
+    );
   },
 };
 

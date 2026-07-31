@@ -33,6 +33,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AttachmentGallery } from '@/components/attachment-gallery';
 import { BrandMark } from '@/components/brand-mark';
 import { ClaudeChatBox } from '@/components/claude-chat-box';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { LineItemsEditor } from '@/components/line-items-editor';
 import { Badge } from '@/components/ui/badge';
@@ -570,6 +571,10 @@ function DetailPanel({
     },
   });
 
+  // Sending an offer mails the customer and flips the lead to "quoted" — a
+  // second step so a stray click on a drafted offer can't fire it.
+  const [confirmSendOffer, setConfirmSendOffer] = useState(false);
+
   const sendQuoteMutation = useMutation({
     mutationFn: () =>
       inquiriesApi.sendQuote(companySlug, inquiry.id, {
@@ -577,6 +582,7 @@ function DetailPanel({
         quotedAmount: offerAmount.trim() === '' ? null : offerAmount.trim(),
       }),
     onSuccess: () => {
+      setConfirmSendOffer(false);
       setOfferBody('');
       void queryClient.invalidateQueries({ queryKey: ['inquiries-infinite'] });
       void queryClient.invalidateQueries({ queryKey: ['inquiries'] });
@@ -966,6 +972,7 @@ function DetailPanel({
                   <p>{inquiry._brand.name}</p>
                 </div>
                 <ClaudeChatBox
+                  editablePrompt={{ kind: 'inquiry_quote', companySlug }}
                   busy={offerAssist.busy}
                   history={offerAssist.history}
                   placeholder={t('ai.placeholder')}
@@ -1078,7 +1085,7 @@ function DetailPanel({
                 <Button
                   size="sm"
                   disabled={offerBody.trim() === '' || sendQuoteMutation.isPending}
-                  onClick={() => sendQuoteMutation.mutate()}
+                  onClick={() => setConfirmSendOffer(true)}
                 >
                   <Send className="size-3.5" />
                   {sendQuoteMutation.isPending ? t('common.saving') : t('inquiries.sendOfferCta')}
@@ -1105,6 +1112,7 @@ function DetailPanel({
                 className="block min-h-[130px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
               />
               <ClaudeChatBox
+                editablePrompt={{ kind: 'inquiry_note', companySlug }}
                 busy={notesAssist.busy}
                 history={notesAssist.history}
                 placeholder={t('ai.placeholder')}
@@ -1145,6 +1153,18 @@ function DetailPanel({
           </TabsContent>
         </Tabs>
       </CardContent>
+
+      <ConfirmDialog
+        open={confirmSendOffer}
+        onOpenChange={setConfirmSendOffer}
+        title={t('inquiries.confirmSendOfferTitle')}
+        description={t('inquiries.confirmSendOfferBody', {
+          to: inquiry.email ?? '—',
+        })}
+        confirmLabel={t('inquiries.sendOfferCta')}
+        onConfirm={() => sendQuoteMutation.mutate()}
+        isPending={sendQuoteMutation.isPending}
+      />
     </Card>
   );
 }

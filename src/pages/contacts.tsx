@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AttachmentGallery } from '@/components/attachment-gallery';
 import { BrandMark } from '@/components/brand-mark';
 import { ClaudeChatBox } from '@/components/claude-chat-box';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -722,6 +723,7 @@ function ReplyComposer({
   const [body, setBody] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const sentTimerRef = useRef<number | null>(null);
 
   const assist = useClaudeAssist({
@@ -745,14 +747,21 @@ function ReplyComposer({
     };
   }, []);
 
-  async function handleSend() {
+  // Both the button and ⌘↵ ask first — the mail leaves immediately once sent.
+  function requestSend() {
     if (!body.trim()) {
       setLocalError(t('contacts.replyEmpty'));
       return;
     }
     setLocalError(null);
+    setConfirmOpen(true);
+  }
+
+  async function handleSend() {
+    setLocalError(null);
     try {
       await onSend(body);
+      setConfirmOpen(false);
       setBody('');
       setJustSent(true);
       if (sentTimerRef.current !== null) window.clearTimeout(sentTimerRef.current);
@@ -766,7 +775,7 @@ function ReplyComposer({
     // ⌘/Ctrl + Enter → send
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      void handleSend();
+      requestSend();
     }
   }
 
@@ -809,6 +818,7 @@ function ReplyComposer({
         </div>
       ) : null}
       <ClaudeChatBox
+        editablePrompt={{ kind: 'contact_reply', companySlug }}
         busy={assist.busy}
         history={assist.history}
         placeholder={t('ai.placeholder')}
@@ -843,7 +853,7 @@ function ReplyComposer({
           <kbd className="hidden items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
             ⌘↩
           </kbd>
-          <Button size="sm" onClick={handleSend} disabled={isSending || body.trim() === ''}>
+          <Button size="sm" onClick={requestSend} disabled={isSending || body.trim() === ''}>
             {isSending ? (
               <>
                 <Loader2 className="size-3.5 animate-spin" />
@@ -858,6 +868,16 @@ function ReplyComposer({
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={t('contacts.confirmSendReplyTitle')}
+        description={t('contacts.confirmSendReplyBody', { to })}
+        confirmLabel={t('contacts.replySend')}
+        onConfirm={() => void handleSend()}
+        isPending={isSending}
+      />
     </div>
   );
 }

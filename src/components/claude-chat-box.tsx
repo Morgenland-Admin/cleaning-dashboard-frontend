@@ -1,9 +1,15 @@
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 
+import { PromptEditDialog } from '@/components/prompt-edit-dialog';
+import { useT } from '@/i18n';
+import { useSession } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
 
 import { ClaudeIcon } from './claude-icon';
+
+import type { CompanySlug } from '@/contexts/project-context';
+import type { AiAssistKind } from '@/lib/api';
 
 export interface ChatEntry {
   role: 'user' | 'claude';
@@ -26,6 +32,7 @@ export function ClaudeChatBox({
   sendLabel,
   quickActions,
   onSend,
+  editablePrompt,
 }: {
   busy: boolean;
   history: ChatEntry[];
@@ -35,8 +42,18 @@ export function ClaudeChatBox({
   sendLabel: string; // send button aria-label / title
   quickActions: QuickAction[];
   onSend: (instruction: string) => void;
+  /** Shows the "edit prompt" affordance for this brand + assist kind. */
+  editablePrompt?: { kind: AiAssistKind; companySlug: CompanySlug };
 }) {
+  const t = useT();
+  const { data: session } = useSession();
   const [text, setText] = useState('');
+  const [promptOpen, setPromptOpen] = useState(false);
+
+  // Writing a prompt decides what customers receive — admins only, matching the
+  // backend gate. Everyone else can still open it read-only.
+  const accessLevel = (session?.user as { accessLevel?: string } | undefined)?.accessLevel;
+  const canEditPrompt = accessLevel === 'super_admin' || accessLevel === 'admin';
 
   function submit() {
     const trimmed = text.trim();
@@ -64,6 +81,18 @@ export function ClaudeChatBox({
         <span className="truncate text-[11px] leading-none text-muted-foreground">
           {busy ? busyHint : idleHint}
         </span>
+        {editablePrompt ? (
+          <button
+            type="button"
+            onClick={() => setPromptOpen(true)}
+            aria-label={t('prompts.edit')}
+            title={t('prompts.edit')}
+            className="ml-auto flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+          >
+            <SlidersHorizontal className="size-3" />
+            <span className="hidden sm:inline">{t('prompts.edit')}</span>
+          </button>
+        ) : null}
       </div>
 
       {history.length > 0 ? (
@@ -130,6 +159,16 @@ export function ClaudeChatBox({
             </button>
           ))}
         </div>
+      ) : null}
+
+      {editablePrompt ? (
+        <PromptEditDialog
+          open={promptOpen}
+          onOpenChange={setPromptOpen}
+          companySlug={editablePrompt.companySlug}
+          kind={editablePrompt.kind}
+          canEdit={canEditPrompt}
+        />
       ) : null}
     </div>
   );

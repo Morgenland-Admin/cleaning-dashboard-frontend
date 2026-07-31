@@ -1196,6 +1196,7 @@ function OrderMessageComposer({
   const [body, setBody] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const sentTimerRef = useRef<number | null>(null);
 
   const assist = useClaudeAssist({
@@ -1217,14 +1218,21 @@ function OrderMessageComposer({
     };
   }, []);
 
-  async function handleSend() {
+  // Both the button and ⌘↵ ask first — the mail leaves immediately once sent.
+  function requestSend() {
     if (!body.trim()) {
       setLocalError('Bitte zuerst eine Nachricht verfassen.');
       return;
     }
     setLocalError(null);
+    setConfirmOpen(true);
+  }
+
+  async function handleSend() {
+    setLocalError(null);
     try {
       await onSend(body);
+      setConfirmOpen(false);
       setBody('');
       setJustSent(true);
       if (sentTimerRef.current !== null) window.clearTimeout(sentTimerRef.current);
@@ -1237,7 +1245,7 @@ function OrderMessageComposer({
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      void handleSend();
+      requestSend();
     }
   }
 
@@ -1297,6 +1305,7 @@ function OrderMessageComposer({
           </div>
         )}
         <ClaudeChatBox
+          editablePrompt={{ kind: 'order_message', companySlug }}
           busy={assist.busy}
           history={assist.history}
           placeholder="Claude bitten, eine Nachricht zu schreiben oder anzupassen …"
@@ -1329,7 +1338,7 @@ function OrderMessageComposer({
             <kbd className="hidden items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
               ⌘↩
             </kbd>
-            <Button size="sm" onClick={handleSend} disabled={isSending || body.trim() === ''}>
+            <Button size="sm" onClick={requestSend} disabled={isSending || body.trim() === ''}>
               {isSending ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />
@@ -1345,6 +1354,16 @@ function OrderMessageComposer({
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Nachricht wirklich senden?"
+        description={`Die E-Mail geht sofort an ${order.customerEmail} und kann nicht zurückgeholt werden.`}
+        confirmLabel="Senden"
+        onConfirm={() => void handleSend()}
+        isPending={isSending}
+      />
     </div>
   );
 }

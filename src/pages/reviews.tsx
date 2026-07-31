@@ -624,6 +624,7 @@ function ReviewResponseAssistant({
   });
   return (
     <ClaudeChatBox
+      editablePrompt={{ kind: 'review_response', companySlug }}
       busy={assist.busy}
       history={assist.history}
       placeholder={t('ai.placeholder')}
