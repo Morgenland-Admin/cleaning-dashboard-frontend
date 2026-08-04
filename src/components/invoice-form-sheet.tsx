@@ -94,6 +94,7 @@ export function InvoiceFormSheet({
     addressLine2: invoice?.recipientAddressLine2 ?? prefill?.addressLine2 ?? '',
     postalCode: invoice?.recipientPostalCode ?? prefill?.postalCode ?? '',
     city: invoice?.recipientCity ?? prefill?.city ?? '',
+    subject: invoice?.subject ?? '',
     serviceDate: invoice?.serviceDate ?? '',
     serviceDateEnd: invoice?.serviceDateEnd ?? '',
     // Show the Leistungsdatum on the invoice? On for new invoices; for existing
@@ -112,6 +113,7 @@ export function InvoiceFormSheet({
     invoice && invoice.lineItems.length > 0
       ? invoice.lineItems.map((li) => ({
           label: li.label,
+          note: li.note ?? '',
           quantity: String(li.quantity),
           unitPriceEur: (li.unitPriceCents / 100).toFixed(2),
           isPackage: li.isPackage ?? false,
@@ -154,6 +156,7 @@ export function InvoiceFormSheet({
         label: l.label.trim(),
         quantity: toQuantity(l.quantity) || 1,
         unitPriceCents: lineNetCents(l, priceMode, fields.taxRatePercent),
+        ...(l.note.trim() ? { note: l.note.trim() } : {}),
         ...(l.isPackage ? { isPackage: true } : {}),
       }));
       const paymentTermsDays = Number(fields.paymentTermsDays);
@@ -169,6 +172,7 @@ export function InvoiceFormSheet({
           recipientAddressLine2: fields.addressLine2.trim() || null,
           recipientPostalCode: fields.postalCode.trim() || null,
           recipientCity: fields.city.trim() || null,
+          subject: fields.subject.trim() || null,
           serviceDate: svcDate,
           serviceDateEnd: svcDateEnd,
           lineItems,
@@ -193,6 +197,7 @@ export function InvoiceFormSheet({
       if (fields.addressLine2.trim()) input.recipientAddressLine2 = fields.addressLine2.trim();
       if (fields.postalCode.trim()) input.recipientPostalCode = fields.postalCode.trim();
       if (fields.city.trim()) input.recipientCity = fields.city.trim();
+      if (fields.subject.trim()) input.subject = fields.subject.trim();
       if (svcDate) input.serviceDate = svcDate;
       if (svcDateEnd) input.serviceDateEnd = svcDateEnd;
       if (fields.notes.trim()) input.notes = fields.notes.trim();
@@ -316,6 +321,14 @@ export function InvoiceFormSheet({
               />
             </FormField>
           </div>
+          <FormField label={t('invoices.form.subject')} hint={t('invoices.form.subjectHint')}>
+            <Input
+              className="h-11 md:h-9"
+              maxLength={200}
+              value={fields.subject}
+              onChange={(e) => setField('subject', e.target.value)}
+            />
+          </FormField>
           <label className="flex items-center gap-2 text-sm text-foreground">
             <input
               type="checkbox"

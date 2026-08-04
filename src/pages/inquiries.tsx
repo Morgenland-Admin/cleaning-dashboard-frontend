@@ -548,6 +548,7 @@ function DetailPanel({
               : (netFromGrossCents(grossCents, OFFER_VAT) / 100).toFixed(2);
         return {
           label: it.label,
+          note: '',
           quantity: String(it.quantity > 0 ? it.quantity : 1),
           unitPriceEur,
           isPackage: false,

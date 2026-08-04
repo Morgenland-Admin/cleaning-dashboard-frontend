@@ -122,6 +122,13 @@ export function LineItemsEditor({
                 onChange={(e) => setLine(idx, { label: e.target.value })}
               />
             </FormField>
+            <FormField label={t('invoices.form.lineNote')} hint={t('invoices.form.lineNoteHint')}>
+              <Input
+                className="h-11 md:h-9"
+                value={line.note}
+                onChange={(e) => setLine(idx, { note: e.target.value })}
+              />
+            </FormField>
             <div className="flex items-end gap-2">
               <FormField label={t('invoices.form.quantity')} required className="w-20">
                 <Input

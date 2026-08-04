@@ -509,6 +509,7 @@ export function InvoiceDetailPage() {
                 {invoice.recipientEmail ?? '—'}
               </DetailRow>
               <DetailRow label={t('invoices.form.addressLine1')}>{fullAddress}</DetailRow>
+              <DetailRow label={t('invoices.form.subject')}>{invoice.subject ?? '—'}</DetailRow>
               <DetailRow label={t('invoices.form.serviceDate')}>
                 {invoice.serviceDate ? (
                   <>
@@ -565,13 +566,21 @@ export function InvoiceDetailPage() {
               <ul className="divide-y rounded-md border">
                 {invoice.lineItems.map((li, i) => (
                   <li key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                    <span
-                      className={cn('min-w-0 flex-1 truncate', li.isPackage && 'font-semibold')}
-                    >
-                      {li.isPackage ? (
-                        <Package className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
+                    <span className="min-w-0 flex-1">
+                      <span className={cn('block truncate', li.isPackage && 'font-semibold')}>
+                        {li.isPackage ? (
+                          <Package
+                            className="mr-1 inline size-3.5 align-[-2px]"
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                        {li.label}
+                      </span>
+                      {li.note ? (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {li.note}
+                        </span>
                       ) : null}
-                      {li.label}
                     </span>
                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                       {li.quantity} ×

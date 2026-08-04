@@ -2,6 +2,8 @@ export type PriceMode = 'net' | 'gross';
 
 export interface LineDraft {
   label: string;
+  /** Second line under the label on the invoice, e.g. "Premiumreinigung". */
+  note: string;
   quantity: string;
   /** Unit price as typed — read as net or gross per the active priceMode. */
   unitPriceEur: string;
@@ -9,7 +11,7 @@ export interface LineDraft {
 }
 
 export function emptyLine(): LineDraft {
-  return { label: '', quantity: '1', unitPriceEur: '', isPackage: false };
+  return { label: '', note: '', quantity: '1', unitPriceEur: '', isPackage: false };
 }
 
 export function toCents(eur: string): number {

@@ -1895,6 +1895,8 @@ export type InvoicePaymentMethod = 'transfer' | 'card' | 'cash';
 
 export interface InvoiceLineItem {
   label: string;
+  /** Second line under the label on the invoice, e.g. "Premiumreinigung". */
+  note?: string | null;
   quantity: number;
   unitPriceCents: number;
   /** Render as a bold package/section header line on the invoice. */
@@ -1914,6 +1916,8 @@ export interface InvoiceRow {
   recipientPostalCode: string | null;
   recipientCity: string | null;
   recipientCountry: string | null;
+  /** Betreff line under the invoice headline. */
+  subject: string | null;
   /** "YYYY-MM-DD" Leistungsdatum (§14 UStG) — required before issuing. */
   serviceDate: string | null;
   serviceDateEnd: string | null;
@@ -1948,6 +1952,7 @@ export interface InvoiceCreateInput {
   recipientPostalCode?: string | null;
   recipientCity?: string | null;
   recipientCountry?: string;
+  subject?: string | null;
   serviceDate?: string | null;
   serviceDateEnd?: string | null;
   lineItems: InvoiceLineItem[];
@@ -1966,6 +1971,7 @@ export interface InvoiceUpdateInput {
   recipientPostalCode?: string | null;
   recipientCity?: string | null;
   recipientCountry?: string;
+  subject?: string | null;
   serviceDate?: string | null;
   serviceDateEnd?: string | null;
   lineItems?: InvoiceLineItem[];

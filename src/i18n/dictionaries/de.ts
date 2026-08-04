@@ -990,6 +990,9 @@ export const de = {
       addressLine2: 'Adresszusatz',
       postalCode: 'PLZ',
       city: 'Ort',
+      subject: 'Betreff',
+      subjectHint:
+        'Steht unter „Rechnung Nr. …“, z. B. „Teppichbodenreinigung – Premiumreinigung“.',
       serviceDate: 'Leistungsdatum',
       serviceDateEnd: 'Leistungszeitraum bis',
       serviceDateEndHint: 'Optional — nur bei einem Zeitraum ausfüllen.',
@@ -1010,6 +1013,8 @@ export const de = {
       addLine: 'Position hinzufügen',
       removeLine: 'Position entfernen',
       label: 'Bezeichnung',
+      lineNote: 'Zusatz',
+      lineNoteHint: 'Zweite Zeile unter der Bezeichnung, z. B. „Premiumreinigung“.',
       quantity: 'Menge',
       unitPrice: 'Einzelpreis (€, netto)',
       unitPriceNet: 'Einzelpreis (€, netto)',
