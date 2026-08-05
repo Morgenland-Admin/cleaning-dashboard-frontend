@@ -33,6 +33,8 @@ import {
   customersAdminApi,
   errMessage,
   type ContactMessage,
+  type InvoiceRow,
+  type InvoiceStatus,
   type LoyaltyTier,
   type NewsletterProfileStatus,
   type OrderRow,
@@ -52,6 +54,18 @@ const TIER_TONE: Record<LoyaltyTier, 'neutral' | 'info' | 'success'> = {
   neukunde: 'neutral',
   stammkunde: 'info',
   premium: 'success',
+};
+
+/** Same tones as the invoices list / detail page, so a status reads identically. */
+const INVOICE_STATUS_TONE: Record<
+  InvoiceStatus,
+  'info' | 'warning' | 'success' | 'danger' | 'neutral'
+> = {
+  draft: 'neutral',
+  sent: 'info',
+  paid: 'success',
+  overdue: 'danger',
+  void: 'neutral',
 };
 
 const NEWSLETTER_TONE: Record<NewsletterProfileStatus, 'success' | 'warning' | 'neutral'> = {
@@ -141,7 +155,8 @@ export function CustomerDetailPage() {
     );
   }
 
-  const { customer, addresses, orders, inquiries, contacts, newsletter, stats } = query.data;
+  const { customer, addresses, orders, invoices, inquiries, contacts, newsletter, stats } =
+    query.data;
   const noEmail = isNonContactableEmail(customer.email);
   // Handed to the invoice form page through router state so the operator
   // doesn't retype a recipient we already know.
@@ -198,6 +213,9 @@ export function CustomerDetailPage() {
               </a>
             )}
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <Badge variant="secondary" className="font-medium tabular-nums">
+                {t('customers.customerId')} #{customer.id}
+              </Badge>
               <StatusBadge
                 label={t(`customers.type.${customer.customerType}` as never)}
                 tone={customer.customerType === 'business' ? 'info' : 'neutral'}
@@ -274,11 +292,40 @@ export function CustomerDetailPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard label={t('customers.stat.orders')} value={formatNumber(stats.orders, bcp47)} />
+        <StatCard
+          label={t('customers.stat.invoices')}
+          value={formatNumber(stats.invoices, bcp47)}
+          hint={
+            stats.issuedInvoices > 0
+              ? t('customers.stat.invoicesHint', {
+                  count: formatNumber(stats.issuedInvoices, bcp47),
+                  amount: formatCurrency(stats.invoicedCents / 100, 'EUR', bcp47),
+                })
+              : undefined
+          }
+        />
         <StatCard
           label={t('customers.stat.lifetimeSpend')}
           value={formatCurrency(stats.lifetimeSpentCents / 100, 'EUR', bcp47)}
+          hint={t('customers.stat.lifetimeSpendHint')}
+        />
+        <StatCard
+          label={t('customers.stat.openAmount')}
+          value={formatCurrency(stats.openInvoicedCents / 100, 'EUR', bcp47)}
+          hint={
+            stats.overdueInvoices > 0
+              ? t('customers.stat.overdueHint', {
+                  count: formatNumber(stats.overdueInvoices, bcp47),
+                })
+              : stats.openInvoices > 0
+                ? t('customers.stat.openAmountHint', {
+                    count: formatNumber(stats.openInvoices, bcp47),
+                  })
+                : undefined
+          }
+          tone={stats.overdueInvoices > 0 ? 'danger' : undefined}
         />
         <StatCard
           label={t('customers.stat.openInquiries')}
@@ -304,6 +351,9 @@ export function CustomerDetailPage() {
             <ProfileRow icon={<MapPin className="size-4" />} value={fullAddress || null} />
 
             <dl className="flex flex-col gap-1.5 border-t border-border pt-3 text-xs">
+              <DataRow label={t('customers.customerId')}>
+                <span className="tabular-nums">#{customer.id}</span>
+              </DataRow>
               <DataRow label={t('customers.form.customerType')}>
                 {t(`customers.type.${customer.customerType}` as never)}
               </DataRow>
@@ -380,6 +430,10 @@ export function CustomerDetailPage() {
               {t('customers.tab.orders')}
               <CountChip n={stats.orders} />
             </TabsTrigger>
+            <TabsTrigger value="invoices" className="gap-1.5">
+              {t('customers.tab.invoices')}
+              <CountChip n={stats.invoices} />
+            </TabsTrigger>
             <TabsTrigger value="inquiries" className="gap-1.5">
               {t('customers.tab.inquiries')}
               <CountChip n={stats.inquiries} />
@@ -398,6 +452,9 @@ export function CustomerDetailPage() {
           </TabsContent>
           <TabsContent value="orders" className="mt-4">
             <OrdersList orders={orders} bcp47={bcp47} t={t} />
+          </TabsContent>
+          <TabsContent value="invoices" className="mt-4">
+            <InvoicesList invoices={invoices} bcp47={bcp47} t={t} />
           </TabsContent>
           <TabsContent value="inquiries" className="mt-4">
             <InquiriesList inquiries={inquiries} bcp47={bcp47} t={t} />
@@ -445,11 +502,29 @@ function BackLink({ t }: { t: ReturnType<typeof useT> }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: 'danger';
+}) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-1 font-serif text-xl font-semibold tabular-nums text-foreground">{value}</p>
+      <p
+        className={cn(
+          'mt-1 font-serif text-xl font-semibold tabular-nums',
+          tone === 'danger' ? 'text-destructive' : 'text-foreground',
+        )}
+      >
+        {value}
+      </p>
+      {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -527,6 +602,58 @@ function OrdersList({
               </TableCell>
               <TableCell className="whitespace-nowrap text-right text-xs text-muted-foreground">
                 {formatDateTime(o.createdAt, bcp47, { dateStyle: 'short' })}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+/** Invoices billed to this customer — row click opens the invoice detail page. */
+function InvoicesList({
+  invoices,
+  bcp47,
+  t,
+}: {
+  invoices: InvoiceRow[];
+  bcp47: string;
+  t: ReturnType<typeof useT>;
+}) {
+  if (invoices.length === 0) {
+    return (
+      <SectionEmpty icon={<FileText className="size-6" />} message={t('customers.noInvoices')} />
+    );
+  }
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <Table>
+        <TableBody>
+          {invoices.map((i) => (
+            <TableRow key={i.id} className="cursor-pointer">
+              <TableCell>
+                <Link to={`/rechnungen/${i.id}`} className="block hover:underline">
+                  <p className="font-medium tabular-nums text-foreground">
+                    {i.number ?? t('invoices.status.draft')}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {i.subject || i.recipientName}
+                    {i.orderId ? ` · #${i.orderId}` : ''}
+                  </p>
+                </Link>
+              </TableCell>
+              <TableCell>
+                <StatusBadge
+                  label={t(`invoices.status.${i.status}` as never)}
+                  tone={INVOICE_STATUS_TONE[i.status]}
+                />
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatCurrency(i.totalCents / 100, i.currency, bcp47)}
+              </TableCell>
+              <TableCell className="whitespace-nowrap text-right text-xs text-muted-foreground">
+                {formatDateTime(i.sentAt ?? i.createdAt, bcp47, { dateStyle: 'short' })}
               </TableCell>
             </TableRow>
           ))}

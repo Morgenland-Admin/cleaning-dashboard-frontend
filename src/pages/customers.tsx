@@ -10,7 +10,6 @@ import {
   RefreshCcw,
   Search,
   Trash2,
-  User,
   Users,
   X,
 } from 'lucide-react';
@@ -73,6 +72,9 @@ export function CustomersPage() {
   const slug = activeProject.companySlug;
   const [tier, setTier] = useState<TierFilter>('all');
   const [search, setSearch] = useState('');
+  // The search runs server-side (an id or name can sit thousands of rows deep),
+  // so the input is debounced to keep one request per pause in typing.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   // The list scrolls inside its own box so a few hundred rows stay navigable
   // without the page growing to many screens tall. The table header sticks to
   // the top of that box.
@@ -80,14 +82,29 @@ export function CustomersPage() {
   const [confirming, setConfirming] = useState<Customer | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  function clearSearch() {
+    setSearch('');
+    setDebouncedSearch('');
+  }
+
   const listQuery = useInfiniteQuery({
-    queryKey: ['customers', slug, tier] as const,
+    queryKey: ['customers', slug, tier, debouncedSearch] as const,
     enabled: !isAllBrands,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       customersAdminApi.list(
         slug,
-        { limit: 50, cursor: pageParam ?? undefined, tier: tier === 'all' ? undefined : tier },
+        {
+          limit: 50,
+          cursor: pageParam ?? undefined,
+          tier: tier === 'all' ? undefined : tier,
+          q: debouncedSearch || undefined,
+        },
         signal,
       ),
     getNextPageParam: (last) => last.nextCursor,
@@ -98,20 +115,10 @@ export function CustomersPage() {
     [listQuery.data],
   );
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((c) =>
-      [c.email, c.name, c.companyName, c.customerNumber].some((field) =>
-        (field ?? '').toLowerCase().includes(q),
-      ),
-    );
-  }, [rows, search]);
-
   // Switching filter, search or brand shows a different list — start it at the top.
   useEffect(() => {
     listScrollRef.current?.scrollTo({ top: 0 });
-  }, [tier, search, slug]);
+  }, [tier, debouncedSearch, slug]);
 
   const deleteMutation = useMutation({
     mutationFn: (customer: Customer) => customersAdminApi.delete(slug, customer.id),
@@ -139,6 +146,11 @@ export function CustomersPage() {
   }
 
   const queryErrorMessage = listQuery.error ? errMessage(listQuery.error) : null;
+  // Spinner in the search box: the typed text is ahead of the results, or the
+  // matching request is still in flight.
+  const searching =
+    search.trim() !== debouncedSearch ||
+    (!!debouncedSearch && listQuery.isFetching && !listQuery.isFetchingNextPage);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -218,19 +230,36 @@ export function CustomersPage() {
           })}
         </div>
 
-        <div className="relative w-full sm:w-64">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
+        <div className="relative w-full sm:w-72">
+          {searching ? (
+            <Loader2
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
+              aria-hidden="true"
+            />
+          ) : (
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+          )}
           <Input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('customers.searchPlaceholder')}
             aria-label={t('customers.searchPlaceholder')}
-            className="h-11 pl-9 sm:h-9"
+            className="h-11 pl-9 pr-9 sm:h-9"
           />
+          {search ? (
+            <button
+              type="button"
+              onClick={clearSearch}
+              aria-label={t('customers.clearSearch')}
+              className="absolute right-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-6"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -270,27 +299,41 @@ export function CustomersPage() {
             {t('common.refresh')}
           </Button>
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<Inbox className="size-6" aria-hidden="true" />}
-          title={t('customers.empty')}
-          message={t('customers.emptyHint')}
-          action={
-            <Button size="sm" className="h-11 sm:h-9" asChild>
-              <Link to="/customers/new">
-                <Plus className="size-3.5" aria-hidden="true" />
-                {t('customers.newCustomer')}
-              </Link>
-            </Button>
-          }
-        />
+      ) : rows.length === 0 ? (
+        debouncedSearch ? (
+          <EmptyState
+            icon={<Search className="size-6" aria-hidden="true" />}
+            title={t('customers.searchEmpty')}
+            message={t('customers.searchEmptyHint', { query: debouncedSearch })}
+            action={
+              <Button variant="outline" size="sm" className="h-11 sm:h-9" onClick={clearSearch}>
+                <X className="size-3.5" aria-hidden="true" />
+                {t('customers.clearSearch')}
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={<Inbox className="size-6" aria-hidden="true" />}
+            title={t('customers.empty')}
+            message={t('customers.emptyHint')}
+            action={
+              <Button size="sm" className="h-11 sm:h-9" asChild>
+                <Link to="/customers/new">
+                  <Plus className="size-3.5" aria-hidden="true" />
+                  {t('customers.newCustomer')}
+                </Link>
+              </Button>
+            }
+          />
+        )
       ) : (
         <div
           ref={listScrollRef}
           className="flex max-h-[calc(100svh-17rem)] flex-col gap-5 overflow-y-auto overscroll-contain"
         >
           <ul className="flex flex-col gap-2 md:hidden">
-            {filtered.map((c) => (
+            {rows.map((c) => (
               <CustomerCard
                 key={c.id}
                 customer={c}
@@ -304,8 +347,8 @@ export function CustomersPage() {
             <Table containerClassName="w-full">
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
                 <TableRow className="border-b border-border text-[11px] uppercase tracking-wide hover:bg-transparent">
+                  <TableHead className="w-16">{t('customers.colId')}</TableHead>
                   <TableHead>{t('customers.colCustomer')}</TableHead>
-                  <TableHead>{t('customers.colCompany')}</TableHead>
                   <TableHead>{t('customers.colPhone')}</TableHead>
                   <TableHead className="text-right">{t('customers.colOrders')}</TableHead>
                   <TableHead className="text-right">{t('customers.colSpent')}</TableHead>
@@ -317,7 +360,7 @@ export function CustomersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((c) => (
+                {rows.map((c) => (
                   <CustomerTableRow
                     key={c.id}
                     customer={c}
@@ -393,7 +436,12 @@ function CustomerCard({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {customer.companyName ? <span>{customer.companyName}</span> : null}
+        <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium tabular-nums text-foreground">
+          #{customer.id}
+        </span>
+        {customer.customerNumber ? (
+          <span className="tabular-nums">{customer.customerNumber}</span>
+        ) : null}
         {customer.phone ? <span>{customer.phone}</span> : null}
         <span>
           {t('customers.colOrders')}: {formatNumber(customer.totalOrders, bcp47)}
@@ -438,26 +486,23 @@ function CustomerTableRow({
   const noEmail = isNonContactableEmail(customer.email);
   return (
     <TableRow>
-      <TableCell className="max-w-[18rem]">
-        <Link to={`/customers/${customer.id}`} className="group flex items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-rust/10 text-rust">
-            <User className="size-4" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate font-medium text-foreground group-hover:underline">
-              {customer.name ?? '—'}
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
-              {noEmail ? t('customers.noEmail') : customer.email}
-            </p>
-          </div>
-        </Link>
+      <TableCell className="whitespace-nowrap">
+        <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium tabular-nums text-foreground">
+          #{customer.id}
+        </span>
       </TableCell>
-      <TableCell className="max-w-[12rem] text-muted-foreground">
-        <p className="truncate">{customer.companyName ?? '—'}</p>
-        {customer.customerNumber ? (
-          <p className="truncate text-xs tabular-nums">{customer.customerNumber}</p>
-        ) : null}
+      <TableCell className="max-w-[22rem]">
+        <Link to={`/customers/${customer.id}`} className="group block min-w-0">
+          <p className="truncate font-medium text-foreground group-hover:underline">
+            {customer.name ?? '—'}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {noEmail ? t('customers.noEmail') : customer.email}
+            {customer.customerNumber ? (
+              <span className="tabular-nums"> · {customer.customerNumber}</span>
+            ) : null}
+          </p>
+        </Link>
       </TableCell>
       <TableCell className="whitespace-nowrap text-muted-foreground">
         {customer.phone ?? '—'}

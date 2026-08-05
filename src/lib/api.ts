@@ -1149,6 +1149,12 @@ export interface CustomerOverviewStats {
   orders: number;
   paidOrders: number;
   lifetimeSpentCents: number;
+  invoices: number;
+  issuedInvoices: number;
+  invoicedCents: number;
+  openInvoices: number;
+  openInvoicedCents: number;
+  overdueInvoices: number;
   inquiries: number;
   openInquiries: number;
   contacts: number;
@@ -1159,6 +1165,7 @@ export interface CustomerOverview {
   customer: Customer;
   addresses: CustomerAddress[];
   orders: OrderRow[];
+  invoices: InvoiceRow[];
   inquiries: ServiceInquiry[];
   contacts: ContactMessage[];
   newsletter: NewsletterSubscriber | null;
@@ -1173,6 +1180,8 @@ export interface CustomerListParams {
   cursor?: string | null;
   tier?: LoyaltyTier;
   email?: string;
+  /** Free text — matches id, email, name, company, customer number and phone. */
+  q?: string;
 }
 
 export const customersAdminApi = {
@@ -1182,6 +1191,7 @@ export const customersAdminApi = {
     if (params.cursor) qs.set('cursor', params.cursor);
     if (params.tier) qs.set('tier', params.tier);
     if (params.email) qs.set('email', params.email);
+    if (params.q) qs.set('q', params.q);
     const suffix = qs.toString();
     return request<{ customers: Customer[]; nextCursor: string | null }>(
       `/admin/customers${suffix ? `?${suffix}` : ''}`,
@@ -2025,6 +2035,8 @@ export interface InvoiceRow {
   number: string | null;
   orderId: number | null;
   partnerId: number | null;
+  /** Logical link to the billed customer record. */
+  customerId: number | null;
   customerType: 'b2c' | 'b2b';
   recipientName: string;
   /** B2B: company line printed above the recipient name. */
