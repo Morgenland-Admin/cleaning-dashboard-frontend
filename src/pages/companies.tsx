@@ -199,6 +199,11 @@ export function EditBrandingForm({
   const [country, setCountry] = useState(company.country ?? 'DE');
   const [vatId, setVatId] = useState(company.vatId ?? '');
   const [registrationNumber, setRegistrationNumber] = useState(company.registrationNumber ?? '');
+  // Pflichtangaben printed on every invoice (sender block + legal footer).
+  const [businessId, setBusinessId] = useState(company.businessId ?? '');
+  const [legalForm, setLegalForm] = useState(company.legalForm ?? '');
+  const [managingDirectors, setManagingDirectors] = useState(company.managingDirectors ?? '');
+  const [chamber, setChamber] = useState(company.chamber ?? '');
   const [logoUrl, setLogoUrl] = useState(company.logoUrl ?? '');
   const [primaryColor, setPrimaryColor] = useState(company.primaryColor ?? '');
   const [senderEmail, setSenderEmail] = useState(company.senderEmail ?? '');
@@ -226,6 +231,10 @@ export function EditBrandingForm({
         country: nl(country),
         vatId: nl(vatId),
         registrationNumber: nl(registrationNumber),
+        businessId: nl(businessId),
+        legalForm: nl(legalForm),
+        managingDirectors: nl(managingDirectors),
+        chamber: nl(chamber),
         logoUrl: nl(logoUrl),
         primaryColor: nl(primaryColor),
         senderEmail: nl(senderEmail),
@@ -346,6 +355,44 @@ export function EditBrandingForm({
             value={registrationNumber}
             onChange={(e) => setRegistrationNumber(e.target.value)}
             placeholder={t('companies.edit.fields.registrationNumberPlaceholder')}
+          />
+        </Field>
+        <Field
+          label={t('companies.edit.fields.businessId')}
+          hint={t('companies.edit.fields.businessIdHint')}
+        >
+          <Input
+            value={businessId}
+            onChange={(e) => setBusinessId(e.target.value)}
+            maxLength={32}
+            placeholder={t('companies.edit.fields.businessIdPlaceholder')}
+          />
+        </Field>
+        <Field label={t('companies.edit.fields.legalForm')}>
+          <Input
+            value={legalForm}
+            onChange={(e) => setLegalForm(e.target.value)}
+            maxLength={64}
+            placeholder={t('companies.edit.fields.legalFormPlaceholder')}
+          />
+        </Field>
+        <Field
+          label={t('companies.edit.fields.managingDirectors')}
+          hint={t('companies.edit.fields.managingDirectorsHint')}
+        >
+          <Input
+            value={managingDirectors}
+            onChange={(e) => setManagingDirectors(e.target.value)}
+            maxLength={200}
+            placeholder={t('companies.edit.fields.managingDirectorsPlaceholder')}
+          />
+        </Field>
+        <Field label={t('companies.edit.fields.chamber')}>
+          <Input
+            value={chamber}
+            onChange={(e) => setChamber(e.target.value)}
+            maxLength={200}
+            placeholder={t('companies.edit.fields.chamberPlaceholder')}
           />
         </Field>
       </Section>

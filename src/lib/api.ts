@@ -1022,11 +1022,36 @@ export type NewsletterImportSummary = CsvImportSummary;
 
 export type LoyaltyTier = 'neukunde' | 'stammkunde' | 'premium';
 
+export type CustomerType = 'private' | 'business';
+export type CustomerSalutation = 'herr' | 'frau' | 'divers' | 'firma';
+export type CustomerLanguage = 'de' | 'en';
+export type CustomerChannel = 'email' | 'phone' | 'whatsapp' | 'post';
+export type CustomerAddressKind = 'billing' | 'service' | 'shipping';
+
 export interface Customer {
   id: number;
   email: string;
+  /** Display name — derived server-side from first/last name or the company. */
   name: string | null;
   phone: string | null;
+  customerType: CustomerType;
+  salutation: CustomerSalutation | null;
+  firstName: string | null;
+  lastName: string | null;
+  /** ISO date, "YYYY-MM-DD". */
+  dateOfBirth: string | null;
+  language: CustomerLanguage | null;
+  preferredChannel: CustomerChannel | null;
+  companyName: string | null;
+  /** USt-IdNr. of the customer (B2B). */
+  vatId: string | null;
+  taxNumber: string | null;
+  customerNumber: string | null;
+  externalNumber: string | null;
+  jobPosition: string | null;
+  department: string | null;
+  website: string | null;
+  /** Mirror of the default address row — kept in sync by the API. */
   addressLine1: string | null;
   addressLine2: string | null;
   postalCode: string | null;
@@ -1045,26 +1070,25 @@ export interface Customer {
   updatedAt: string;
 }
 
-export interface CustomerCreateInput {
-  email: string;
-  name?: string;
-  phone?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  postalCode?: string;
-  city?: string;
-  country?: string;
-  loyaltyTier?: LoyaltyTier;
-  tags?: string[];
-  internalNotes?: string;
-  marketingOptIn?: boolean;
-  defaultPaymentTermsDays?: number | null;
-}
-
-export interface CustomerUpdateInput {
-  email?: string;
+/** Every editable field of a customer. Empty strings clear a field server-side. */
+export interface CustomerProfileInput {
   name?: string | null;
   phone?: string | null;
+  customerType?: CustomerType;
+  salutation?: CustomerSalutation | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  dateOfBirth?: string | null;
+  language?: CustomerLanguage | null;
+  preferredChannel?: CustomerChannel | null;
+  companyName?: string | null;
+  vatId?: string | null;
+  taxNumber?: string | null;
+  customerNumber?: string | null;
+  externalNumber?: string | null;
+  jobPosition?: string | null;
+  department?: string | null;
+  website?: string | null;
   addressLine1?: string | null;
   addressLine2?: string | null;
   postalCode?: string | null;
@@ -1075,6 +1099,48 @@ export interface CustomerUpdateInput {
   internalNotes?: string | null;
   marketingOptIn?: boolean;
   defaultPaymentTermsDays?: number | null;
+}
+
+export interface CustomerCreateInput extends CustomerProfileInput {
+  email: string;
+}
+
+export interface CustomerUpdateInput extends CustomerProfileInput {
+  email?: string;
+}
+
+export interface CustomerAddress {
+  id: number;
+  customerId: number;
+  kind: CustomerAddressKind;
+  isDefault: boolean;
+  label: string | null;
+  name: string | null;
+  company: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  country: string | null;
+  phone: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerAddressInput {
+  kind?: CustomerAddressKind;
+  isDefault?: boolean;
+  label?: string | null;
+  name?: string | null;
+  company?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  country?: string | null;
+  phone?: string | null;
+  notes?: string | null;
 }
 
 export type NewsletterProfileStatus = 'confirmed' | 'pending' | 'unsubscribed' | 'none';
@@ -1091,6 +1157,7 @@ export interface CustomerOverviewStats {
 
 export interface CustomerOverview {
   customer: Customer;
+  addresses: CustomerAddress[];
   orders: OrderRow[];
   inquiries: ServiceInquiry[];
   contacts: ContactMessage[];
@@ -1149,6 +1216,44 @@ export const customersAdminApi = {
       method: 'POST',
       companySlug,
       body: {},
+    });
+  },
+  listAddresses(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<{ addresses: CustomerAddress[] }>(`/admin/customers/${id}/addresses`, {
+      companySlug,
+      signal,
+    });
+  },
+  createAddress(companySlug: CompanySlug, id: number, body: CustomerAddressInput) {
+    return request<{ address: CustomerAddress }>(`/admin/customers/${id}/addresses`, {
+      method: 'POST',
+      companySlug,
+      body,
+    });
+  },
+  updateAddress(
+    companySlug: CompanySlug,
+    id: number,
+    addressId: number,
+    body: CustomerAddressInput,
+  ) {
+    return request<{ address: CustomerAddress }>(`/admin/customers/${id}/addresses/${addressId}`, {
+      method: 'PATCH',
+      companySlug,
+      body,
+    });
+  },
+  /** Promote an address to the customer's default (mirrored onto the customer row). */
+  setDefaultAddress(companySlug: CompanySlug, id: number, addressId: number) {
+    return request<{ addresses: CustomerAddress[] }>(
+      `/admin/customers/${id}/addresses/${addressId}/default`,
+      { method: 'POST', companySlug, body: {} },
+    );
+  },
+  deleteAddress(companySlug: CompanySlug, id: number, addressId: number) {
+    return request<null>(`/admin/customers/${id}/addresses/${addressId}`, {
+      method: 'DELETE',
+      companySlug,
     });
   },
   /** Bulk CSV import. dryRun:true returns the summary without writing. */
@@ -1221,6 +1326,14 @@ export interface CompanyListRow {
   country: string | null;
   vatId: string | null;
   registrationNumber: string | null;
+  /** Betriebsnummer — printed in the invoice sender block + legal footer. */
+  businessId: string | null;
+  /** Rechtsform, e.g. "GbR". */
+  legalForm: string | null;
+  /** Geschäftsführer, comma-separated. */
+  managingDirectors: string | null;
+  /** Handwerkskammer. */
+  chamber: string | null;
   logoUrl: string | null;
   primaryColor: string | null;
   senderEmail: string | null;
@@ -1244,6 +1357,10 @@ export interface CompanyUpdateInput {
   country?: string | null;
   vatId?: string | null;
   registrationNumber?: string | null;
+  businessId?: string | null;
+  legalForm?: string | null;
+  managingDirectors?: string | null;
+  chamber?: string | null;
   primaryColor?: string | null;
   logoUrl?: string | null;
   senderEmail?: string | null;
@@ -1910,6 +2027,10 @@ export interface InvoiceRow {
   partnerId: number | null;
   customerType: 'b2c' | 'b2b';
   recipientName: string;
+  /** B2B: company line printed above the recipient name. */
+  recipientCompany: string | null;
+  /** B2B: USt-IdNr. of the recipient. */
+  recipientVatId: string | null;
   recipientEmail: string | null;
   recipientAddressLine1: string | null;
   recipientAddressLine2: string | null;
@@ -1937,6 +2058,14 @@ export interface InvoiceRow {
   lastDunningAt: string | null;
   odooInvoiceId: string | null;
   notes: string | null;
+  /** §35a EStG: the invoice covers a Handwerkerleistung (deductible labour). */
+  craftsmanService: boolean;
+  /** Gross (VAT-inclusive) labour share in cents. */
+  laborGrossCents: number | null;
+  /** VAT contained in the labour share, in cents. */
+  laborVatCents: number | null;
+  /** The §35a sentence as printed — frozen server-side, read-only here. */
+  craftsmanNote: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1946,6 +2075,8 @@ export interface InvoiceCreateInput {
   partnerId?: number;
   customerType?: 'b2c' | 'b2b';
   recipientName: string;
+  recipientCompany?: string | null;
+  recipientVatId?: string | null;
   recipientEmail?: string;
   recipientAddressLine1?: string | null;
   recipientAddressLine2?: string | null;
@@ -1960,11 +2091,16 @@ export interface InvoiceCreateInput {
   paymentTermsDays?: number;
   paymentMethod?: InvoicePaymentMethod;
   notes?: string;
+  craftsmanService?: boolean;
+  laborGrossCents?: number | null;
+  laborVatCents?: number | null;
 }
 
 /** Drafts accept content edits; issued invoices only status/odooInvoiceId. */
 export interface InvoiceUpdateInput {
   recipientName?: string;
+  recipientCompany?: string | null;
+  recipientVatId?: string | null;
   recipientEmail?: string | null;
   recipientAddressLine1?: string | null;
   recipientAddressLine2?: string | null;
@@ -1979,6 +2115,9 @@ export interface InvoiceUpdateInput {
   paymentTermsDays?: number;
   paymentMethod?: InvoicePaymentMethod;
   notes?: string | null;
+  craftsmanService?: boolean;
+  laborGrossCents?: number | null;
+  laborVatCents?: number | null;
   status?: InvoiceStatus;
   odooInvoiceId?: string | null;
 }

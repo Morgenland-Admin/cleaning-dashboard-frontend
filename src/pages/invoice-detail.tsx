@@ -18,11 +18,10 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { InvoiceFormSheet } from '@/components/invoice-form-sheet';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -86,10 +85,10 @@ export function InvoiceDetailPage() {
   const { activeProject, isAllBrands } = useProject();
   const queryClient = useQueryClient();
   const params = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const id = Number(params.id);
   const slug = activeProject.companySlug;
 
-  const [editing, setEditing] = useState(false);
   const [confirmState, setConfirmState] = useState<'send' | 'issue' | 'void' | 'dunning' | null>(
     null,
   );
@@ -380,7 +379,11 @@ export function InvoiceDetailPage() {
         <div className="flex flex-wrap items-center gap-2">
           {isDraft ? (
             <>
-              <Button size="sm" className="h-11 sm:h-9" onClick={() => setEditing(true)}>
+              <Button
+                size="sm"
+                className="h-11 sm:h-9"
+                onClick={() => navigate(`/rechnungen/${id}/bearbeiten`)}
+              >
                 <Pencil className="size-3.5" aria-hidden="true" />
                 {t('invoices.edit')}
               </Button>
@@ -620,6 +623,32 @@ export function InvoiceDetailPage() {
             </CardContent>
           </Card>
 
+          {invoice.craftsmanService ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">{t('invoices.form.craftsman')}</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2 text-sm">
+                <DetailRow label={t('invoices.form.laborGross')}>
+                  {invoice.laborGrossCents != null
+                    ? formatEur(invoice.laborGrossCents, bcp47, invoice.currency)
+                    : '—'}
+                </DetailRow>
+                <DetailRow label={t('invoices.form.laborVat')}>
+                  {invoice.laborVatCents != null
+                    ? formatEur(invoice.laborVatCents, bcp47, invoice.currency)
+                    : '—'}
+                </DetailRow>
+                {/* The sentence exactly as it is printed / was sent. */}
+                {invoice.craftsmanNote ? (
+                  <p className="mt-1 rounded-md bg-muted/40 p-2 text-xs leading-relaxed text-muted-foreground">
+                    {invoice.craftsmanNote}
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {invoice.notes ? (
             <Card>
               <CardHeader>
@@ -726,19 +755,6 @@ export function InvoiceDetailPage() {
           </Card>
         </div>
       </div>
-
-      {editing ? (
-        <InvoiceFormSheet
-          slug={slug}
-          invoice={invoice}
-          onClose={() => setEditing(false)}
-          onSaved={() => {
-            setEditing(false);
-            resetPdf();
-            invalidate();
-          }}
-        />
-      ) : null}
 
       {confirmState ? (
         <ConfirmDialog

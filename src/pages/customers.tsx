@@ -19,7 +19,6 @@ import { Link } from 'react-router-dom';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { CsvImportSheet } from '@/components/csv-import-sheet';
-import { CustomerSheet } from '@/components/customer-sheet';
 import { EmptyState } from '@/components/empty-state';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { PageHeading } from '@/components/page-heading';
@@ -78,7 +77,6 @@ export function CustomersPage() {
   // without the page growing to many screens tall. The table header sticks to
   // the top of that box.
   const listScrollRef = useRef<HTMLDivElement>(null);
-  const [sheet, setSheet] = useState<{ mode: 'create' } | null>(null);
   const [confirming, setConfirming] = useState<Customer | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -103,8 +101,10 @@ export function CustomersPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(
-      (c) => c.email.toLowerCase().includes(q) || (c.name ?? '').toLowerCase().includes(q),
+    return rows.filter((c) =>
+      [c.email, c.name, c.companyName, c.customerNumber].some((field) =>
+        (field ?? '').toLowerCase().includes(q),
+      ),
     );
   }, [rows, search]);
 
@@ -180,9 +180,11 @@ export function CustomersPage() {
               />
               {t('common.refresh')}
             </Button>
-            <Button size="sm" className="h-11 sm:h-9" onClick={() => setSheet({ mode: 'create' })}>
-              <Plus className="size-3.5" aria-hidden="true" />
-              {t('customers.newCustomer')}
+            <Button size="sm" className="h-11 sm:h-9" asChild>
+              <Link to="/customers/new">
+                <Plus className="size-3.5" aria-hidden="true" />
+                {t('customers.newCustomer')}
+              </Link>
             </Button>
           </>
         }
@@ -274,9 +276,11 @@ export function CustomersPage() {
           title={t('customers.empty')}
           message={t('customers.emptyHint')}
           action={
-            <Button size="sm" className="h-11 sm:h-9" onClick={() => setSheet({ mode: 'create' })}>
-              <Plus className="size-3.5" aria-hidden="true" />
-              {t('customers.newCustomer')}
+            <Button size="sm" className="h-11 sm:h-9" asChild>
+              <Link to="/customers/new">
+                <Plus className="size-3.5" aria-hidden="true" />
+                {t('customers.newCustomer')}
+              </Link>
             </Button>
           }
         />
@@ -301,6 +305,7 @@ export function CustomersPage() {
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
                 <TableRow className="border-b border-border text-[11px] uppercase tracking-wide hover:bg-transparent">
                   <TableHead>{t('customers.colCustomer')}</TableHead>
+                  <TableHead>{t('customers.colCompany')}</TableHead>
                   <TableHead>{t('customers.colPhone')}</TableHead>
                   <TableHead className="text-right">{t('customers.colOrders')}</TableHead>
                   <TableHead className="text-right">{t('customers.colSpent')}</TableHead>
@@ -353,18 +358,6 @@ export function CustomersPage() {
           if (confirming) deleteMutation.mutate(confirming);
         }}
       />
-
-      {sheet ? (
-        <CustomerSheet
-          slug={slug}
-          editing={null}
-          onClose={() => setSheet(null)}
-          onSaved={() => {
-            setSheet(null);
-            void queryClient.invalidateQueries({ queryKey: ['customers', slug] });
-          }}
-        />
-      ) : null}
     </div>
   );
 }
@@ -400,6 +393,7 @@ function CustomerCard({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {customer.companyName ? <span>{customer.companyName}</span> : null}
         {customer.phone ? <span>{customer.phone}</span> : null}
         <span>
           {t('customers.colOrders')}: {formatNumber(customer.totalOrders, bcp47)}
@@ -458,6 +452,12 @@ function CustomerTableRow({
             </p>
           </div>
         </Link>
+      </TableCell>
+      <TableCell className="max-w-[12rem] text-muted-foreground">
+        <p className="truncate">{customer.companyName ?? '—'}</p>
+        {customer.customerNumber ? (
+          <p className="truncate text-xs tabular-nums">{customer.customerNumber}</p>
+        ) : null}
       </TableCell>
       <TableCell className="whitespace-nowrap text-muted-foreground">
         {customer.phone ?? '—'}

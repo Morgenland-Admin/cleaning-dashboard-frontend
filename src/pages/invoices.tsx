@@ -20,7 +20,6 @@ import { useNavigate } from 'react-router-dom';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
-import { InvoiceFormSheet } from '@/components/invoice-form-sheet';
 import { PageHeading } from '@/components/page-heading';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -64,7 +63,7 @@ const STATUS_TONE: Record<InvoiceStatus, 'info' | 'warning' | 'success' | 'dange
   void: 'neutral',
 };
 
-// Quick actions available from the list. `edit` opens the form sheet in place;
+// Quick actions available from the list. `edit` opens the invoice form page;
 // everything richer (preview, issue & print, history) lives on the detail page.
 type InvoiceAction = 'edit' | 'send' | 'issuePrint' | 'resend' | 'markPaid' | 'dunning' | 'void';
 
@@ -120,9 +119,6 @@ export function InvoicesPage() {
   // the top of that box.
   const listScrollRef = useRef<HTMLDivElement>(null);
   const [overdueOnly, setOverdueOnly] = useState(false);
-  const [formState, setFormState] = useState<
-    { mode: 'create' } | { mode: 'edit'; invoice: InvoiceRow } | null
-  >(null);
   const [confirmState, setConfirmState] = useState<{
     action: 'send' | 'issuePrint' | 'void' | 'dunning';
     id: number;
@@ -246,7 +242,7 @@ export function InvoicesPage() {
   function runAction(action: InvoiceAction, inv: InvoiceRow) {
     switch (action) {
       case 'edit':
-        setFormState({ mode: 'edit', invoice: inv });
+        navigate(`/rechnungen/${inv.id}/bearbeiten`);
         break;
       case 'send':
         setConfirmState({ action: 'send', id: inv.id });
@@ -352,7 +348,7 @@ export function InvoicesPage() {
             <Button
               size="sm"
               className="min-h-11 md:min-h-8"
-              onClick={() => setFormState({ mode: 'create' })}
+              onClick={() => navigate('/rechnungen/neu')}
             >
               <Plus className="size-3.5" aria-hidden="true" />
               {t('invoices.newInvoice')}
@@ -463,7 +459,7 @@ export function InvoicesPage() {
             title={t('invoices.empty')}
             message={t('invoices.emptyHint')}
             action={
-              <Button size="sm" onClick={() => setFormState({ mode: 'create' })}>
+              <Button size="sm" onClick={() => navigate('/rechnungen/neu')}>
                 <Plus className="size-3.5" aria-hidden="true" />
                 {t('invoices.newInvoice')}
               </Button>
@@ -592,18 +588,6 @@ export function InvoicesPage() {
           />
         </div>
       )}
-
-      {formState ? (
-        <InvoiceFormSheet
-          slug={slug}
-          invoice={formState.mode === 'edit' ? formState.invoice : null}
-          onClose={() => setFormState(null)}
-          onSaved={() => {
-            setFormState(null);
-            invalidate();
-          }}
-        />
-      ) : null}
 
       {confirmState && confirmMeta ? (
         <ConfirmDialog

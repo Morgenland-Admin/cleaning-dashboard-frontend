@@ -36,6 +36,9 @@ const ContactsPage = lazy(() =>
 const CustomerDetailPage = lazy(() =>
   import('@/pages/customer-detail').then((m) => ({ default: m.CustomerDetailPage })),
 );
+const CustomerFormPage = lazy(() =>
+  import('@/pages/customer-form').then((m) => ({ default: m.CustomerFormPage })),
+);
 const CustomersPage = lazy(() =>
   import('@/pages/customers').then((m) => ({ default: m.CustomersPage })),
 );
@@ -51,6 +54,9 @@ const InvoicesPage = lazy(() =>
 );
 const InvoiceDetailPage = lazy(() =>
   import('@/pages/invoice-detail').then((m) => ({ default: m.InvoiceDetailPage })),
+);
+const InvoiceFormPage = lazy(() =>
+  import('@/pages/invoice-form').then((m) => ({ default: m.InvoiceFormPage })),
 );
 const NewsletterPage = lazy(() =>
   import('@/pages/newsletter').then((m) => ({ default: m.NewsletterPage })),
@@ -91,10 +97,14 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <DashboardPage /> },
           { path: 'customers', element: <CustomersPage /> },
+          { path: 'customers/new', element: <CustomerFormPage /> },
           { path: 'customers/:id', element: <CustomerDetailPage /> },
+          { path: 'customers/:id/edit', element: <CustomerFormPage /> },
           { path: 'auftraege', element: <OrdersPage /> },
           { path: 'rechnungen', element: <InvoicesPage /> },
+          { path: 'rechnungen/neu', element: <InvoiceFormPage /> },
           { path: 'rechnungen/:id', element: <InvoiceDetailPage /> },
+          { path: 'rechnungen/:id/bearbeiten', element: <InvoiceFormPage /> },
           { path: 'abos', element: <SubscriptionsPage /> },
           { path: 'bewertungen', element: <ReviewsPage /> },
           { path: 'blog', element: <BlogPage /> },

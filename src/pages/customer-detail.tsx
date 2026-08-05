@@ -5,6 +5,7 @@ import {
   Briefcase,
   ClipboardList,
   FileText,
+  Building2,
   Loader2,
   Mail,
   MapPin,
@@ -18,9 +19,8 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { CustomerSheet } from '@/components/customer-sheet';
+import { CustomerAddresses } from '@/components/customer-addresses';
 import { EmptyState } from '@/components/empty-state';
-import { InvoiceFormSheet, type InvoicePrefill } from '@/components/invoice-form-sheet';
 import { StatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,7 @@ import {
   formatNumber,
   isNonContactableEmail,
 } from '@/lib/utils';
+import { type InvoicePrefill } from '@/pages/invoice-form';
 
 const TIER_TONE: Record<LoyaltyTier, 'neutral' | 'info' | 'success'> = {
   neukunde: 'neutral',
@@ -70,8 +71,6 @@ export function CustomerDetailPage() {
   const id = Number(params.id);
   const slug = activeProject.companySlug;
 
-  const [editing, setEditing] = useState(false);
-  const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -142,8 +141,22 @@ export function CustomerDetailPage() {
     );
   }
 
-  const { customer, orders, inquiries, contacts, newsletter, stats } = query.data;
+  const { customer, addresses, orders, inquiries, contacts, newsletter, stats } = query.data;
   const noEmail = isNonContactableEmail(customer.email);
+  // Handed to the invoice form page through router state so the operator
+  // doesn't retype a recipient we already know.
+  const invoicePrefill: InvoicePrefill = {
+    recipientName: customer.name ?? undefined,
+    recipientCompany: customer.companyName ?? undefined,
+    recipientVatId: customer.vatId ?? undefined,
+    customerType: customer.customerType === 'business' ? 'b2b' : 'b2c',
+    recipientEmail: noEmail ? undefined : customer.email,
+    addressLine1: customer.addressLine1 ?? undefined,
+    addressLine2: customer.addressLine2 ?? undefined,
+    postalCode: customer.postalCode ?? undefined,
+    city: customer.city ?? undefined,
+    paymentTermsDays: customer.defaultPaymentTermsDays,
+  };
   const fullAddress = [
     customer.addressLine1,
     customer.addressLine2,
@@ -168,6 +181,12 @@ export function CustomerDetailPage() {
             <h1 className="font-serif text-2xl font-semibold tracking-tight">
               {customer.name ?? customer.email}
             </h1>
+            {customer.companyName && customer.companyName !== customer.name ? (
+              <p className="flex items-center gap-1.5 text-sm text-foreground">
+                <Building2 className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                {customer.companyName}
+              </p>
+            ) : null}
             {noEmail ? (
               <span className="text-sm text-muted-foreground">{t('customers.noEmail')}</span>
             ) : (
@@ -180,9 +199,18 @@ export function CustomerDetailPage() {
             )}
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <StatusBadge
+                label={t(`customers.type.${customer.customerType}` as never)}
+                tone={customer.customerType === 'business' ? 'info' : 'neutral'}
+              />
+              <StatusBadge
                 label={t(`customers.tier.${customer.loyaltyTier}` as never)}
                 tone={TIER_TONE[customer.loyaltyTier]}
               />
+              {customer.customerNumber ? (
+                <Badge variant="secondary" className="tabular-nums">
+                  {customer.customerNumber}
+                </Badge>
+              ) : null}
               {noEmail ? (
                 <StatusBadge label={t('customers.nonContactable')} tone="warning" />
               ) : null}
@@ -196,7 +224,11 @@ export function CustomerDetailPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" className="h-11 sm:h-9" onClick={() => setCreatingInvoice(true)}>
+          <Button
+            size="sm"
+            className="h-11 sm:h-9"
+            onClick={() => navigate('/rechnungen/neu', { state: { prefill: invoicePrefill } })}
+          >
             <FileText className="size-3.5" aria-hidden="true" />
             {t('invoices.newInvoice')}
           </Button>
@@ -214,14 +246,11 @@ export function CustomerDetailPage() {
             )}
             {t('customers.recomputeTier')}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-11 sm:h-9"
-            onClick={() => setEditing(true)}
-          >
-            <Pencil className="size-3.5" aria-hidden="true" />
-            {t('customers.edit')}
+          <Button variant="outline" size="sm" className="h-11 sm:h-9" asChild>
+            <Link to={`/customers/${customer.id}/edit`}>
+              <Pencil className="size-3.5" aria-hidden="true" />
+              {t('customers.edit')}
+            </Link>
           </Button>
           <Button
             variant="outline"
@@ -273,6 +302,48 @@ export function CustomerDetailPage() {
             />
             <ProfileRow icon={<Phone className="size-4" />} value={customer.phone} />
             <ProfileRow icon={<MapPin className="size-4" />} value={fullAddress || null} />
+
+            <dl className="flex flex-col gap-1.5 border-t border-border pt-3 text-xs">
+              <DataRow label={t('customers.form.customerType')}>
+                {t(`customers.type.${customer.customerType}` as never)}
+              </DataRow>
+              <DataRow label={t('customers.form.companyName')}>{customer.companyName}</DataRow>
+              <DataRow label={t('customers.form.jobPosition')}>{customer.jobPosition}</DataRow>
+              <DataRow label={t('customers.form.department')}>{customer.department}</DataRow>
+              <DataRow label={t('customers.form.vatId')}>{customer.vatId}</DataRow>
+              <DataRow label={t('customers.form.taxNumber')}>{customer.taxNumber}</DataRow>
+              <DataRow label={t('customers.form.customerNumber')}>
+                {customer.customerNumber}
+              </DataRow>
+              <DataRow label={t('customers.form.externalNumber')}>
+                {customer.externalNumber}
+              </DataRow>
+              <DataRow label={t('customers.form.website')}>{customer.website}</DataRow>
+              <DataRow label={t('customers.form.salutation')}>
+                {customer.salutation
+                  ? t(`customers.salutationOpt.${customer.salutation}` as never)
+                  : null}
+              </DataRow>
+              <DataRow label={t('customers.form.dateOfBirth')}>
+                {customer.dateOfBirth
+                  ? formatDateTime(customer.dateOfBirth, bcp47, { dateStyle: 'medium' })
+                  : null}
+              </DataRow>
+              <DataRow label={t('customers.form.language')}>
+                {customer.language ? t(`customers.lang.${customer.language}` as never) : null}
+              </DataRow>
+              <DataRow label={t('customers.form.preferredChannel')}>
+                {customer.preferredChannel
+                  ? t(`customers.channel.${customer.preferredChannel}` as never)
+                  : null}
+              </DataRow>
+              <DataRow label={t('customers.form.defaultPaymentTerms')}>
+                {customer.defaultPaymentTermsDays != null
+                  ? String(customer.defaultPaymentTermsDays)
+                  : null}
+              </DataRow>
+            </dl>
+
             <div className="flex items-center justify-between border-t border-border pt-3 text-xs">
               <span className="text-muted-foreground">{t('customers.form.marketingOptIn')}</span>
               <Badge variant={customer.marketingOptIn ? 'success' : 'secondary'}>
@@ -299,8 +370,12 @@ export function CustomerDetailPage() {
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="orders" className="min-w-0">
+        <Tabs defaultValue="addresses" className="min-w-0">
           <TabsList className="flex-wrap">
+            <TabsTrigger value="addresses" className="gap-1.5">
+              {t('customers.tab.addresses')}
+              <CountChip n={addresses.length} />
+            </TabsTrigger>
             <TabsTrigger value="orders" className="gap-1.5">
               {t('customers.tab.orders')}
               <CountChip n={stats.orders} />
@@ -318,6 +393,9 @@ export function CustomerDetailPage() {
             </TabsTrigger>
           </TabsList>
 
+          <TabsContent value="addresses" className="mt-4">
+            <CustomerAddresses slug={slug} customerId={customer.id} addresses={addresses} />
+          </TabsContent>
           <TabsContent value="orders" className="mt-4">
             <OrdersList orders={orders} bcp47={bcp47} t={t} />
           </TabsContent>
@@ -337,44 +415,6 @@ export function CustomerDetailPage() {
           </TabsContent>
         </Tabs>
       </div>
-
-      {editing ? (
-        <CustomerSheet
-          slug={slug}
-          editing={customer}
-          onClose={() => setEditing(false)}
-          onSaved={() => {
-            setEditing(false);
-            void queryClient.invalidateQueries({ queryKey: ['customer-overview', slug, id] });
-            void queryClient.invalidateQueries({ queryKey: ['customers', slug] });
-          }}
-        />
-      ) : null}
-
-      {creatingInvoice ? (
-        <InvoiceFormSheet
-          slug={slug}
-          invoice={null}
-          prefill={
-            {
-              recipientName: customer.name ?? undefined,
-              recipientEmail: noEmail ? undefined : customer.email,
-              addressLine1: customer.addressLine1 ?? undefined,
-              addressLine2: customer.addressLine2 ?? undefined,
-              postalCode: customer.postalCode ?? undefined,
-              city: customer.city ?? undefined,
-              paymentTermsDays: customer.defaultPaymentTermsDays,
-            } satisfies InvoicePrefill
-          }
-          onClose={() => setCreatingInvoice(false)}
-          onSaved={() => {
-            setCreatingInvoice(false);
-            // The new draft lives on the invoices page — take the operator there
-            // to review and issue it.
-            navigate('/rechnungen');
-          }}
-        />
-      ) : null}
 
       <ConfirmDialog
         open={confirmingDelete}
@@ -423,6 +463,17 @@ function ProfileRow({ icon, value }: { icon: React.ReactNode; value: string | nu
       <span className={cn('min-w-0 break-words', !value && 'text-muted-foreground')}>
         {value || '—'}
       </span>
+    </div>
+  );
+}
+
+/** Label/value pair of the profile card — hidden entirely when there's no value. */
+function DataRow({ label, children }: { label: string; children: React.ReactNode }) {
+  if (children == null || children === '') return null;
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 break-words text-right text-foreground">{children}</dd>
     </div>
   );
 }
