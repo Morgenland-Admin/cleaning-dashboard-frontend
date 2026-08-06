@@ -967,10 +967,12 @@ function DetailPanel({
                   placeholder={t('inquiries.offerBodyPlaceholder')}
                   className="block min-h-[130px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
                 />
-                {/* Faded preview of the auto-added sign-off. */}
                 <div className="select-none space-y-0.5 border-t border-input/60 px-3 pb-2.5 pt-2 text-sm leading-relaxed text-muted-foreground/70">
-                  <p>{t('inquiries.offerClosing')}</p>
-                  <p>{inquiry._brand.name}</p>
+                  <p>{inquiry._brand.mailSignOff ?? t('inquiries.offerClosing')}</p>
+                  <p>
+                    {inquiry._brand.mailSignatory ??
+                      t('inquiries.offerSignatoryFallback', { brand: inquiry._brand.name })}
+                  </p>
                 </div>
                 <ClaudeChatBox
                   editablePrompt={{ kind: 'inquiry_quote', companySlug }}

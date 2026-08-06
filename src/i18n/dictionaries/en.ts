@@ -567,6 +567,7 @@ export const en: Dict = {
     offerGreeting: 'Hallo {{name}},',
     offerIntro: 'danke für Ihre Anfrage. Hier ist unser Angebot:',
     offerClosing: 'Mit freundlichen Grüßen',
+    offerSignatoryFallback: 'Ihr Team von {{brand}}',
     offerAmount: 'Amount (€)',
     addOfferItems: 'Calculate positions',
     extractItemsCta: 'Detect from text',

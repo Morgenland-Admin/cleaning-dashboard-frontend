@@ -1346,6 +1346,12 @@ export interface CompanyListRow {
   chamber: string | null;
   logoUrl: string | null;
   primaryColor: string | null;
+  /**
+   * Per-brand mail sign-off (seed-owned, read-only over the API). Only the
+   * fields the dashboard shows are typed here — the mail templates render the
+   * full block.
+   */
+  emailSignature: { signOff?: string | null; signatory?: string | null } | null;
   senderEmail: string | null;
   senderName: string | null;
   storefrontOrigin: string | null;

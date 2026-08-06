@@ -571,6 +571,7 @@ export const de = {
     offerGreeting: 'Hallo {{name}},',
     offerIntro: 'danke für Ihre Anfrage. Hier ist unser Angebot:',
     offerClosing: 'Mit freundlichen Grüßen',
+    offerSignatoryFallback: 'Ihr Team von {{brand}}',
     offerAmount: 'Summe (€)',
     addOfferItems: 'Positionen kalkulieren',
     extractItemsCta: 'Aus Text erkennen',

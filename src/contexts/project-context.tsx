@@ -21,6 +21,8 @@ export interface Project {
   currency: string;
   logoUrl?: string | null;
   primaryColor?: string | null;
+  mailSignOff?: string | null;
+  mailSignatory?: string | null;
 }
 
 const LEGACY_DEFAULTS: Record<
@@ -91,6 +93,7 @@ interface ApiCompanyRow {
   logoUrl?: string | null;
   primaryColor?: string | null;
   storefrontOrigin?: string | null;
+  emailSignature?: { signOff?: string | null; signatory?: string | null } | null;
   role: string;
 }
 
@@ -108,6 +111,8 @@ function projectFromCompany(row: ApiCompanyRow): Project {
     currency: 'EUR',
     logoUrl: row.logoUrl ?? null,
     primaryColor: row.primaryColor ?? null,
+    mailSignOff: row.emailSignature?.signOff ?? null,
+    mailSignatory: row.emailSignature?.signatory ?? null,
   };
 }
 
