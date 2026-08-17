@@ -17,7 +17,8 @@ import { BrandBlock } from '@/components/brand-logo';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { useT } from '@/i18n';
+import { PROJECTS } from '@/contexts/project-context';
+import { useT, type DictKey } from '@/i18n';
 import { authClient, useSession } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
 
@@ -25,26 +26,25 @@ interface LocationState {
   from?: { pathname: string };
 }
 
-const BRAND_CARDS = [
-  {
-    mark: 'CL',
-    nameKey: 'brandFilter.cleanilo.name',
-    metaKey: 'brandFilter.cleanilo.meta',
-    gradient: 'from-sky-400 to-indigo-500',
-  },
-  {
-    mark: 'HT',
+// The mark and gradient are a brand's identity, owned by PROJECTS. This page
+// used to restate both, so a brand re-colour would have silently left the login
+// screen showing the old one.
+const BRAND_CARD_COPY: Record<string, { nameKey: DictKey; metaKey: DictKey }> = {
+  cleanilo: { nameKey: 'brandFilter.cleanilo.name', metaKey: 'brandFilter.cleanilo.meta' },
+  hamburg_teppichreinigung: {
     nameKey: 'brandFilter.hamburg.name',
     metaKey: 'brandFilter.hamburg.meta',
-    gradient: 'from-emerald-400 to-teal-500',
   },
-  {
-    mark: 'TL',
+  teppichreinigen_lassen: {
     nameKey: 'brandFilter.teppich.name',
     metaKey: 'brandFilter.teppich.meta',
-    gradient: 'from-fuchsia-400 to-rose-500',
   },
-] as const;
+};
+
+const BRAND_CARDS = PROJECTS.flatMap((project) => {
+  const copy = BRAND_CARD_COPY[project.companySlug];
+  return copy ? [{ mark: project.mark, gradient: project.gradient, ...copy }] : [];
+});
 
 type Notice = { kind: 'error' | 'info'; text: string } | null;
 
@@ -191,10 +191,10 @@ export function LoginPage() {
           </div>
 
           <div className="mb-7">
-            <h1 className="font-serif text-[30px] font-semibold leading-[1.1] tracking-tight sm:text-[34px]">
+            <h1 className="font-serif text-display-sm font-semibold sm:text-display-md">
               {mode === 'signin' ? t('login.welcome') : t('login.forgotPassword')}
             </h1>
-            <p className="mt-2 text-[13px] text-muted-foreground sm:text-sm">
+            <p className="mt-2 text-2sm text-muted-foreground sm:text-sm">
               {mode === 'signin' ? t('login.subtitle') : t('login.forgotPasswordPrompt')}
             </p>
           </div>
@@ -218,7 +218,7 @@ export function LoginPage() {
                   }}
                   disabled={submitting || forgotSent}
                   placeholder={t('login.emailPlaceholder')}
-                  className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]"
+                  className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
                 />
               </div>
             </div>
@@ -230,7 +230,7 @@ export function LoginPage() {
                     <Label htmlFor="password">{t('login.password')}</Label>
                     <button
                       type="button"
-                      className="text-[11px] font-medium text-muted-foreground hover:text-foreground focus-visible:underline focus-visible:outline-none"
+                      className="text-2xs font-medium text-muted-foreground hover:text-foreground focus-visible:underline focus-visible:outline-none"
                       onClick={() => switchMode('forgot')}
                     >
                       {t('login.forgotPassword')}
@@ -254,12 +254,12 @@ export function LoginPage() {
                       onKeyDown={handleCapsLock}
                       disabled={submitting}
                       placeholder={t('login.passwordPlaceholder')}
-                      className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]"
+                      className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                       aria-pressed={showPassword}
                     >
@@ -267,14 +267,14 @@ export function LoginPage() {
                     </button>
                   </div>
                   {capsLockOn ? (
-                    <p role="status" className="flex items-center gap-1 text-[11px] text-warning">
+                    <p role="status" className="flex items-center gap-1 text-2xs text-warning">
                       <AlertCircle className="size-3" />
                       {t('login.capsLock')}
                     </p>
                   ) : null}
                 </div>
 
-                <label className="flex cursor-pointer select-none items-center gap-2.5 py-1 text-[13px] text-muted-foreground">
+                <label className="flex cursor-pointer select-none items-center gap-2.5 py-1 text-2sm text-muted-foreground">
                   <Checkbox
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
@@ -317,7 +317,7 @@ export function LoginPage() {
               <Button
                 type="submit"
                 disabled={submitting}
-                className="h-11 rounded-lg text-[14px] font-semibold shadow-sm"
+                className="h-11 rounded-lg text-sm font-semibold shadow-sm"
               >
                 {submitting ? (
                   <>
@@ -339,19 +339,19 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => switchMode('signin')}
-                className="text-center text-[12px] font-medium text-muted-foreground hover:text-foreground focus-visible:underline focus-visible:outline-none"
+                className="text-center text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:underline focus-visible:outline-none"
               >
                 ← {t('login.forgotPasswordBack')}
               </button>
             ) : null}
           </form>
 
-          <div className="mt-8 flex items-center gap-2 rounded-xl border border-border bg-card/60 px-3 py-2.5 text-[12px] text-muted-foreground">
+          <div className="mt-8 flex items-center gap-2 rounded-xl border border-border bg-card/60 px-3 py-2.5 text-xs text-muted-foreground">
             <ShieldCheck className="size-4 shrink-0 text-rust" />
             <span>{t('login.trustNote')}</span>
           </div>
 
-          <p className="mt-6 text-center text-[11px] text-muted-foreground">
+          <p className="mt-6 text-center text-2xs text-muted-foreground">
             {t('login.copyright', { year: new Date().getFullYear() })}
           </p>
         </div>
@@ -365,7 +365,7 @@ function BrandCanvas() {
   return (
     <aside
       aria-label={t('brand.name')}
-      className="relative hidden overflow-hidden bg-[hsl(24_14%_9%)] text-[hsl(38_30%_92%)] lg:flex lg:flex-col"
+      className="relative hidden overflow-hidden bg-ink text-parchment lg:flex lg:flex-col"
     >
       <div
         aria-hidden
@@ -388,18 +388,18 @@ function BrandCanvas() {
       />
 
       <div className="relative flex flex-1 flex-col p-12">
-        <BrandBlock tone="cream" size={40} />
+        <BrandBlock tone="dark" size={40} />
 
         <div className="mt-auto max-w-xl">
-          <span className="border-[hsl(38_30%_92%)]/15 bg-[hsl(38_30%_92%)]/5 text-[hsl(38_30%_92%)]/70 inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
+          <span className="inline-flex items-center gap-2 rounded-full border border-parchment/15 bg-parchment/5 px-2.5 py-1 text-3xs font-semibold uppercase tracking-[0.18em] text-parchment/70">
             {t('brand.canvas.pill')}
           </span>
-          <h2 className="mt-5 font-serif text-[44px] font-semibold leading-[1.05] tracking-tight">
+          <h2 className="mt-5 font-serif text-display-lg font-semibold">
             {t('brand.canvas.headlinePre')}{' '}
-            <span className="italic text-rust">{t('brand.canvas.headlineAccent')}</span>
+            <span className="italic text-rust-on-ink">{t('brand.canvas.headlineAccent')}</span>
             {t('brand.canvas.headlinePost')}
           </h2>
-          <p className="text-[hsl(38_30%_92%)]/65 mt-4 max-w-md text-[14px] leading-relaxed">
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-parchment/65">
             {t('brand.canvas.body')}
           </p>
         </div>
@@ -408,7 +408,7 @@ function BrandCanvas() {
           {BRAND_CARDS.map((b) => (
             <li
               key={b.mark}
-              className="border-[hsl(38_30%_92%)]/10 bg-[hsl(38_30%_92%)]/[0.04] flex items-center gap-3 rounded-xl border px-3.5 py-3 backdrop-blur-sm"
+              className="flex items-center gap-3 rounded-xl border border-parchment/10 bg-parchment/[0.04] px-3.5 py-3 backdrop-blur-sm"
             >
               <div
                 className={cn(
@@ -420,16 +420,14 @@ function BrandCanvas() {
                 {b.mark}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold tracking-tight">
-                  {t(b.nameKey)}
-                </div>
-                <div className="text-[hsl(38_30%_92%)]/55 truncate text-[11px]">{t(b.metaKey)}</div>
+                <div className="truncate text-2sm font-semibold tracking-tight">{t(b.nameKey)}</div>
+                <div className="truncate text-2xs text-parchment/55">{t(b.metaKey)}</div>
               </div>
             </li>
           ))}
         </ul>
 
-        <div className="border-[hsl(38_30%_92%)]/10 text-[hsl(38_30%_92%)]/60 mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t pt-5 text-[11px]">
+        <div className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-parchment/10 pt-5 text-2xs text-parchment/60">
           <span className="inline-flex items-center gap-1.5">
             <ShieldCheck className="size-3.5" aria-hidden="true" />
             {t('brand.canvas.gdpr')}

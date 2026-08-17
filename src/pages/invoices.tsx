@@ -41,6 +41,7 @@ import {
 import { useProject } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
 import { ApiError, invoicesAdminApi, type InvoiceRow, type InvoiceStatus } from '@/lib/api';
+import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatShortDate } from '@/lib/utils';
 
@@ -118,6 +119,7 @@ export function InvoicesPage() {
   // without the page growing to many screens tall. The table header sticks to
   // the top of that box.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     action: 'send' | 'issuePrint' | 'void' | 'dunning';
@@ -403,7 +405,7 @@ export function InvoicesPage() {
                 aria-selected={active}
                 onClick={() => setStatusFilter(s)}
                 className={cn(
-                  'inline-flex min-h-11 items-center rounded-md px-2.5 text-[11px] font-medium uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-7',
+                  'inline-flex min-h-11 items-center rounded-md px-2.5 text-2xs font-medium uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-7',
                   active
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -469,13 +471,13 @@ export function InvoicesPage() {
       ) : (
         <div
           ref={listScrollRef}
-          className="flex max-h-[calc(100svh-17rem)] flex-col gap-5 overflow-y-auto overscroll-contain"
+          className="flex flex-col gap-5 lg:max-h-[calc(100svh-17rem)] lg:overflow-y-auto lg:overscroll-contain"
         >
           {/* Desktop: table */}
           <div className="hidden rounded-xl border border-border bg-card md:block">
             <Table containerClassName="w-full">
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
-                <TableRow className="border-b text-[11px] uppercase tracking-wider hover:bg-transparent">
+                <TableRow className="border-b text-2xs uppercase tracking-wider hover:bg-transparent">
                   <TableHead>{t('invoices.number')}</TableHead>
                   <TableHead>{t('invoices.recipient')}</TableHead>
                   <TableHead className="text-right">{t('invoices.amount')}</TableHead>
@@ -493,7 +495,7 @@ export function InvoicesPage() {
                       <button
                         type="button"
                         onClick={() => openDetail(inv.id)}
-                        className="rounded font-mono text-[13px] font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded font-mono text-2sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {invoiceNumber(inv)}
                       </button>
@@ -546,9 +548,7 @@ export function InvoicesPage() {
                     className="min-h-11 min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-[13px] font-medium">
-                        {invoiceNumber(inv)}
-                      </span>
+                      <span className="font-mono text-2sm font-medium">{invoiceNumber(inv)}</span>
                       <StatusBadge tone={STATUS_TONE[inv.status]} label={statusLabel(inv.status)} />
                       {inv.dunningLevel > 0 ? (
                         <StatusBadge
@@ -584,7 +584,9 @@ export function InvoicesPage() {
             onIntersect={() => {
               void list.fetchNextPage();
             }}
-            rootRef={listScrollRef}
+            // Only a root when that box actually scrolls (lg+); otherwise the
+            // sentinel sits inside it forever and pages in the whole list.
+            rootRef={isDesktop ? listScrollRef : undefined}
           />
         </div>
       )}

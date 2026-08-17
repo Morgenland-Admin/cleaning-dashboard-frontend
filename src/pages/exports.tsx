@@ -20,6 +20,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { BrandMark } from '@/components/brand-mark';
+import { CountPill } from '@/components/count-pill';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,27 +47,28 @@ import {
   type ExportKind,
   type ExportStatus,
 } from '@/lib/api';
+import { useNow } from '@/lib/use-now';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime } from '@/lib/utils';
 
 interface KindMeta {
   icon: React.ComponentType<{ className?: string }>;
-  accent: 'rust' | 'amber' | 'emerald' | 'sky';
+  accent: keyof typeof ACCENT_CLS;
 }
 
 const KIND_META: Record<ExportKind, KindMeta> = {
   orders: { icon: Briefcase, accent: 'rust' },
-  inquiries: { icon: Send, accent: 'amber' },
-  contacts: { icon: Mail, accent: 'sky' },
-  newsletter: { icon: Inbox, accent: 'emerald' },
-  customers: { icon: Users, accent: 'sky' },
+  inquiries: { icon: Send, accent: 'warning' },
+  contacts: { icon: Mail, accent: 'info' },
+  newsletter: { icon: Inbox, accent: 'success' },
+  customers: { icon: Users, accent: 'info' },
 };
 
 const ACCENT_CLS = {
   rust: 'bg-rust-soft/60 text-rust ring-rust/15',
-  amber: 'bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300',
-  emerald: 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300',
-  sky: 'bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:text-sky-300',
+  warning: 'bg-warning-soft text-warning ring-warning/20',
+  success: 'bg-success-soft text-success ring-success/20',
+  info: 'bg-info-soft text-info ring-info/20',
 } as const;
 
 const STATUS_FILTERS: Array<{ value: ExportStatus | 'all'; iconActive?: boolean }> = [
@@ -106,6 +108,10 @@ export function ExportsPage() {
 
   const [statusFilter, setStatusFilter] = useState<ExportStatus | 'all'>('all');
   const [sheetOpen, setSheetOpen] = useState(false);
+  // One clock for the whole list: every row agrees, and a link that expires
+  // while the page sits open actually flips over (the query stops polling once
+  // nothing is active).
+  const now = useNow(30_000);
 
   const list = useQuery({
     queryKey: ['exports'],
@@ -191,23 +197,14 @@ export function ExportsPage() {
               aria-selected={active}
               onClick={() => setStatusFilter(s.value)}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40',
+                'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-2xs font-medium uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 active
                   ? 'bg-rust text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
               )}
             >
               <span>{t(`exports.status.${s.value}` as never)}</span>
-              <span
-                className={cn(
-                  'rounded-full px-1.5 py-px font-mono text-[10px] tabular-nums',
-                  active
-                    ? 'bg-primary-foreground/15 text-primary-foreground/90'
-                    : 'bg-muted/80 text-muted-foreground',
-                )}
-              >
-                {count}
-              </span>
+              <CountPill tone={active ? 'onFill' : 'muted'}>{count}</CountPill>
             </button>
           );
         })}
@@ -233,6 +230,7 @@ export function ExportsPage() {
               job={job}
               brand={brandsBySlug.get(job.companySlug)}
               bcp47={bcp47}
+              now={now}
               onDownload={() => downloadJob(job.id)}
               onCancel={() => cancel.mutate(job.id)}
             />
@@ -249,12 +247,14 @@ function JobRow({
   job,
   brand,
   bcp47,
+  now,
   onDownload,
   onCancel,
 }: {
   job: ExportJob;
   brand: Project | undefined;
   bcp47: string;
+  now: number;
   onDownload: () => void;
   onCancel: () => void;
 }) {
@@ -263,7 +263,7 @@ function JobRow({
   const Icon = meta.icon;
   const isActive = job.status === 'pending' || job.status === 'processing';
   const isDone = job.status === 'done';
-  const isExpired = job.expiresAt != null && new Date(job.expiresAt).getTime() < Date.now();
+  const isExpired = job.expiresAt != null && new Date(job.expiresAt).getTime() < now;
 
   return (
     <li
@@ -301,7 +301,7 @@ function JobRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {brand ? <BrandMark brand={brand} size="xs" /> : null}
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span className="text-3xs uppercase tracking-wider text-muted-foreground">
             {brand?.shortName ?? job.companySlug}
           </span>
           <span className="text-sm font-medium text-foreground">
@@ -309,7 +309,7 @@ function JobRow({
           </span>
           <StatusPill status={job.status} t={t} />
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] tabular-nums text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs tabular-nums text-muted-foreground">
           <time dateTime={job.createdAt} title={formatDateTime(job.createdAt, bcp47)}>
             {relative(job.createdAt, bcp47)}
           </time>
@@ -332,7 +332,7 @@ function JobRow({
             {t('exports.download')}
           </Button>
         ) : isDone && isExpired ? (
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
             {t('exports.expired')}
           </span>
         ) : job.status === 'pending' ? (
@@ -371,7 +371,7 @@ function StatusPill({ status, t }: { status: ExportStatus; t: ReturnType<typeof 
   return (
     <span
       className={cn(
-        'inline-flex h-4 items-center gap-1 rounded-full border px-1.5 text-[9px] font-medium uppercase tracking-wider',
+        'inline-flex h-4 items-center gap-1 rounded-full border px-1.5 text-3xs font-medium uppercase tracking-wider',
         tones[status],
       )}
     >
@@ -424,7 +424,11 @@ function NewExportSheet({
         }
       }}
     >
-      <SheetContent side="right" className="flex w-full flex-col gap-6 overflow-y-auto sm:max-w-md">
+      <SheetContent
+        side="right"
+        variant="content"
+        className="flex flex-col gap-6 overflow-y-auto sm:max-w-md"
+      >
         <div>
           <SheetTitle className="font-serif text-xl tracking-tight">
             {t('exports.sheetTitle')}
@@ -437,12 +441,12 @@ function NewExportSheet({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="group flex w-full items-center gap-2.5 rounded-lg border border-border bg-background px-3 py-2.5 text-left text-sm transition-colors hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40"
+                className="group flex w-full items-center gap-2.5 rounded-lg border border-border bg-background px-3 py-2.5 text-left text-sm transition-colors hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {selectedBrand ? <BrandMark brand={selectedBrand} size="sm" /> : null}
                 <span className="min-w-0 flex-1 truncate">
                   <span className="block font-medium">{selectedBrand?.name ?? brandSlug}</span>
-                  <span className="block truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <span className="block truncate text-3xs uppercase tracking-wider text-muted-foreground">
                     {selectedBrand?.domain ?? '—'}
                   </span>
                 </span>
@@ -536,11 +540,11 @@ function FieldGroup({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+      <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </label>
       {children}
-      {hint ? <p className="text-[11px] leading-relaxed text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="text-2xs leading-relaxed text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -565,7 +569,7 @@ function KindOption({
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        'group/opt flex w-full items-start gap-3 rounded-lg border bg-background p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40',
+        'group/opt flex w-full items-start gap-3 rounded-lg border bg-background p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         selected
           ? 'border-rust/70 bg-rust-soft/30 shadow-sm'
           : 'border-border hover:border-foreground/30',
@@ -582,7 +586,7 @@ function KindOption({
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">{t(`exports.kind.${kind}` as never)}</p>
-        <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">
           {t(`exports.kindDesc.${kind}` as never)}
         </p>
       </div>

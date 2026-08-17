@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Package, Plus, Trash2 } from 'lucide-react';
 
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { useLocale, useT } from '@/i18n';
 import {
@@ -27,6 +28,10 @@ type LinesUpdater = (prev: LineDraft[]) => LineDraft[];
  * Reusable line-item editor shared by the invoice form and the offer composer:
  * per-line label/qty/price, package flag, up/down reorder, and a net/gross
  * price-entry toggle that backs VAT out live. State is owned by the parent.
+ *
+ * `hidePrices` switches it to the Paketrechnung shape: the positions are pure
+ * scope of work (label, note, Menge) and every price control disappears, because
+ * the price is entered once for the whole package by the parent.
  */
 export function LineItemsEditor({
   lines,
@@ -34,12 +39,14 @@ export function LineItemsEditor({
   priceMode,
   onPriceModeChange,
   taxRatePercent,
+  hidePrices = false,
 }: {
   lines: LineDraft[];
   onLinesChange: (updater: LinesUpdater) => void;
   priceMode: PriceMode;
   onPriceModeChange: (mode: PriceMode) => void;
   taxRatePercent: number;
+  hidePrices?: boolean;
 }) {
   const t = useT();
   const { bcp47 } = useLocale();
@@ -84,27 +91,29 @@ export function LineItemsEditor({
         <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('invoices.form.lineItems')}
         </legend>
-        <div
-          className="inline-flex overflow-hidden rounded-md border border-border text-xs"
-          role="group"
-          aria-label={t('invoices.form.priceMode')}
-        >
-          {(['net', 'gross'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={cn(
-                'px-2.5 py-1 transition-colors',
-                priceMode === mode
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted',
-              )}
-              onClick={() => switchPriceMode(mode)}
-            >
-              {mode === 'net' ? t('invoices.form.priceNet') : t('invoices.form.priceGross')}
-            </button>
-          ))}
-        </div>
+        {hidePrices ? null : (
+          <div
+            className="inline-flex overflow-hidden rounded-md border border-border text-xs"
+            role="group"
+            aria-label={t('invoices.form.priceMode')}
+          >
+            {(['net', 'gross'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={cn(
+                  'px-2.5 py-1 transition-colors',
+                  priceMode === mode
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted',
+                )}
+                onClick={() => switchPriceMode(mode)}
+              >
+                {mode === 'net' ? t('invoices.form.priceNet') : t('invoices.form.priceGross')}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="mt-2 flex flex-col gap-3">
         {lines.map((line, idx) => (
@@ -141,38 +150,40 @@ export function LineItemsEditor({
                   onChange={(e) => setLine(idx, { quantity: e.target.value })}
                 />
               </FormField>
-              <FormField
-                label={
-                  priceMode === 'gross'
-                    ? t('invoices.form.unitPriceGross')
-                    : t('invoices.form.unitPriceNet')
-                }
-                required
-                className="flex-1"
-              >
-                <Input
-                  type="number"
-                  step="0.01"
-                  inputMode="decimal"
-                  className="h-11 md:h-9"
-                  value={line.unitPriceEur}
-                  onChange={(e) => setLine(idx, { unitPriceEur: e.target.value })}
-                />
-              </FormField>
-              <span className="pb-2 text-xs tabular-nums text-muted-foreground">
-                {formatEur(
-                  Math.round(
-                    toQuantity(line.quantity) * lineNetCents(line, priceMode, taxRatePercent),
-                  ),
-                  bcp47,
-                )}
-              </span>
+              {hidePrices ? null : (
+                <>
+                  <FormField
+                    label={
+                      priceMode === 'gross'
+                        ? t('invoices.form.unitPriceGross')
+                        : t('invoices.form.unitPriceNet')
+                    }
+                    required
+                    className="flex-1"
+                  >
+                    <Input
+                      type="number"
+                      step="0.01"
+                      inputMode="decimal"
+                      className="h-11 md:h-9"
+                      value={line.unitPriceEur}
+                      onChange={(e) => setLine(idx, { unitPriceEur: e.target.value })}
+                    />
+                  </FormField>
+                  <span className="pb-2 text-xs tabular-nums text-muted-foreground">
+                    {formatEur(
+                      Math.round(
+                        toQuantity(line.quantity) * lineNetCents(line, priceMode, taxRatePercent),
+                      ),
+                      bcp47,
+                    )}
+                  </span>
+                </>
+              )}
             </div>
             <div className="flex items-center justify-between gap-2">
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="size-3.5 accent-primary"
+                <Checkbox
                   checked={line.isPackage}
                   onChange={(e) => setLine(idx, { isPackage: e.target.checked })}
                 />

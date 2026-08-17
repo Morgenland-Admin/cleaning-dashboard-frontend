@@ -23,6 +23,8 @@ import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useSta
 
 import { AddressAutocomplete } from '@/components/address-autocomplete';
 import { BrandMark } from '@/components/brand-mark';
+import { CountPill } from '@/components/count-pill';
+import { DetailPane } from '@/components/detail-pane';
 import { EmptyState as SharedEmptyState } from '@/components/empty-state';
 import { PageHeading } from '@/components/page-heading';
 import { Badge } from '@/components/ui/badge';
@@ -95,6 +97,10 @@ export function PartnersPage() {
     queries.forEach((q) => q.refetch());
   }
 
+  // `useQueries` hands back a fresh array every render, so it cannot be a
+  // dependency without defeating the memo. This key changes exactly when one of
+  // the queries actually resolves new data, which is the thing we care about.
+  const queriesUpdatedKey = queries.map((q) => q.dataUpdatedAt).join('|');
   const partners = useMemo<PartnerRow[]>(() => {
     const out: PartnerRow[] = [];
     queries.forEach((q, i) => {
@@ -103,8 +109,8 @@ export function PartnersPage() {
       (q.data?.partners ?? []).forEach((p) => out.push({ ...p, _brand: brand }));
     });
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queries.map((q) => q.dataUpdatedAt).join('|'), brandList]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see queriesUpdatedKey
+  }, [queriesUpdatedKey, brandList]);
 
   function keyOf(p: PartnerRow): string {
     return `${p._brand.companySlug}:${p.id}`;
@@ -220,22 +226,13 @@ export function PartnersPage() {
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as PartnerStatus | 'all')}>
-        <TabsList className="flex-wrap">
+        <TabsList>
           {tabs.map((tabItem) => {
             const active = tab === tabItem.value;
             return (
               <TabsTrigger key={tabItem.value} value={tabItem.value} className="gap-1.5">
                 {tabItem.label}
-                <span
-                  className={cn(
-                    'rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums',
-                    active
-                      ? 'bg-rust/15 text-rust'
-                      : 'bg-muted-foreground/15 text-muted-foreground',
-                  )}
-                >
-                  {counts[tabItem.value]}
-                </span>
+                <CountPill tone={active ? 'accent' : 'muted'}>{counts[tabItem.value]}</CountPill>
               </TabsTrigger>
             );
           })}
@@ -267,7 +264,7 @@ export function PartnersPage() {
           </CardHeader>
           <CardContent
             ref={listScrollRef}
-            className="max-h-[calc(100svh-15rem)] overflow-y-auto overscroll-contain p-0"
+            className="p-0 lg:max-h-[calc(100svh-15rem)] lg:overflow-y-auto lg:overscroll-contain"
           >
             {isLoading ? (
               <div
@@ -311,7 +308,7 @@ export function PartnersPage() {
                             {isAllBrands ? (
                               <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-1.5 py-0.5">
                                 <BrandMark brand={p._brand} size="xs" />
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                <span className="text-3xs font-medium uppercase tracking-wide text-muted-foreground">
                                   {p._brand.shortName}
                                 </span>
                               </span>
@@ -350,7 +347,14 @@ export function PartnersPage() {
           </CardContent>
         </Card>
 
-        <div className="lg:col-span-2">
+        <DetailPane
+          open={!!selected}
+          onClose={() => setSelectionKey(null)}
+          title={t('partners.title')}
+          // The panel below owns its own sticky scroll on desktop.
+          desktopSticky={false}
+          className="lg:col-span-2"
+        >
           {selected ? (
             <PartnerDetail
               key={keyOf(selected)}
@@ -373,17 +377,21 @@ export function PartnersPage() {
               }
               isUpdating={updateMutation.isPending}
             />
-          ) : (
-            <Card>
-              <CardContent className="py-8">
-                <SharedEmptyState
-                  icon={<Inbox className="size-6" aria-hidden="true" />}
-                  message={t('partners.pickOne')}
-                />
-              </CardContent>
-            </Card>
-          )}
-        </div>
+          ) : null}
+        </DetailPane>
+
+        {/* Desktop keeps a placeholder so the two-pane grid does not collapse.
+            On mobile there is no second pane to fill. */}
+        {selected ? null : (
+          <Card className="hidden lg:col-span-2 lg:block">
+            <CardContent className="py-8">
+              <SharedEmptyState
+                icon={<Inbox className="size-6" aria-hidden="true" />}
+                message={t('partners.pickOne')}
+              />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {modal === 'invite' ? (
@@ -737,7 +745,7 @@ function PartnerDetail({
   const notesDirty = notes !== (partner.internalNotes ?? '');
 
   return (
-    <Card className="sticky top-20 max-h-[calc(100svh-6rem)] overflow-y-auto overscroll-contain">
+    <Card className="lg:sticky lg:top-20 lg:max-h-[calc(100svh-6rem)] lg:overflow-y-auto lg:overscroll-contain">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="min-w-0">
           <CardTitle className="truncate">
@@ -861,10 +869,10 @@ function PartnerDetail({
 
         <DetailGroup title={t('partners.detail.banking')} icon={Wallet}>
           <DetailRow label={t('partners.fields.iban')}>
-            <span className="font-mono text-[12px]">{partner.iban ?? '—'}</span>
+            <span className="font-mono text-xs">{partner.iban ?? '—'}</span>
           </DetailRow>
           <DetailRow label={t('partners.fields.bic')}>
-            <span className="font-mono text-[12px]">{partner.bic ?? '—'}</span>
+            <span className="font-mono text-xs">{partner.bic ?? '—'}</span>
           </DetailRow>
           <DetailRow label={t('partners.fields.commissionRate')}>
             {partner.commissionRate ? `${partner.commissionRate} %` : '—'}
@@ -873,9 +881,7 @@ function PartnerDetail({
 
         <DetailGroup title={t('partners.detail.services')}>
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              Services
-            </div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground">Services</div>
             {partner.services.length > 0 ? (
               <div className="mt-1 flex flex-wrap gap-1">
                 {partner.services.map((s) => (
@@ -889,7 +895,7 @@ function PartnerDetail({
             )}
           </div>
           <div className="mt-3">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground">
               Servicegebiete
             </div>
             {partner.serviceAreas.length > 0 ? (
@@ -997,7 +1003,7 @@ function DetailGroup({
 }) {
   return (
     <section>
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <div className="mb-2 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {Icon ? <Icon className="size-3" /> : null}
         {title}
       </div>

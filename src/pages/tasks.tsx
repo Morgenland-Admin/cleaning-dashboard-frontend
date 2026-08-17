@@ -20,10 +20,12 @@ import {
   User as UserIcon,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { BrandMark } from '@/components/brand-mark';
+import { CountPill } from '@/components/count-pill';
+import { useSelectedId } from '@/components/detail-pane';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
 import {
@@ -126,15 +128,13 @@ export function TasksPage() {
 
   const [status, setStatus] = useState<TaskStatus | 'all'>('open');
   const [mineOnly, setMineOnly] = useState(false);
-  const [openTaskId, setOpenTaskId] = useState<number | null>(null);
+  // Single source of truth for which task is open: the URL. The previous version
+  // mirrored `?id=` into state in an effect, so a second visit to the same
+  // notification link never re-opened the sheet (same URL, effect never re-ran),
+  // and closing the sheet left a stale `?id=` behind.
+  const [openTaskId, setOpenTaskId] = useSelectedId('id');
   const [creating, setCreating] = useState(false);
   const rel = useRelative();
-
-  const [search, setSearch] = useSearchParams();
-  useEffect(() => {
-    const id = search.get('id');
-    if (id && /^\d+$/.test(id)) setOpenTaskId(Number(id));
-  }, [search]);
 
   const brandSlug = isAllBrands ? undefined : activeProject.companySlug;
 
@@ -168,16 +168,10 @@ export function TasksPage() {
 
   function openTask(id: number) {
     setOpenTaskId(id);
-    const next = new URLSearchParams(search);
-    next.set('id', String(id));
-    setSearch(next, { replace: true });
   }
 
   function closeTask() {
     setOpenTaskId(null);
-    const next = new URLSearchParams(search);
-    next.delete('id');
-    setSearch(next, { replace: true });
   }
 
   const counts = useMemo(() => {
@@ -237,21 +231,14 @@ export function TasksPage() {
                 aria-selected={active}
                 onClick={() => setStatus(s)}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40',
+                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-2xs font-medium uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   active
                     ? 'bg-rust text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
                 )}
               >
                 {t(`tasks.status.${s}` as never)}
-                <span
-                  className={cn(
-                    'rounded-full px-1.5 py-px font-mono text-[10px] tabular-nums',
-                    active ? 'bg-primary-foreground/15' : 'bg-muted/80 text-muted-foreground',
-                  )}
-                >
-                  {counts[s] ?? 0}
-                </span>
+                <CountPill tone={active ? 'onFill' : 'muted'}>{counts[s] ?? 0}</CountPill>
               </button>
             );
           })}
@@ -261,7 +248,7 @@ export function TasksPage() {
           aria-pressed={mineOnly}
           onClick={() => setMineOnly((v) => !v)}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40',
+            'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-2xs font-medium uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             mineOnly
               ? 'border-rust/60 bg-rust-soft/40 text-rust'
               : 'border-border bg-card text-muted-foreground hover:text-foreground',
@@ -371,7 +358,7 @@ function TaskRow({
           'w-0.5',
           task.status === 'open' && (overdue ? 'bg-destructive' : 'bg-rust'),
           task.status === 'in_progress' && 'bg-rust',
-          task.status === 'done' && 'bg-emerald-500',
+          task.status === 'done' && 'bg-success',
           task.status === 'dismissed' && 'bg-muted',
         )}
       />
@@ -391,25 +378,25 @@ function TaskRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             {brand ? <BrandMark brand={brand} size="xs" /> : null}
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            <span className="text-3xs uppercase tracking-wider text-muted-foreground">
               {brand?.shortName ?? task.companySlug}
             </span>
             <span
               className={cn(
-                'inline-flex h-4 items-center rounded-full border px-1.5 text-[9px] uppercase tracking-wider',
+                'inline-flex h-4 items-center rounded-full border px-1.5 text-3xs uppercase tracking-wider',
                 PRIORITY_TONE[effectivePriority],
               )}
             >
               {overdue ? t('tasks.overdue') : task.priority}
             </span>
             {task.status !== 'open' ? (
-              <span className="inline-flex h-4 items-center rounded-full border border-border px-1.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+              <span className="inline-flex h-4 items-center rounded-full border border-border px-1.5 text-3xs uppercase tracking-wider text-muted-foreground">
                 {t(`tasks.status.${task.status}` as never)}
               </span>
             ) : null}
             <time
               dateTime={task.createdAt}
-              className="ml-auto text-[10px] tabular-nums text-muted-foreground"
+              className="ml-auto text-3xs tabular-nums text-muted-foreground"
               title={formatDateTime(task.createdAt, bcp47)}
             >
               {rel(task.createdAt)}
@@ -422,7 +409,7 @@ function TaskRow({
           {task.dueAt ? (
             <p
               className={cn(
-                'mt-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider',
+                'mt-1 inline-flex items-center gap-1 text-3xs uppercase tracking-wider',
                 overdue ? 'text-destructive' : 'text-muted-foreground',
               )}
             >
@@ -453,7 +440,7 @@ function TaskRow({
             size="sm"
             onClick={onDone}
             disabled={busy}
-            className="size-9 px-0 text-xs text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
+            className="size-9 px-0 text-xs text-success hover:bg-success/10"
             title={t('tasks.actions.done')}
             aria-label={t('tasks.actions.done')}
           >
@@ -538,7 +525,7 @@ function TaskDetailSheet({
   if (!task) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="flex w-full flex-col gap-4 sm:max-w-xl">
+        <SheetContent side="right" variant="content" className="flex flex-col gap-4 sm:max-w-xl">
           {detail.isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
@@ -558,14 +545,14 @@ function TaskDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
+      <SheetContent side="right" variant="content" className="flex flex-col gap-0 p-0 sm:max-w-xl">
         <div className="flex flex-col gap-3 border-b border-border bg-card p-5">
-          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+          <div className="flex items-center gap-2 text-3xs uppercase tracking-[0.14em] text-muted-foreground">
             {brand ? <BrandMark brand={brand} size="xs" /> : null}
             <span>{brand?.shortName ?? task.companySlug}</span>
             <span aria-hidden="true">·</span>
             <span>{t(`tasks.kindLabel.${task.kind}` as never) || task.kind}</span>
-            <span className="ml-auto inline-flex h-4 items-center rounded-full border border-border bg-background px-1.5 text-[9px] uppercase tracking-wider">
+            <span className="ml-auto inline-flex h-4 items-center rounded-full border border-border bg-background px-1.5 text-3xs uppercase tracking-wider">
               {t(`tasks.status.${task.status}` as never)}
             </span>
           </div>
@@ -581,7 +568,7 @@ function TaskDetailSheet({
               <SheetTitle className="font-serif text-xl leading-tight tracking-tight">
                 {task.title}
               </SheetTitle>
-              <SheetDescription className="text-[11px]">
+              <SheetDescription className="text-2xs">
                 {t('tasks.createdAt', { time: formatDateTime(task.createdAt, bcp47) })}
               </SheetDescription>
             </div>
@@ -590,7 +577,7 @@ function TaskDetailSheet({
           <div className="flex flex-wrap items-center gap-1.5">
             <span
               className={cn(
-                'inline-flex h-5 items-center gap-1 rounded-full border px-2 text-[10px] uppercase tracking-wider',
+                'inline-flex h-5 items-center gap-1 rounded-full border px-2 text-3xs uppercase tracking-wider',
                 PRIORITY_TONE[overdue ? 'urgent' : task.priority],
               )}
             >
@@ -600,7 +587,7 @@ function TaskDetailSheet({
             {task.dueAt ? (
               <span
                 className={cn(
-                  'inline-flex h-5 items-center gap-1 rounded-full border px-2 text-[10px] uppercase tracking-wider',
+                  'inline-flex h-5 items-center gap-1 rounded-full border px-2 text-3xs uppercase tracking-wider',
                   overdue
                     ? 'border-destructive/40 bg-destructive/10 text-destructive'
                     : 'border-border bg-background text-muted-foreground',
@@ -616,7 +603,7 @@ function TaskDetailSheet({
                 asChild
                 variant="ghost"
                 size="sm"
-                className="ml-auto h-6 px-2 text-[10px] uppercase tracking-wider"
+                className="ml-auto h-6 px-2 text-3xs uppercase tracking-wider"
               >
                 <Link
                   to={
@@ -650,14 +637,14 @@ function TaskDetailSheet({
           ) : (
             <section>
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                <h3 className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   {t('tasks.body')}
                 </h3>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setEditing(true)}
-                  className="h-6 px-2 text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                  className="h-6 px-2 text-3xs uppercase tracking-wider text-muted-foreground hover:text-foreground"
                 >
                   <Edit3 className="size-3" />
                   {t('common.edit')}
@@ -674,7 +661,7 @@ function TaskDetailSheet({
           )}
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <h3 className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {t('tasks.comments')}
               <span className="ml-1.5 font-mono tabular-nums text-foreground/70">
                 {comments.data?.comments.length ?? 0}
@@ -698,7 +685,7 @@ function TaskDetailSheet({
           </section>
 
           {task.resolvedAt ? (
-            <section className="rounded-md border border-border/60 bg-muted/30 p-3 text-[11px] text-muted-foreground">
+            <section className="rounded-md border border-border/60 bg-muted/30 p-3 text-2xs text-muted-foreground">
               <p>
                 <strong className="text-foreground">
                   {t(`tasks.status.${task.status}` as never)}
@@ -773,14 +760,14 @@ function AssigneePill({
 }) {
   if (!assignee) {
     return (
-      <span className="inline-flex h-5 items-center gap-1 rounded-full border border-dashed border-border bg-background px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+      <span className="inline-flex h-5 items-center gap-1 rounded-full border border-dashed border-border bg-background px-2 text-3xs uppercase tracking-wider text-muted-foreground">
         <UserIcon className="size-2.5" />
         {t('tasks.unassigned')}
       </span>
     );
   }
   return (
-    <span className="inline-flex h-5 items-center gap-1 rounded-full border border-border bg-background px-2 text-[10px] uppercase tracking-wider text-foreground">
+    <span className="inline-flex h-5 items-center gap-1 rounded-full border border-border bg-background px-2 text-3xs uppercase tracking-wider text-foreground">
       <UserIcon className="size-2.5" />
       {assignee.name ?? assignee.email}
     </span>
@@ -804,7 +791,7 @@ function CommentBubble({
         </span>
         <time
           dateTime={comment.createdAt}
-          className="text-[10px] tabular-nums text-muted-foreground"
+          className="text-3xs tabular-nums text-muted-foreground"
           title={formatDateTime(comment.createdAt, bcp47)}
         >
           {rel(comment.createdAt)}
@@ -841,7 +828,7 @@ function CommentComposer({ taskId, onPosted }: { taskId: number; onPosted: () =>
         }}
       />
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">⌘ + ↵</span>
+        <span className="text-3xs uppercase tracking-wider text-muted-foreground">⌘ + ↵</span>
         <Button size="sm" disabled={!body.trim() || post.isPending} onClick={() => post.mutate()}>
           {post.isPending ? (
             <Loader2 className="size-3.5 animate-spin" />
@@ -905,14 +892,14 @@ function TaskEditForm({
       }}
     >
       <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {t('tasks.field.title')}
         </label>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={500} />
       </div>
 
       <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {t('tasks.field.body')}
         </label>
         <Textarea
@@ -925,13 +912,13 @@ function TaskEditForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
             {t('tasks.field.priority')}
           </label>
           <PrioritySelect value={priority} onChange={setPriority} t={t} />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
             {t('tasks.field.dueAt')}
           </label>
           <Input
@@ -943,7 +930,7 @@ function TaskEditForm({
       </div>
 
       <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {t('tasks.field.assignee')}
         </label>
         <AssigneeSelect
@@ -989,11 +976,11 @@ function PrioritySelect({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40"
+          className="inline-flex w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span
             className={cn(
-              'inline-flex h-4 items-center rounded-full border px-1.5 text-[9px] uppercase tracking-wider',
+              'inline-flex h-4 items-center rounded-full border px-1.5 text-3xs uppercase tracking-wider',
               PRIORITY_TONE[value],
             )}
           >
@@ -1011,7 +998,7 @@ function PrioritySelect({
           >
             <span
               className={cn(
-                'inline-flex h-4 items-center rounded-full border px-1.5 text-[9px] uppercase tracking-wider',
+                'inline-flex h-4 items-center rounded-full border px-1.5 text-3xs uppercase tracking-wider',
                 PRIORITY_TONE[p],
               )}
             >
@@ -1044,7 +1031,7 @@ function AssigneeSelect({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40"
+          className="inline-flex w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="truncate">
             {loading
@@ -1070,7 +1057,7 @@ function AssigneeSelect({
           >
             <div className="min-w-0">
               <p className="truncate text-sm">{m.name || m.email}</p>
-              <p className="truncate text-[10px] text-muted-foreground">{m.role}</p>
+              <p className="truncate text-3xs text-muted-foreground">{m.role}</p>
             </div>
             {m.id === value ? <Check className="size-3.5 text-rust" /> : null}
           </DropdownMenuItem>
@@ -1132,9 +1119,9 @@ function CreateTaskSheet({
         }
       }}
     >
-      <SheetContent side="right" className="flex w-full flex-col gap-5 sm:max-w-md">
+      <SheetContent side="right" variant="content" className="flex flex-col gap-5 sm:max-w-md">
         <div>
-          <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+          <div className="mb-1 flex items-center gap-2 text-3xs uppercase tracking-[0.14em] text-muted-foreground">
             <BrandMark brand={activeProject} size="xs" />
             <span>{activeProject.shortName}</span>
           </div>
@@ -1152,7 +1139,7 @@ function CreateTaskSheet({
           }}
         >
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {t('tasks.field.title')}
             </label>
             <Input
@@ -1161,14 +1148,16 @@ function CreateTaskSheet({
               required
               placeholder={t('tasks.titlePlaceholder')}
               maxLength={500}
+              // First field of a modal form; focus has to enter the dialog.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {t('tasks.field.body')}{' '}
-              <span className="normal-case text-muted-foreground/60">— {t('common.optional')}</span>
+              <span className="normal-case text-muted-foreground">— {t('common.optional')}</span>
             </label>
             <Textarea
               value={body}
@@ -1181,13 +1170,13 @@ function CreateTaskSheet({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
                 {t('tasks.field.priority')}
               </label>
               <PrioritySelect value={priority} onChange={setPriority} t={t} />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
                 {t('tasks.field.dueAt')}
               </label>
               <Input
@@ -1199,7 +1188,7 @@ function CreateTaskSheet({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label className="text-3xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {t('tasks.field.assignee')}
             </label>
             <AssigneeSelect

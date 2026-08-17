@@ -20,7 +20,7 @@ import {
   Sun,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -165,7 +165,7 @@ export function SettingsPage() {
                 onClick={() => mutation.mutate({ locale: loc.value })}
                 aria-pressed={active}
                 className={cn(
-                  'flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30',
+                  'flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   active
                     ? 'border-foreground/20 bg-rust/[0.08] ring-1 ring-rust/30'
                     : 'border-border hover:bg-muted/40',
@@ -175,7 +175,7 @@ export function SettingsPage() {
                   <span className="text-xl leading-none">{loc.flag}</span>
                   <div>
                     <div className="text-sm font-semibold">{loc.label}</div>
-                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <div className="text-2xs uppercase tracking-wide text-muted-foreground">
                       {loc.value}
                     </div>
                   </div>
@@ -202,7 +202,7 @@ export function SettingsPage() {
                 onClick={() => mutation.mutate({ theme: opt.value })}
                 aria-pressed={active}
                 className={cn(
-                  'flex flex-col items-start gap-2 rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30',
+                  'flex flex-col items-start gap-2 rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   active
                     ? 'border-foreground/20 bg-rust/[0.08] ring-1 ring-rust/30'
                     : 'border-border hover:bg-muted/40',
@@ -218,10 +218,10 @@ export function SettingsPage() {
                 </div>
                 <div>
                   <div className="text-sm font-semibold">{opt.label}</div>
-                  <div className="text-[11px] text-muted-foreground">{opt.description}</div>
+                  <div className="text-2xs text-muted-foreground">{opt.description}</div>
                 </div>
                 {active ? (
-                  <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-rust">
+                  <span className="mt-1 inline-flex items-center gap-1 text-2xs text-rust">
                     <Check className="size-3" /> {t('settings.themeActive')}
                   </span>
                 ) : null}
@@ -428,7 +428,7 @@ function ChangePasswordSection() {
             className={
               notice.kind === 'error'
                 ? 'flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive'
-                : 'flex items-start gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800'
+                : 'flex items-start gap-2 rounded-md border border-success/30 bg-success-soft px-3 py-2 text-sm text-success'
             }
           >
             {notice.kind === 'error' ? (
@@ -499,7 +499,7 @@ function PasswordInput({
         <button
           type="button"
           onClick={onToggleVisible}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={visible ? t('login.hidePassword') : t('login.showPassword')}
           aria-pressed={visible}
         >
@@ -543,16 +543,34 @@ function ToggleRow({
   checked: boolean;
   onChange: (next: boolean) => void;
 }) {
+  // Wrapping the <label> round the control does associate them, but it also
+  // folds the description into the accessible name ("Label description"). An
+  // explicit htmlFor + aria-describedby keeps the name short and the detail
+  // announced separately.
+  const id = useId();
+  const descriptionId = `${id}-description`;
+
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-muted/40">
+    <label
+      htmlFor={id}
+      className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-muted/40"
+    >
       <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground/70">
         <Icon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium">{label}</div>
-        <div className="text-[11px] text-muted-foreground">{description}</div>
+        <div id={descriptionId} className="text-2xs text-muted-foreground">
+          {description}
+        </div>
       </div>
-      <Checkbox checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-1" />
+      <Checkbox
+        id={id}
+        aria-describedby={descriptionId}
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-1"
+      />
     </label>
   );
 }
@@ -703,7 +721,7 @@ function StatusBanner({
 
   const toneCls: Record<Tone, string> = {
     neutral: 'border-border bg-muted/40 text-foreground/80',
-    good: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300',
+    good: 'border-success/30 bg-success-soft/50 text-success',
     warn: 'border-rust/30 bg-rust-soft/40 text-foreground',
     bad: 'border-destructive/30 bg-destructive/5 text-destructive',
   };

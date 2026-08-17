@@ -11,8 +11,8 @@ import { NotFoundPage } from '@/pages/not-found';
 import { ResetPasswordPage } from '@/pages/reset-password';
 
 // Authenticated pages are code-split: each loads on first navigation, so the
-// recharts-heavy dashboard and the large orders/invoices bundles don't ship on
-// the initial login paint. A single <Suspense> boundary lives in AppLayout.
+// large orders/invoices/inquiries bundles don't ship on the initial login paint.
+// A single <Suspense> boundary lives in AppLayout.
 const BrandDetailPage = lazy(() =>
   import('@/pages/brand-detail').then((m) => ({ default: m.BrandDetailPage })),
 );

@@ -11,6 +11,28 @@ export default {
       },
     },
     extend: {
+      /*
+       * Type scale. The app had invented 241 one-off `text-[Npx]` classes across
+       * 37 files — six different sizes between 10px and 16px, none of them
+       * enumerable or greppable. These are those sizes, named, with line-heights
+       * that actually pair with them. `2xs` is one step under `xs`, `2sm` one
+       * step under `sm`; `xs`, `sm` and up keep Tailwind's defaults.
+       *
+       * Nothing outside this scale should appear in a className. If a new size
+       * seems necessary, add it here so it is shared.
+       */
+      fontSize: {
+        '3xs': ['0.625rem', { lineHeight: '0.875rem' }], // 10px — micro labels, counters
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }], //    11px — metadata, captions
+        xs: ['0.75rem', { lineHeight: '1rem' }], //          12px
+        '2sm': ['0.8125rem', { lineHeight: '1.125rem' }], // 13px — dense rows, nav, tabs
+        // Editorial display sizes for the serif page heroes. Line-height and
+        // tracking are baked in, so a hero is one class instead of three.
+        // Collapsed from five hand-written sizes (28/30/34/36/44) to three.
+        'display-sm': ['1.875rem', { lineHeight: '1.1', letterSpacing: '-0.025em' }], //  30px
+        'display-md': ['2.25rem', { lineHeight: '1.08', letterSpacing: '-0.025em' }], //  36px
+        'display-lg': ['2.75rem', { lineHeight: '1.05', letterSpacing: '-0.025em' }], //  44px
+      },
       fontFamily: {
         sans: [
           'Inter',
@@ -61,11 +83,19 @@ export default {
           DEFAULT: 'hsl(var(--rust))',
           soft: 'hsl(var(--rust-soft))',
           text: 'hsl(var(--rust-text))',
+          /* For the theme-invariant ink surface — see `ink` / `parchment`. */
+          'on-ink': 'hsl(var(--rust-on-ink))',
         },
         claude: {
           DEFAULT: 'hsl(var(--claude))',
           soft: 'hsl(var(--claude-soft))',
         },
+        /* Star ratings. Semantically data, not a status — kept out of warning. */
+        rating: 'hsl(var(--rating))',
+        /* Theme-invariant. For surfaces painted a fixed brand colour (the login
+           showcase panel, brand wordmarks) that must not flip with the theme. */
+        ink: 'hsl(var(--ink))',
+        parchment: 'hsl(var(--parchment))',
         success: {
           DEFAULT: 'hsl(var(--success))',
           foreground: 'hsl(var(--success-foreground))',

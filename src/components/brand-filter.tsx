@@ -15,7 +15,7 @@ export function BrandFilter() {
       aria-label={t('brandFilter.title')}
       className="rounded-xl border border-sidebar-border bg-sidebar-accent/40 p-3"
     >
-      <div className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <div className="px-1 pb-2 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {t('brandFilter.title')}
       </div>
       <ul className="flex flex-col gap-0.5">
@@ -68,7 +68,7 @@ function FilterRow({
         aria-checked={active}
         onClick={() => onSelect(id)}
         className={cn(
-          'group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30',
+          'group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           active
             ? 'bg-sidebar-accent text-sidebar-accent-foreground'
             : 'hover:bg-sidebar-accent/60',
@@ -96,10 +96,10 @@ function FilterRow({
           />
         )}
         <div className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className={cn('truncate text-[13px]', active ? 'font-semibold' : 'font-medium')}>
+          <span className={cn('truncate text-2sm', active ? 'font-semibold' : 'font-medium')}>
             {name}
           </span>
-          <span className="truncate text-[11px] text-muted-foreground">{meta}</span>
+          <span className="truncate text-2xs text-muted-foreground">{meta}</span>
         </div>
       </button>
     </li>

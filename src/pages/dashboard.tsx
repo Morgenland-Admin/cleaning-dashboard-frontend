@@ -31,15 +31,12 @@ export function DashboardPage() {
   return (
     <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-4 sm:gap-6">
       <section className="flex flex-col gap-2">
-        <h1 className="font-serif text-[28px] font-semibold leading-[1.1] tracking-tight sm:text-[36px] lg:text-[44px]">
+        <h1 className="font-serif text-display-sm font-semibold sm:text-display-md lg:text-display-lg">
           <span>{greetingPre}</span>
           <span className="italic text-rust">{firstName}</span>
           <span>{greetingPost}</span>
         </h1>
-        <p
-          className="text-[13px] leading-relaxed text-muted-foreground sm:text-sm"
-          aria-live="polite"
-        >
+        <p className="text-2sm leading-relaxed text-muted-foreground sm:text-sm" aria-live="polite">
           {query.isLoading
             ? t('dashboard.loadingSummary')
             : totalOpenWork === 0
@@ -156,7 +153,7 @@ function BrandStatsCard({
           highlight={brand.inquiry.openCount > 0}
         />
       </dl>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         {hasOpenWork
           ? t('dashboard.openWorkLine', {
               contact: brand.contact.new,
@@ -229,7 +226,7 @@ function ActivityRow({
             <p className="truncate text-sm font-medium">{item.title}</p>
             <time
               dateTime={item.createdAt}
-              className="shrink-0 text-[11px] tabular-nums text-muted-foreground"
+              className="shrink-0 text-2xs tabular-nums text-muted-foreground"
             >
               {formatDateTime(item.createdAt, bcp47)}
             </time>

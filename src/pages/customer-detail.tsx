@@ -224,11 +224,6 @@ export function CustomerDetailPage() {
                 label={t(`customers.tier.${customer.loyaltyTier}` as never)}
                 tone={TIER_TONE[customer.loyaltyTier]}
               />
-              {customer.customerNumber ? (
-                <Badge variant="secondary" className="tabular-nums">
-                  {customer.customerNumber}
-                </Badge>
-              ) : null}
               {noEmail ? (
                 <StatusBadge label={t('customers.nonContactable')} tone="warning" />
               ) : null}
@@ -362,12 +357,6 @@ export function CustomerDetailPage() {
               <DataRow label={t('customers.form.department')}>{customer.department}</DataRow>
               <DataRow label={t('customers.form.vatId')}>{customer.vatId}</DataRow>
               <DataRow label={t('customers.form.taxNumber')}>{customer.taxNumber}</DataRow>
-              <DataRow label={t('customers.form.customerNumber')}>
-                {customer.customerNumber}
-              </DataRow>
-              <DataRow label={t('customers.form.externalNumber')}>
-                {customer.externalNumber}
-              </DataRow>
               <DataRow label={t('customers.form.website')}>{customer.website}</DataRow>
               <DataRow label={t('customers.form.salutation')}>
                 {customer.salutation
@@ -421,7 +410,7 @@ export function CustomerDetailPage() {
         </Card>
 
         <Tabs defaultValue="addresses" className="min-w-0">
-          <TabsList className="flex-wrap">
+          <TabsList>
             <TabsTrigger value="addresses" className="gap-1.5">
               {t('customers.tab.addresses')}
               <CountChip n={addresses.length} />
@@ -515,7 +504,7 @@ function StatCard({
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</p>
       <p
         className={cn(
           'mt-1 font-serif text-xl font-semibold tabular-nums',
@@ -555,7 +544,7 @@ function DataRow({ label, children }: { label: string; children: React.ReactNode
 
 function CountChip({ n }: { n: number }) {
   return (
-    <span className="rounded-md bg-muted-foreground/15 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+    <span className="rounded-md bg-muted-foreground/15 px-1.5 py-0.5 text-3xs font-medium tabular-nums text-muted-foreground">
       {n}
     </span>
   );

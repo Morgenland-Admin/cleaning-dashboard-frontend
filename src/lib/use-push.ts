@@ -100,6 +100,10 @@ export function usePush(): UsePushResult {
   }, [compute]);
 
   useEffect(() => {
+    // `refresh` is an async probe of the browser's push permission and the
+    // server's VAPID config. There is nothing to read during render; the state
+    // lands after the await, which is what an effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 

@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 import { AddressAutocomplete } from '@/components/address-autocomplete';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useT } from '@/i18n';
@@ -118,7 +119,7 @@ function CompanyRow({
           <div className="min-w-0">
             <div className="truncate font-medium">{company.name}</div>
             <div className="truncate text-xs text-muted-foreground">
-              {company.slug} · {t('companies.schemaLabel')} „{company.schemaName}"
+              {company.slug} · {t('companies.schemaLabel')} „{company.schemaName}“
             </div>
           </div>
         </div>
@@ -266,12 +267,7 @@ export function EditBrandingForm({
           />
         </Field>
         <label className="flex cursor-pointer items-center gap-2 self-start text-sm">
-          <input
-            type="checkbox"
-            checked={isActive}
-            onChange={(e) => setIsActive(e.target.checked)}
-            className="size-4 rounded border-border accent-primary"
-          />
+          <Checkbox checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           <span>{t('companies.edit.fields.active')}</span>
         </label>
       </Section>
@@ -662,7 +658,7 @@ function Field({
         {label} {required ? <span className="text-rust">*</span> : null}
       </Label>
       {labelled}
-      {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="text-2xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }

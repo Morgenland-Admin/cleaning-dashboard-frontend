@@ -30,6 +30,7 @@ import { useProject, type CompanySlug } from '@/contexts/project-context';
 import { useLocale, useT, type DictKey } from '@/i18n';
 import { ApiError, reviewsAdminApi, type ReviewRow, type ReviewStatus } from '@/lib/api';
 import { useClaudeAssist } from '@/lib/use-claude-assist';
+import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -70,6 +71,7 @@ export function ReviewsPage() {
   // The list scrolls inside its own box so a few hundred rows stay navigable
   // without the page growing to many screens tall.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [flagTarget, setFlagTarget] = useState<ReviewRow | null>(null);
   const [respondTarget, setRespondTarget] = useState<ReviewRow | null>(null);
@@ -282,7 +284,7 @@ export function ReviewsPage() {
         ) : (
           <div
             ref={listScrollRef}
-            className="flex max-h-[calc(100svh-15rem)] flex-col gap-4 overflow-y-auto overscroll-contain pr-1"
+            className="flex flex-col gap-4 lg:max-h-[calc(100svh-15rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
           >
             {reviews.map((review) => (
               <ReviewCard
@@ -308,7 +310,9 @@ export function ReviewsPage() {
               hasMore={!!listQuery.hasNextPage}
               isLoading={listQuery.isFetchingNextPage}
               onIntersect={loadMore}
-              rootRef={listScrollRef}
+              // Only a root when that box actually scrolls (lg+); otherwise the
+              // sentinel sits inside it forever and pages in the whole list.
+              rootRef={isDesktop ? listScrollRef : undefined}
             />
           </div>
         )}
@@ -413,7 +417,7 @@ function StarRating({ rating, label }: { rating: number; label: string }) {
           aria-hidden="true"
           className={cn(
             'size-4',
-            i <= rating ? 'fill-amber-400 text-amber-500' : 'text-muted-foreground/40',
+            i <= rating ? 'fill-rating text-rating' : 'text-muted-foreground/40',
           )}
         />
       ))}

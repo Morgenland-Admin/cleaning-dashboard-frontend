@@ -163,20 +163,20 @@ function PolicyBlock({
 
   const modeBadge =
     decision.mode === 'full'
-      ? { label: 'Volle Rückerstattung', cls: 'bg-emerald-100 text-emerald-900' }
+      ? { label: 'Volle Rückerstattung', cls: 'bg-success-soft text-success' }
       : decision.mode === 'partial'
-        ? { label: 'Teilerstattung', cls: 'bg-amber-100 text-amber-900' }
-        : { label: 'Stornierung nicht möglich', cls: 'bg-rose-100 text-rose-900' };
+        ? { label: 'Teilerstattung', cls: 'bg-warning-soft text-warning' }
+        : { label: 'Stornierung nicht möglich', cls: 'bg-destructive/10 text-destructive' };
 
   if (!decision.allowed) {
     return (
       <>
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm dark:border-rose-900/40 dark:bg-rose-950/30">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
           <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-rose-600" aria-hidden="true" />
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
             <div>
               <div className="font-semibold">{modeBadge.label}</div>
-              <p className="mt-1 text-rose-900 dark:text-rose-100">{decision.message}</p>
+              <p className="mt-1 text-foreground">{decision.message}</p>
             </div>
           </div>
         </div>
@@ -200,7 +200,7 @@ function PolicyBlock({
           <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div>
             <span
-              className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${modeBadge.cls}`}
+              className={`inline-block rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider ${modeBadge.cls}`}
             >
               {modeBadge.label}
             </span>
@@ -210,7 +210,7 @@ function PolicyBlock({
       </div>
 
       {isPayPal && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+        <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3 text-xs text-warning">
           PayPal-Zahlung: Eine Rückerstattung muss direkt in PayPal vorgenommen werden. Hier wird
           der Auftrag nur ohne Rückerstattungsbetrag storniert.
         </div>

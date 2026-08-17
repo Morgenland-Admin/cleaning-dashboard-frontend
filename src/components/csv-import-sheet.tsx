@@ -166,7 +166,8 @@ export function CsvImportSheet({
       >
         <SheetContent
           side="right"
-          className="flex w-full flex-col gap-6 overflow-y-auto sm:max-w-lg"
+          variant="content"
+          className="flex flex-col gap-6 overflow-y-auto sm:max-w-lg"
         >
           <div className="flex flex-col gap-2">
             {headerChip}
@@ -209,13 +210,13 @@ export function CsvImportSheet({
               </span>
               <div>
                 <p className="text-sm font-medium text-foreground">{t(k('dropzoneTitle'))}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{t(k('dropzoneHint'))}</p>
+                <p className="mt-1 text-2xs text-muted-foreground">{t(k('dropzoneHint'))}</p>
               </div>
               <a
                 href={sampleHref}
                 download
                 onClick={(e) => e.stopPropagation()}
-                className="text-[11px] text-rust underline-offset-2 hover:underline"
+                className="text-2xs text-rust underline-offset-2 hover:underline"
               >
                 {t(k('importSampleLink'))}
               </a>
@@ -236,7 +237,7 @@ export function CsvImportSheet({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{fileName}</p>
-                <p className="text-[11px] tabular-nums text-muted-foreground">
+                <p className="text-2xs tabular-nums text-muted-foreground">
                   {(fileText.length / 1024).toLocaleString(bcp47, { maximumFractionDigits: 1 })} KB
                 </p>
               </div>
@@ -282,7 +283,7 @@ export function CsvImportSheet({
             ) : (
               <>
                 {requireConsentAttestation ? (
-                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3 text-[12px] leading-snug text-muted-foreground">
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3 text-xs leading-snug text-muted-foreground">
                     <Checkbox
                       checked={attested}
                       onChange={(e) => setAttested(e.target.checked)}
@@ -340,7 +341,7 @@ function ImportSummaryCard({
   const k = (suffix: string) => `${i18nPrefix}.${suffix}` as never;
   return (
     <div className="rounded-lg border border-border bg-card p-4">
-      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+      <p className="text-2xs uppercase tracking-wider text-muted-foreground">
         {isFinal ? t(k('importDone')) : t(k('importDryRun'))}
       </p>
       <div className="mt-2 grid grid-cols-3 gap-3 border-b border-border pb-3">
@@ -348,7 +349,7 @@ function ImportSummaryCard({
         <Stat label={t(k('importStat.imported'))} value={summary.imported} tone="good" />
         <Stat label={t(k('importStat.skipped'))} value={summary.skipped} tone="warn" />
       </div>
-      <ul className="mt-3 flex flex-col gap-1 text-[12px]">
+      <ul className="mt-3 flex flex-col gap-1 text-xs">
         {REASONS.filter((r) => summary.byReason[r] > 0).map((r) => (
           <li key={r} className="flex items-center justify-between gap-3 text-muted-foreground">
             <span>{t(k(`importReason.${r}`))}</span>
@@ -357,11 +358,11 @@ function ImportSummaryCard({
         ))}
       </ul>
       {summary.sampleRejects.length > 0 ? (
-        <details className="mt-3 text-[11px]">
+        <details className="mt-3 text-2xs">
           <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
             {t(k('importShowRejects'), { n: summary.sampleRejects.length })}
           </summary>
-          <ul className="mt-2 flex flex-col gap-0.5 font-mono text-[11px] text-muted-foreground">
+          <ul className="mt-2 flex flex-col gap-0.5 font-mono text-2xs text-muted-foreground">
             {summary.sampleRejects.map((r, i) => (
               <li key={i} className="truncate">
                 <span className="text-foreground/70">L{r.line}:</span> {r.email}{' '}
@@ -384,15 +385,10 @@ function Stat({
   value: number;
   tone?: 'neutral' | 'good' | 'warn';
 }) {
-  const cls =
-    tone === 'good'
-      ? 'text-emerald-700 dark:text-emerald-300'
-      : tone === 'warn'
-        ? 'text-rust'
-        : 'text-foreground';
+  const cls = tone === 'good' ? 'text-success' : tone === 'warn' ? 'text-rust' : 'text-foreground';
   return (
     <div className="flex flex-col items-start gap-0.5">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</span>
       <span className={cn('font-mono text-lg font-medium tabular-nums', cls)}>{value}</span>
     </div>
   );

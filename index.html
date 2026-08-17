@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/icon-app.svg" />
+    <!-- iOS ignores SVG for apple-touch-icon: it must be a PNG or "Add to Home
+         Screen" falls back to a screenshot of the page. 192 is the size iOS
+         upscales from cleanly; it applies its own squircle mask. -->
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-app-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#241c17" media="(prefers-color-scheme: dark)" />

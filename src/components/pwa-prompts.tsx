@@ -161,10 +161,7 @@ export function PwaPrompts() {
       ) : null}
 
       <Sheet open={iosGuideOpen} onOpenChange={setIosGuideOpen}>
-        <SheetContent
-          side="right"
-          className="bg-card pb-[max(1.5rem,env(safe-area-inset-bottom))] text-foreground"
-        >
+        <SheetContent side="right" variant="content" className="sm:max-w-sm">
           <div className="flex flex-col gap-1.5 text-left">
             <SheetTitle className="not-sr-only font-serif text-lg">{t('pwa.iosTitle')}</SheetTitle>
             <SheetDescription>{t('pwa.iosIntro')}</SheetDescription>
@@ -218,14 +215,14 @@ function Banner({
         'fixed inset-x-3 z-40 mx-auto max-w-md rounded-2xl border bg-card p-4 shadow-lg',
         'bottom-[calc(4.25rem+env(safe-area-inset-bottom))] lg:bottom-6 lg:left-auto lg:right-6 lg:mx-0',
         'duration-300 animate-in fade-in slide-in-from-bottom-4 motion-reduce:animate-none',
-        tone === 'success' ? 'border-emerald-600/30' : 'border-border',
+        tone === 'success' ? 'border-success/30' : 'border-border',
       )}
     >
       <div className="flex items-start gap-3">
         <span
           className={cn(
             'mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-xl',
-            tone === 'success' ? 'bg-emerald-600/10 text-emerald-700' : 'bg-rust-soft/60 text-rust',
+            tone === 'success' ? 'bg-success-soft text-success' : 'bg-rust-soft/60 text-rust',
           )}
           aria-hidden="true"
         >
@@ -259,7 +256,7 @@ function Banner({
             type="button"
             aria-label={dismissLabel}
             onClick={onLater}
-            className="-m-1 inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40"
+            className="-m-1 inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="size-4" aria-hidden="true" />
           </button>

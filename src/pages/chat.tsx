@@ -34,21 +34,33 @@ export function ChatPage() {
   const isLoading = queries.some((q) => q.isLoading);
   const firstError = queries.find((q) => q.error)?.error as Error | undefined;
 
+  // `useQueries` hands back a fresh array every render, so it cannot be a
+  // dependency without defeating the memo. This key changes exactly when one of
+  // the queries actually resolves new data, which is the thing we care about.
+  const queriesUpdatedKey = queries.map((q) => q.dataUpdatedAt).join('|');
   const conversations = useMemo<ConvRow[]>(() => {
-    const out: ConvRow[] = [];
+    // Keyed by brand + partner, because that pair is what a row *means* here —
+    // one thread with one partner — and what `rowKey` addresses. The backend can
+    // hand back two conversation rows for the same partner (cleanilo has a
+    // duplicate today; `chat_conversations` has no unique index on
+    // partner_user_id), which rendered two identical rows sharing a React key.
+    // Both opened the same thread, so the later row simply wins.
+    const byKey = new Map<string, ConvRow>();
     queries.forEach((q, i) => {
       const brand = brandList[i];
       if (!brand) return;
-      (q.data?.conversations ?? []).forEach((c) => out.push({ ...c, brand }));
+      (q.data?.conversations ?? []).forEach((c) => {
+        byKey.set(`${brand.companySlug}:${c.partnerUserId}`, { ...c, brand });
+      });
     });
-    return out.sort((a, b) => {
+    return [...byKey.values()].sort((a, b) => {
       const aT = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
       const bT = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       if (aT !== bT) return bT - aT;
       return a.partnerUserId.localeCompare(b.partnerUserId);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queries.map((q) => q.dataUpdatedAt).join('|'), brandList]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see queriesUpdatedKey
+  }, [queriesUpdatedKey, brandList]);
 
   function rowKey(c: ConvRow): string {
     return `${c.brand.companySlug}:${c.partnerUserId}`;
@@ -59,6 +71,10 @@ export function ChatPage() {
     if (typeof window === 'undefined') return;
     const isDesktop = window.matchMedia('(min-width: 768px)').matches;
     if (!isDesktop) return;
+    // Which conversation is first is not knowable until the queries resolve,
+    // so the desktop default has to be applied after data arrives. The
+    // `selectedKey` guard makes it one-shot: it cannot loop or fight a choice.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (conversations.length > 0) setSelectedKey(rowKey(conversations[0]!));
   }, [conversations, selectedKey]);
 
@@ -83,7 +99,7 @@ export function ChatPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {t('chat.conversationsHeading')}
             </p>
-            <p className="mt-0.5 truncate text-[11px] text-muted-foreground/80">
+            <p className="mt-0.5 truncate text-2xs text-muted-foreground">
               {isAllBrands
                 ? t('chat.subtitleAllBrandsList', { n: brandList.length })
                 : t('chat.subtitleForBrand', { brand: activeProject.name })}
@@ -272,7 +288,7 @@ function ConversationRow({
             {conv.lastMessageAt ? (
               <time
                 dateTime={conv.lastMessageAt}
-                className="shrink-0 text-[10px] tabular-nums text-muted-foreground"
+                className="shrink-0 text-3xs tabular-nums text-muted-foreground"
               >
                 {formatDateTime(conv.lastMessageAt, bcp47)}
               </time>
@@ -280,7 +296,7 @@ function ConversationRow({
           </div>
           <div className="mt-0.5 flex items-center gap-1.5">
             {showBrand ? (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background/40 px-1.5 py-0.5 text-3xs font-medium text-muted-foreground">
                 <BrandMark brand={conv.brand} size="xs" />
                 <span className="uppercase tracking-wide">{conv.brand.shortName}</span>
               </span>
@@ -293,7 +309,7 @@ function ConversationRow({
         {conv.unreadForAdmin > 0 ? (
           <span
             aria-label={t('chat.unreadCount', { n: conv.unreadForAdmin })}
-            className="ml-1 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rust px-1.5 text-[10px] font-semibold text-primary-foreground"
+            className="ml-1 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rust px-1.5 text-3xs font-semibold text-primary-foreground"
           >
             {conv.unreadForAdmin > 99 ? '99+' : conv.unreadForAdmin}
           </span>

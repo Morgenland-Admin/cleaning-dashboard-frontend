@@ -193,7 +193,7 @@ function CallbackRow({
           {showBrand ? (
             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-1.5 py-0.5">
               <BrandMark brand={row._brand} size="xs" />
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="text-3xs font-medium uppercase tracking-wide text-muted-foreground">
                 {row._brand.shortName}
               </span>
             </span>
@@ -205,7 +205,7 @@ function CallbackRow({
         </Badge>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2sm text-muted-foreground">
         {row.phone ? (
           <a
             href={`tel:${row.phone}`}
@@ -215,7 +215,7 @@ function CallbackRow({
             {row.phone}
           </a>
         ) : (
-          <span className="inline-flex items-center gap-1 text-muted-foreground/70">
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Phone className="size-3" />
             {t('callbacks.noPhone')}
           </span>

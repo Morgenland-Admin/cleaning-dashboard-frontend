@@ -204,7 +204,7 @@ function Stat({
         <Icon className="size-3 text-muted-foreground" aria-hidden="true" />
         <span className="font-mono text-lg font-medium tabular-nums text-foreground">{value}</span>
       </div>
-      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dt className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</dt>
     </div>
   );
 }
@@ -256,17 +256,17 @@ function ServiceCard({
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="font-serif text-lg leading-tight text-foreground">{service.label}</h3>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
+          <p className="mt-0.5 text-2xs text-muted-foreground">
             {t(`pricing.unit.${service.unit}` as never)}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          <p className="text-3xs uppercase tracking-wider text-muted-foreground">
             {t('pricing.fromLabel')}
           </p>
           <p className="font-serif text-base tabular-nums text-foreground">
             {Number.isFinite(fromPrice) ? formatEurCents(fromPrice, locale, currency) : '—'}
-            <span className="ml-0.5 text-[10px] text-muted-foreground">
+            <span className="ml-0.5 text-3xs text-muted-foreground">
               {unitSuffix(service.unit)}
             </span>
           </p>
@@ -289,7 +289,7 @@ function ServiceCard({
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-foreground">{tier.label}</p>
-                <p className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                <p className="mt-0.5 truncate font-mono text-3xs uppercase tracking-wider text-muted-foreground">
                   {tier.code}
                 </p>
               </div>
@@ -297,7 +297,7 @@ function ServiceCard({
                 <span className="font-serif text-base tabular-nums text-foreground">
                   {formatEurCents(tier.unitPriceCents, locale, currency)}
                 </span>
-                <span className="ml-0.5 text-[10px] text-muted-foreground">
+                <span className="ml-0.5 text-3xs text-muted-foreground">
                   {unitSuffix(service.unit)}
                 </span>
               </div>
@@ -363,7 +363,7 @@ function BracketMatrix({
     <div className="flex-1 overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border/70 bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border/70 bg-muted/30 text-3xs uppercase tracking-wider text-muted-foreground">
             <th className="px-4 py-2 text-left font-medium">Fläche</th>
             {tiers.map((tier) => (
               <th key={tier.code} className="px-3 py-2 text-right font-medium">
@@ -371,7 +371,7 @@ function BracketMatrix({
                   {tier.label}
                 </span>
                 {tier.description ? (
-                  <p className="mt-0.5 max-w-[12rem] text-right text-[10px] normal-case tracking-normal text-muted-foreground/80">
+                  <p className="mt-0.5 max-w-[12rem] text-right text-3xs normal-case tracking-normal text-muted-foreground">
                     {tier.description}
                   </p>
                 ) : null}
@@ -384,7 +384,7 @@ function BracketMatrix({
             <tr key={bracket.code} className="transition-colors hover:bg-rust-soft/30">
               <th scope="row" className="px-4 py-2.5 text-left text-sm font-medium text-foreground">
                 {bracket.label}
-                <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                <p className="mt-0.5 font-mono text-3xs uppercase tracking-wider text-muted-foreground">
                   {bracket.code}
                 </p>
               </th>
@@ -396,7 +396,7 @@ function BracketMatrix({
                     className="px-3 py-2.5 text-right font-serif text-base tabular-nums text-foreground"
                   >
                     {cents == null ? (
-                      <span className="text-[11px] italic text-muted-foreground">auf Anfrage</span>
+                      <span className="text-2xs italic text-muted-foreground">auf Anfrage</span>
                     ) : (
                       formatEurCents(cents, locale, currency)
                     )}
@@ -413,7 +413,7 @@ function BracketMatrix({
 
 function OptionPill({ label, value }: { label: string; value: string }) {
   return (
-    <span className="inline-flex items-baseline gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px]">
+    <span className="inline-flex items-baseline gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-2xs">
       <span className="text-muted-foreground">{label}</span>
       <span className="font-medium tabular-nums text-foreground">{value}</span>
     </span>
@@ -444,9 +444,9 @@ function AddonsStrip({
         </span>
         <div className="min-w-0">
           <h3 className="font-serif text-base leading-tight text-foreground">{title}</h3>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{subtitle}</p>
+          <p className="mt-0.5 text-2xs text-muted-foreground">{subtitle}</p>
         </div>
-        <Badge variant="outline" className="ml-auto font-mono text-[10px]">
+        <Badge variant="outline" className="ml-auto font-mono text-3xs">
           {addons.length}
         </Badge>
       </div>
@@ -458,7 +458,7 @@ function AddonsStrip({
           >
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-foreground">{a.label}</p>
-              <p className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+              <p className="mt-0.5 truncate font-mono text-3xs uppercase tracking-wider text-muted-foreground">
                 {a.code}
               </p>
             </div>
@@ -466,7 +466,7 @@ function AddonsStrip({
               <span className="font-serif text-base tabular-nums text-foreground">
                 {formatEurCents(a.unitPriceCents, locale, currency)}
               </span>
-              <span className="ml-0.5 text-[10px] text-muted-foreground">/m²</span>
+              <span className="ml-0.5 text-3xs text-muted-foreground">/m²</span>
             </div>
           </li>
         ))}

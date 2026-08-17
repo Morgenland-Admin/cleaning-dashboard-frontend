@@ -9,6 +9,7 @@ import { FormField } from '@/components/form-field';
 import { LineItemsEditor } from '@/components/line-items-editor';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -35,13 +36,16 @@ import {
   centsToInput,
   computeSubtotalCents,
   emptyLine,
+  grossFromNetCents,
   lineNetCents,
+  netFromGrossCents,
   toCents,
   toQuantity,
   type LineDraft,
   type PriceMode,
 } from '@/lib/line-items';
 import { usePageTitle } from '@/lib/use-page-title';
+import { cn } from '@/lib/utils';
 
 // Cent-precision money formatting (utils' formatCurrency rounds to whole euros).
 function formatEur(cents: number, bcp47: string, currency = 'EUR'): string {
@@ -90,6 +94,13 @@ interface FormState {
   paymentTermsDays: string;
   paymentMethod: InvoicePaymentMethod;
   notes: string;
+  /**
+   * Paketrechnung: the positions describe the scope of work and print without
+   * Einzelpreis/Betrag; the whole job is priced once in `packagePriceEur`.
+   */
+  packageMode: boolean;
+  /** Package price as typed — read as net or gross per the active priceMode. */
+  packagePriceEur: string;
   craftsmanService: boolean;
   laborGrossEur: string;
   laborVatEur: string;
@@ -116,6 +127,8 @@ function emptyForm(prefill?: InvoicePrefill): FormState {
     paymentTermsDays: String(prefill?.paymentTermsDays ?? 7),
     paymentMethod: 'transfer',
     notes: '',
+    packageMode: false,
+    packagePriceEur: '',
     craftsmanService: false,
     laborGrossEur: '',
     laborVatEur: '',
@@ -143,6 +156,9 @@ function toForm(invoice: InvoiceRow): FormState {
     paymentTermsDays: String(invoice.paymentTermsDays),
     paymentMethod: invoice.paymentMethod,
     notes: invoice.notes ?? '',
+    packageMode: invoice.packageMode,
+    // The stored subtotal is net, which is the form's default price mode.
+    packagePriceEur: invoice.packageMode ? centsToInput(invoice.subtotalCents) : '',
     craftsmanService: invoice.craftsmanService,
     laborGrossEur: invoice.laborGrossCents != null ? centsToInput(invoice.laborGrossCents) : '',
     laborVatEur: invoice.laborVatCents != null ? centsToInput(invoice.laborVatCents) : '',
@@ -233,11 +249,39 @@ export function InvoiceFormPage() {
     }
   }
 
+  /** The entered amount as net cents, backing VAT out when typed gross. */
+  const netCentsOf = (eur: string) => {
+    const cents = toCents(eur);
+    return priceMode === 'gross' ? netFromGrossCents(cents, form.taxRatePercent) : cents;
+  };
+
   const totals = useMemo(() => {
-    const subtotal = computeSubtotalCents(lines, priceMode, form.taxRatePercent);
+    // A Paketrechnung is priced once; its positions carry no money at all.
+    const subtotal = form.packageMode
+      ? netCentsOf(form.packagePriceEur)
+      : computeSubtotalCents(lines, priceMode, form.taxRatePercent);
     const tax = Math.round((subtotal * form.taxRatePercent) / 100);
     return { subtotal, tax, total: subtotal + tax };
-  }, [lines, form.taxRatePercent, priceMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- netCentsOf is derived from the deps below
+  }, [lines, form.taxRatePercent, form.packageMode, form.packagePriceEur, priceMode]);
+
+  // Flip the package price between net and gross entry, converting the typed
+  // value so the number on screen matches the new mode (mirrors the editor).
+  function switchPackagePriceMode(next: PriceMode) {
+    if (next === priceMode) return;
+    const cents = toCents(form.packagePriceEur);
+    if (form.packagePriceEur.trim() && cents !== 0) {
+      set(
+        'packagePriceEur',
+        centsToInput(
+          next === 'gross'
+            ? grossFromNetCents(cents, form.taxRatePercent)
+            : netFromGrossCents(cents, form.taxRatePercent),
+        ),
+      );
+    }
+    setPriceMode(next);
+  }
 
   // §35a: the amounts, and the sentence exactly as it will be printed.
   const craftsman = useMemo(() => {
@@ -282,7 +326,8 @@ export function InvoiceFormPage() {
       const lineItems: InvoiceLineItem[] = lines.map((l) => ({
         label: l.label.trim(),
         quantity: toQuantity(l.quantity) || 1,
-        unitPriceCents: lineNetCents(l, priceMode, form.taxRatePercent),
+        // Package positions never carry a price (the server enforces this too).
+        unitPriceCents: form.packageMode ? 0 : lineNetCents(l, priceMode, form.taxRatePercent),
         ...(l.note.trim() ? { note: l.note.trim() } : {}),
         ...(l.isPackage ? { isPackage: true } : {}),
       }));
@@ -313,6 +358,9 @@ export function InvoiceFormPage() {
           serviceDate: svcDate,
           serviceDateEnd: svcDateEnd,
           lineItems,
+          // Always sent, so unticking the box turns it back into a priced invoice.
+          packageMode: form.packageMode,
+          ...(form.packageMode ? { packageNetCents: totals.subtotal } : {}),
           taxRatePercent: form.taxRatePercent,
           paymentTermsDays: Number.isFinite(paymentTermsDays) ? paymentTermsDays : 7,
           paymentMethod: form.paymentMethod,
@@ -339,6 +387,10 @@ export function InvoiceFormPage() {
       if (form.addressLine2.trim()) input.recipientAddressLine2 = form.addressLine2.trim();
       if (form.postalCode.trim()) input.recipientPostalCode = form.postalCode.trim();
       if (form.city.trim()) input.recipientCity = form.city.trim();
+      if (form.packageMode) {
+        input.packageMode = true;
+        input.packageNetCents = totals.subtotal;
+      }
       if (form.subject.trim()) input.subject = form.subject.trim();
       if (svcDate) input.serviceDate = svcDate;
       if (svcDateEnd) input.serviceDateEnd = svcDateEnd;
@@ -369,6 +421,12 @@ export function InvoiceFormPage() {
     setFormError(null);
     if (!form.recipientName.trim()) {
       setFormError(t('invoices.form.recipientNameRequired'));
+      return;
+    }
+    // Package positions show no prices, so a missing package price would be an
+    // invisible 0,00 € invoice — refuse it here rather than at issue time.
+    if (form.packageMode && totals.subtotal <= 0) {
+      setFormError(t('invoices.form.packagePriceRequired'));
       return;
     }
     if (form.craftsmanService && craftsman.error) {
@@ -553,9 +611,7 @@ export function InvoiceFormPage() {
               />
             </FormField>
             <label className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                className="size-4 accent-primary"
+              <Checkbox
                 checked={form.showServiceDate}
                 onChange={(e) => set('showServiceDate', e.target.checked)}
               />
@@ -642,13 +698,82 @@ export function InvoiceFormPage() {
         </Section>
 
         <Section title={t('invoices.form.lineItems')}>
+          {/* Paketrechnung: one price for the whole job, positions as scope text. */}
+          <label className="mb-4 flex items-start gap-2 text-sm text-foreground">
+            <Checkbox
+              className="mt-0.5"
+              checked={form.packageMode}
+              onChange={(e) => set('packageMode', e.target.checked)}
+            />
+            <span>
+              {t('invoices.form.packageMode')}
+              <span className="block text-xs text-muted-foreground">
+                {t('invoices.form.packageModeHint')}
+              </span>
+            </span>
+          </label>
+
           <LineItemsEditor
             lines={lines}
             onLinesChange={setLines}
             priceMode={priceMode}
             onPriceModeChange={setPriceMode}
             taxRatePercent={form.taxRatePercent}
+            hidePrices={form.packageMode}
           />
+
+          {form.packageMode ? (
+            <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {t('invoices.form.packagePrice')}
+                </span>
+                <div
+                  className="inline-flex overflow-hidden rounded-md border border-border text-xs"
+                  role="group"
+                  aria-label={t('invoices.form.priceMode')}
+                >
+                  {(['net', 'gross'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={cn(
+                        'px-2.5 py-1 transition-colors',
+                        priceMode === mode
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:bg-muted',
+                      )}
+                      onClick={() => switchPackagePriceMode(mode)}
+                    >
+                      {mode === 'net' ? t('invoices.form.priceNet') : t('invoices.form.priceGross')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-2">
+                <FormField
+                  label={
+                    priceMode === 'gross'
+                      ? t('invoices.form.packagePriceGross')
+                      : t('invoices.form.packagePriceNet')
+                  }
+                  hint={t('invoices.form.packagePriceHint')}
+                  required
+                >
+                  <Input
+                    type="number"
+                    step="0.01"
+                    inputMode="decimal"
+                    className="h-11 md:h-9"
+                    placeholder="0,00"
+                    value={form.packagePriceEur}
+                    onChange={(e) => set('packagePriceEur', e.target.value)}
+                  />
+                </FormField>
+              </div>
+            </div>
+          ) : null}
+
           <div className="mt-4 grid gap-1 rounded-lg border border-border bg-muted/30 p-3 text-sm">
             <div className="flex justify-between gap-3">
               <span className="text-xs text-muted-foreground">{t('invoices.form.subtotal')}</span>
@@ -672,9 +797,7 @@ export function InvoiceFormPage() {
         <Section title={t('invoices.form.craftsman')} hint={t('invoices.form.craftsmanHint')}>
           <div className="grid gap-4">
             <label className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                className="size-4 accent-primary"
+              <Checkbox
                 checked={form.craftsmanService}
                 onChange={(e) => set('craftsmanService', e.target.checked)}
               />

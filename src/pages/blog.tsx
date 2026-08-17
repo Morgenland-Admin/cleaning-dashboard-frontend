@@ -28,6 +28,7 @@ import { toast } from '@/hooks/use-toast';
 import { useLocale, useT } from '@/i18n';
 import { ApiError, seoPagesAdminApi, type SeoPageRow, type SeoPageStatus } from '@/lib/api';
 import { featuredImageUrl, postSlug, STATUS_KEY, STATUS_TONE } from '@/lib/blog-utils';
+import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -55,6 +56,7 @@ export function BlogPage() {
   // The list scrolls inside its own box so a few hundred rows stay navigable
   // without the page growing to many screens tall.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
   const [editTarget, setEditTarget] = useState<SeoPageRow | null>(null);
   const [imageTarget, setImageTarget] = useState<SeoPageRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SeoPageRow | null>(null);
@@ -212,7 +214,7 @@ export function BlogPage() {
         ) : (
           <div
             ref={listScrollRef}
-            className="flex max-h-[calc(100svh-15rem)] flex-col gap-4 overflow-y-auto overscroll-contain pr-1"
+            className="flex flex-col gap-4 lg:max-h-[calc(100svh-15rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
           >
             {posts.map((post) => (
               <PostCard
@@ -232,7 +234,9 @@ export function BlogPage() {
               hasMore={!!listQuery.hasNextPage}
               isLoading={listQuery.isFetchingNextPage}
               onIntersect={loadMore}
-              rootRef={listScrollRef}
+              // Only a root when that box actually scrolls (lg+); otherwise the
+              // sentinel sits inside it forever and pages in the whole list.
+              rootRef={isDesktop ? listScrollRef : undefined}
             />
           </div>
         )}
@@ -367,7 +371,7 @@ function PostCard({
               {formatDateTime(post.updatedAt, bcp47)}
             </time>
             {!image ? (
-              <span className="text-xs font-medium text-amber-600">{t('blog.needsImage')}</span>
+              <span className="text-xs font-medium text-warning">{t('blog.needsImage')}</span>
             ) : null}
           </div>
 

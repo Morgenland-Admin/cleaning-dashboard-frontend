@@ -34,6 +34,8 @@ import { AttachmentGallery } from '@/components/attachment-gallery';
 import { BrandMark } from '@/components/brand-mark';
 import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { CountPill } from '@/components/count-pill';
+import { DetailPane, useSelectedBrandRef } from '@/components/detail-pane';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { LineItemsEditor } from '@/components/line-items-editor';
 import { Badge } from '@/components/ui/badge';
@@ -63,6 +65,7 @@ import {
   type PriceMode,
 } from '@/lib/line-items';
 import { useClaudeAssist } from '@/lib/use-claude-assist';
+import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime, formatShortDate } from '@/lib/utils';
 
@@ -127,14 +130,14 @@ export function InquiriesPage() {
   const { bcp47 } = useLocale();
   usePageTitle(t('inquiries.title'));
   const [tab, setTab] = useState<InquiryStatus | 'all'>('all');
-  const [selected, setSelected] = useState<{
-    companySlug: CompanySlug;
-    id: number;
-  } | null>(null);
+  // Selection lives in the URL: reload-safe, linkable, and the phone's back
+  // gesture closes the detail sheet instead of leaving the page.
+  const [selected, setSelected] = useSelectedBrandRef<CompanySlug>('inquiry');
 
   // The inbox list scrolls inside its own box so it can grow to hundreds of
   // rows without pushing the sticky detail panel out of reach.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
 
   const PAGE_SIZE = 50;
 
@@ -287,22 +290,13 @@ export function InquiriesPage() {
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as InquiryStatus | 'all')}>
-        <TabsList className="flex-wrap">
+        <TabsList>
           {STATUS_TABS.map((ti) => {
             const active = tab === ti.value;
             return (
               <TabsTrigger key={ti.value} value={ti.value} className="gap-1.5">
                 {ti.label}
-                <span
-                  className={cn(
-                    'rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums',
-                    active
-                      ? 'bg-rust/15 text-rust'
-                      : 'bg-muted-foreground/15 text-muted-foreground',
-                  )}
-                >
-                  {counts[ti.value]}
-                </span>
+                <CountPill tone={active ? 'accent' : 'muted'}>{counts[ti.value]}</CountPill>
               </TabsTrigger>
             );
           })}
@@ -334,7 +328,7 @@ export function InquiriesPage() {
           </CardHeader>
           <CardContent
             ref={listScrollRef}
-            className="max-h-[calc(100svh-15rem)] overflow-y-auto overscroll-contain p-0"
+            className="p-0 lg:max-h-[calc(100svh-15rem)] lg:overflow-y-auto lg:overscroll-contain"
           >
             {isLoading ? (
               <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
@@ -366,7 +360,7 @@ export function InquiriesPage() {
                       <div className="flex items-center justify-between gap-2">
                         <span
                           className={cn(
-                            'truncate text-[13px] font-medium',
+                            'truncate text-2sm font-medium',
                             i.status === 'new' && 'font-semibold',
                           )}
                         >
@@ -379,11 +373,11 @@ export function InquiriesPage() {
                           </Badge>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <div className="flex items-center gap-2 text-2xs text-muted-foreground">
                         <span className="shrink-0 font-mono">{i.inquiryNumber}</span>
                         <span className="truncate">{i.email}</span>
                       </div>
-                      <div className="flex items-center justify-between gap-2 text-[13px]">
+                      <div className="flex items-center justify-between gap-2 text-2sm">
                         <span className="truncate text-muted-foreground">
                           {i.service ? (
                             <span className="text-foreground/80">
@@ -392,7 +386,7 @@ export function InquiriesPage() {
                           ) : null}
                           {i.message}
                         </span>
-                        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
                           {formatRelative(i.createdAt, t, bcp47)}
                         </span>
                       </div>
@@ -406,7 +400,9 @@ export function InquiriesPage() {
                 hasMore={!!singleInfinite.hasNextPage}
                 isLoading={singleInfinite.isFetchingNextPage}
                 onIntersect={loadMore}
-                rootRef={listScrollRef}
+                // Only a root when that box actually scrolls (lg+); otherwise the
+                // sentinel sits inside it forever and pages in the whole list.
+                rootRef={isDesktop ? listScrollRef : undefined}
               />
             ) : null}
             {allBrandsHasMore ? (
@@ -417,8 +413,15 @@ export function InquiriesPage() {
           </CardContent>
         </Card>
 
-        {selectedRow ? (
-          <div className="lg:col-span-3">
+        <DetailPane
+          open={!!selectedRow}
+          onClose={() => setSelected(null)}
+          title={t('inquiries.title')}
+          // The panel below owns its own sticky scroll on desktop.
+          desktopSticky={false}
+          className="lg:col-span-3"
+        >
+          {selectedRow ? (
             <DetailPanel
               key={`${selectedRow._brand.id}:${selectedRow.id}`}
               inquiry={selectedRow}
@@ -442,8 +445,8 @@ export function InquiriesPage() {
               }
               isUpdating={updateMutation.isPending}
             />
-          </div>
-        ) : null}
+          ) : null}
+        </DetailPane>
       </div>
     </div>
   );
@@ -646,7 +649,7 @@ function DetailPanel({
   }
 
   return (
-    <Card className="sticky top-20 max-h-[calc(100svh-6rem)] overflow-y-auto overscroll-contain">
+    <Card className="lg:sticky lg:top-20 lg:max-h-[calc(100svh-6rem)] lg:overflow-y-auto lg:overscroll-contain">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="min-w-0">
           <CardTitle className="truncate">{inquiry.name}</CardTitle>
@@ -846,7 +849,7 @@ function DetailPanel({
 
         {/* Workspace — one panel at a time keeps the card scannable */}
         <Tabs value={panelTab} onValueChange={(v) => setPanelTab(v as PanelTab)} className="w-full">
-          <TabsList className="flex w-full">
+          <TabsList overflow="fill">
             <TabsTrigger value="request" className="flex-1">
               {t('inquiries.panelTab.request')}
             </TabsTrigger>
@@ -859,7 +862,7 @@ function DetailPanel({
             <TabsTrigger value="emails" className="flex-1 gap-1.5">
               {t('inquiries.panelTab.emails')}
               {emailCount > 0 ? (
-                <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[10px] font-medium tabular-nums">
+                <span className="rounded-full bg-muted-foreground/15 px-1.5 text-3xs font-medium tabular-nums">
                   {emailCount}
                 </span>
               ) : null}
@@ -955,7 +958,7 @@ function DetailPanel({
               <div className="overflow-hidden rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring">
                 {/* Faded preview of the auto-added greeting: shows the operator that
                     their text is only the middle of the letter (see inquiryQuoteEmail). */}
-                <div className="select-none space-y-0.5 border-b border-input/60 px-3 pb-2 pt-2.5 text-sm leading-relaxed text-muted-foreground/70">
+                <div className="select-none space-y-0.5 border-b border-input/60 px-3 pb-2 pt-2.5 text-sm leading-relaxed text-muted-foreground">
                   <p>{t('inquiries.offerGreeting', { name: inquiry.name || '…' })}</p>
                   <p>{t('inquiries.offerIntro')}</p>
                 </div>
@@ -967,7 +970,7 @@ function DetailPanel({
                   placeholder={t('inquiries.offerBodyPlaceholder')}
                   className="block min-h-[130px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
                 />
-                <div className="select-none space-y-0.5 border-t border-input/60 px-3 pb-2.5 pt-2 text-sm leading-relaxed text-muted-foreground/70">
+                <div className="select-none space-y-0.5 border-t border-input/60 px-3 pb-2.5 pt-2 text-sm leading-relaxed text-muted-foreground">
                   <p>{inquiry._brand.mailSignOff ?? t('inquiries.offerClosing')}</p>
                   <p>
                     {inquiry._brand.mailSignatory ??
@@ -1321,7 +1324,7 @@ function TimelineRow({
     <div className="flex items-start gap-2">
       <Icon className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="text-3xs uppercase tracking-wide text-muted-foreground">{label}</div>
         <div className="truncate tabular-nums">{value}</div>
       </div>
     </div>
@@ -1396,7 +1399,7 @@ function BrandChip({ brand }: { brand: Project }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-1.5 py-0.5">
       <BrandMark brand={brand} size="xs" />
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="text-3xs font-medium uppercase tracking-wide text-muted-foreground">
         {brand.shortName}
       </span>
     </span>

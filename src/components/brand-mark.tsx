@@ -18,10 +18,10 @@ export function BrandMark({
     size === 'lg'
       ? 'text-sm'
       : size === 'md'
-        ? 'text-[11px]'
+        ? 'text-2xs'
         : size === 'xs'
-          ? 'text-[8px]'
-          : 'text-[9px]';
+          ? 'text-3xs'
+          : 'text-3xs';
   const radius = size === 'lg' ? 'rounded-md' : 'rounded-sm';
 
   if (brand.logoUrl) {

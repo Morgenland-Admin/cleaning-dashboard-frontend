@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 
 import { Header } from '@/components/header';
 import { MobileBottomNav } from '@/components/mobile-bottom-nav';
+import { OfflineBanner } from '@/components/offline-banner';
 import { PwaPrompts } from '@/components/pwa-prompts';
 import { Sidebar } from '@/components/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -50,6 +51,7 @@ export function AppLayout() {
         </main>
       </div>
       <MobileBottomNav />
+      <OfflineBanner />
       <PwaPrompts />
     </div>
   );

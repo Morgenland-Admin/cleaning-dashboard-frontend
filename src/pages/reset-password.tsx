@@ -30,7 +30,7 @@ export function ResetPasswordPage() {
         </div>
         <Link
           to="/login"
-          className="mt-6 inline-flex items-center justify-center text-[13px] font-medium text-foreground hover:underline"
+          className="mt-6 inline-flex items-center justify-center text-2sm font-medium text-foreground hover:underline"
         >
           ← {t('login.forgotPasswordBack')}
         </Link>
@@ -42,7 +42,7 @@ export function ResetPasswordPage() {
     return (
       <CenteredFrame>
         <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+          <div className="flex size-12 items-center justify-center rounded-full bg-success-soft text-success">
             <CheckCircle2 className="size-6" />
           </div>
           <div className="space-y-1">
@@ -104,10 +104,10 @@ export function ResetPasswordPage() {
   return (
     <CenteredFrame>
       <div className="mb-7">
-        <h1 className="font-serif text-[30px] font-semibold leading-[1.1] tracking-tight sm:text-[34px]">
+        <h1 className="font-serif text-display-sm font-semibold sm:text-display-md">
           {t('resetPassword.title')}
         </h1>
-        <p className="mt-2 text-[13px] text-muted-foreground sm:text-sm">
+        <p className="mt-2 text-2sm text-muted-foreground sm:text-sm">
           {t('resetPassword.subtitle')}
         </p>
       </div>
@@ -152,7 +152,7 @@ export function ResetPasswordPage() {
         <Button
           type="submit"
           disabled={submitting}
-          className="h-11 rounded-lg text-[14px] font-semibold shadow-sm"
+          className="h-11 rounded-lg text-sm font-semibold shadow-sm"
         >
           {submitting ? (
             <>
@@ -166,7 +166,7 @@ export function ResetPasswordPage() {
 
         <Link
           to="/login"
-          className="text-center text-[12px] font-medium text-muted-foreground hover:text-foreground"
+          className="text-center text-xs font-medium text-muted-foreground hover:text-foreground"
         >
           ← {t('login.forgotPasswordBack')}
         </Link>
@@ -219,14 +219,14 @@ function PasswordField({
         disabled={disabled}
         placeholder="••••••••"
         className={cn(
-          'h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:text-[14px]',
+          'h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm',
         )}
       />
       {onToggleVisible ? (
         <button
           type="button"
           onClick={onToggleVisible}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={visible ? t('login.hidePassword') : t('login.showPassword')}
           aria-pressed={visible}
         >

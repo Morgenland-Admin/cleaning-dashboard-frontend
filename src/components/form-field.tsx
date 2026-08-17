@@ -69,12 +69,12 @@ export function FormField({
       </Label>
       {enhancedChild}
       {hint ? (
-        <p id={hintId} className="text-[11px] text-muted-foreground">
+        <p id={hintId} className="text-2xs text-muted-foreground">
           {hint}
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} role="alert" className="text-[11px] text-destructive">
+        <p id={errorId} role="alert" className="text-2xs text-destructive">
           {error}
         </p>
       ) : null}

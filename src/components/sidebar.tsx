@@ -91,7 +91,7 @@ export function SidebarBody({ onNavigate }: SidebarBodyProps = {}) {
     <>
       <BrandBlock className="px-1 pt-1" />
 
-      <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain">
         <SectionLabel>{t('nav.section')}</SectionLabel>
         <nav className="flex flex-col gap-0.5">
           {primaryNav.map((item) => (
@@ -112,7 +112,7 @@ export function SidebarBody({ onNavigate }: SidebarBodyProps = {}) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+    <div className="px-2 pb-1 pt-1 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
       {children}
     </div>
   );
@@ -135,7 +135,7 @@ function NavItem({
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40 focus-visible:ring-offset-1',
+          'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-2sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
           isActive
             ? 'bg-rust/[0.10] text-rust before:absolute before:-left-0.5 before:bottom-1.5 before:top-1.5 before:w-0.5 before:rounded-full before:bg-rust hover:bg-rust/[0.14]'
             : 'text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
@@ -147,7 +147,7 @@ function NavItem({
       {badge ? (
         <span
           className={cn(
-            'flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
+            'flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-3xs font-semibold tabular-nums',
             badge.tone === 'rust'
               ? 'bg-rust text-primary-foreground'
               : 'bg-sidebar-border text-sidebar-foreground/80',
@@ -219,17 +219,17 @@ function UserCard({ onNavigate }: { onNavigate?: () => void }) {
         <button
           type="button"
           aria-label={t('header.accountMenu')}
-          className="group flex w-full items-center gap-2.5 rounded-xl border border-sidebar-border bg-sidebar-accent/40 p-2.5 text-left transition-colors hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+          className="group flex w-full items-center gap-2.5 rounded-xl border border-sidebar-border bg-sidebar-accent/40 p-2.5 text-left transition-colors hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Avatar className="size-9 shrink-0 ring-2 ring-background">
             {user?.image ? <AvatarImage src={user.image} alt={name} /> : null}
-            <AvatarFallback className="bg-rust/15 text-[12px] font-semibold uppercase text-rust">
+            <AvatarFallback className="bg-rust/15 text-xs font-semibold uppercase text-rust">
               {initials}
             </AvatarFallback>
           </Avatar>
           <div className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="truncate text-[13px] font-semibold">{name}</span>
-            <span className="truncate text-[11px] text-muted-foreground">{email}</span>
+            <span className="truncate text-2sm font-semibold">{name}</span>
+            <span className="truncate text-2xs text-muted-foreground">{email}</span>
           </div>
           <ChevronUp className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
         </button>

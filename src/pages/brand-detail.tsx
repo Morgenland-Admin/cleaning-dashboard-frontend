@@ -105,7 +105,7 @@ export function BrandDetailPage() {
         subtitle={
           <>
             <span className="font-mono">{company.slug}</span> · {t('companies.schemaLabel')} „
-            {company.schemaName}"
+            {company.schemaName}“
             {!company.isActive ? (
               <>
                 {' · '}

@@ -74,7 +74,7 @@ export function NotificationBell() {
             hasUnread ? t('notifications.bellWithCount', { n: count }) : t('notifications.bell')
           }
           className={cn(
-            'relative inline-flex size-9 items-center justify-center rounded-full text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30',
+            'relative inline-flex size-9 items-center justify-center rounded-full text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             hasUnread && 'text-foreground',
           )}
         >
@@ -83,7 +83,7 @@ export function NotificationBell() {
             <>
               <span
                 aria-hidden="true"
-                className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[10px] font-semibold text-primary-foreground ring-2 ring-background"
+                className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-3xs font-semibold text-primary-foreground ring-2 ring-background"
               >
                 {badgeText}
               </span>
@@ -172,7 +172,7 @@ function NotificationsHeader({
           </h2>
         </div>
         {count > 0 ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-rust/10 px-2 py-0.5 text-[11px] font-medium text-rust">
+          <span className="inline-flex items-center gap-1 rounded-full bg-rust/10 px-2 py-0.5 text-2xs font-medium text-rust">
             <span aria-hidden="true" className="size-1.5 animate-pulse-dot rounded-full bg-rust" />
             {t('notifications.openCount', { n: count })}
           </span>
@@ -232,7 +232,7 @@ function FilterChip({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        'group/chip inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-2 text-[11px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40',
+        'group/chip inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-2 text-2xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         active
           ? 'border-rust/60 bg-rust text-primary-foreground shadow-sm'
           : 'border-border bg-background/60 text-foreground hover:border-foreground/40 hover:bg-background',
@@ -244,7 +244,7 @@ function FilterChip({
         <span
           aria-hidden="true"
           className={cn(
-            'inline-flex size-4 items-center justify-center rounded-full text-[8px] font-bold',
+            'inline-flex size-4 items-center justify-center rounded-full text-3xs font-bold',
             active
               ? 'bg-primary-foreground/15 text-primary-foreground'
               : 'bg-rust-soft/60 text-rust',
@@ -309,7 +309,7 @@ function GroupedList({
       {groups.map(({ bucket, items: gItems }) => (
         <li key={bucket}>
           <div className="sticky top-0 z-10 bg-background/80 px-4 py-1.5 backdrop-blur-sm">
-            <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <h3 className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               {t(`notifications.bucket.${bucket}` as never)}
             </h3>
           </div>
@@ -389,12 +389,12 @@ function NotificationRow({
             <time
               dateTime={item.createdAt}
               title={fullTime}
-              className="shrink-0 font-mono text-[10px] uppercase tabular-nums tracking-wide text-muted-foreground"
+              className="shrink-0 font-mono text-3xs uppercase tabular-nums tracking-wide text-muted-foreground"
             >
               {relative}
             </time>
           </div>
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+          <p className="mt-0.5 truncate text-2xs text-muted-foreground">
             <span className="font-medium text-foreground/80">
               {brand?.shortName ?? item.companyName}
             </span>
@@ -404,7 +404,7 @@ function NotificationRow({
             <span>{t(`dashboard.kind.${item.kind}`)}</span>
           </p>
           {showMessage ? (
-            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground/90">
+            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
               {message}
             </p>
           ) : null}

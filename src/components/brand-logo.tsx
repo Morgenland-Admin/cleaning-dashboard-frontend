@@ -2,18 +2,31 @@ import { Brush } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
+/**
+ * `tone` names the SURFACE the logo is placed on, not the colour of the mark.
+ *
+ * It used to name the mark, which is why the login showcase panel asked for
+ * `cream` (it wanted the pale mark) and got a `text-ink` wordmark painted onto
+ * an ink panel — measured 1.00:1, i.e. the product name was invisible.
+ *
+ * - `auto`  — follows the theme. Every in-app placement.
+ * - `dark`  — a permanently dark surface: pale mark, pale wordmark.
+ * - `cream` — a permanently pale surface: ink mark, ink wordmark.
+ */
+type BrandTone = 'auto' | 'dark' | 'cream';
+
 interface BrandLogoProps {
   size?: number;
-  tone?: 'auto' | 'dark' | 'cream';
+  tone?: BrandTone;
   className?: string;
 }
 
 export function BrandMark({ size = 36, tone = 'auto', className }: BrandLogoProps) {
   const toneClass =
-    tone === 'cream'
-      ? 'bg-[hsl(38_30%_92%)] text-[hsl(20_22%_14%)]'
-      : tone === 'dark'
-        ? 'bg-[hsl(20_22%_14%)] text-[hsl(38_30%_92%)]'
+    tone === 'dark'
+      ? 'bg-parchment text-ink'
+      : tone === 'cream'
+        ? 'bg-ink text-parchment'
         : 'bg-foreground text-background';
 
   return (
@@ -32,7 +45,7 @@ export function BrandMark({ size = 36, tone = 'auto', className }: BrandLogoProp
 }
 
 interface BrandBlockProps {
-  tone?: 'auto' | 'dark' | 'cream';
+  tone?: BrandTone;
   subtitle?: string;
   className?: string;
   size?: number;
@@ -40,30 +53,24 @@ interface BrandBlockProps {
 
 export function BrandBlock({ tone = 'auto', subtitle, className, size = 36 }: BrandBlockProps) {
   const wordmarkColor =
-    tone === 'cream'
-      ? 'text-[hsl(20_22%_14%)]'
-      : tone === 'dark'
-        ? 'text-[hsl(38_30%_92%)]'
-        : 'text-foreground';
+    tone === 'cream' ? 'text-ink' : tone === 'dark' ? 'text-parchment' : 'text-foreground';
 
   const subtitleColor =
     tone === 'cream'
-      ? 'text-[hsl(20_22%_14%)]/60'
+      ? 'text-ink/60'
       : tone === 'dark'
-        ? 'text-[hsl(38_30%_92%)]/60'
+        ? 'text-parchment/60'
         : 'text-muted-foreground';
 
   return (
     <div className={cn('flex items-center gap-2.5', className)}>
       <BrandMark size={size} tone={tone} />
       <div className="flex min-w-0 flex-col leading-tight">
-        <span
-          className={cn('truncate text-[16px] font-semibold tracking-[-0.01em]', wordmarkColor)}
-        >
+        <span className={cn('truncate text-base font-semibold tracking-[-0.01em]', wordmarkColor)}>
           Reinigungs-Portal
         </span>
         {subtitle ? (
-          <span className={cn('truncate text-[11px]', subtitleColor)}>{subtitle}</span>
+          <span className={cn('truncate text-2xs', subtitleColor)}>{subtitle}</span>
         ) : null}
       </div>
     </div>

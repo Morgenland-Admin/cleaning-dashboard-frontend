@@ -131,25 +131,21 @@ export function PromptEditDialog({
                 readOnly={!canEdit}
                 disabled={busy}
                 onChange={(e) => setDraft(e.target.value)}
-                className="min-h-[220px] resize-y font-mono text-[12.5px] leading-relaxed"
+                className="min-h-[220px] resize-y font-mono text-xs leading-relaxed"
               />
-              <p className="text-[11px] text-muted-foreground">
-                {t('prompts.brandPlaceholderHint')}
-              </p>
+              <p className="text-2xs text-muted-foreground">{t('prompts.brandPlaceholderHint')}</p>
             </div>
 
             {/* Read-only: appended to every request, not editable by design. */}
             <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="mb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t('prompts.lockedLabel')}
               </div>
-              <p className="text-[12px] leading-relaxed text-muted-foreground">
-                {prompt?.lockedRules}
-              </p>
+              <p className="text-xs leading-relaxed text-muted-foreground">{prompt?.lockedRules}</p>
             </div>
 
             {!canEdit ? (
-              <p className="text-[11px] text-muted-foreground">{t('prompts.readOnlyHint')}</p>
+              <p className="text-2xs text-muted-foreground">{t('prompts.readOnlyHint')}</p>
             ) : null}
           </div>
         )}

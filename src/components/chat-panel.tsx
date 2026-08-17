@@ -210,7 +210,7 @@ export function ChatPanel({
           <p className="truncate text-sm font-semibold">
             {t('chat.threadWith', { partner: partnerName })}
           </p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {wsStatus === 'open'
               ? t('chat.statusLive')
               : wsStatus === 'connecting'
@@ -223,9 +223,9 @@ export function ChatPanel({
           className={
             'size-2 rounded-full ' +
             (wsStatus === 'open'
-              ? 'bg-emerald-500'
+              ? 'bg-success'
               : wsStatus === 'connecting'
-                ? 'bg-amber-500'
+                ? 'bg-warning'
                 : 'bg-muted-foreground/40')
           }
         />
@@ -311,10 +311,18 @@ export function ChatPanel({
         ) : null}
 
         <div className="flex items-end gap-2">
+          {/*
+            A proxy for the paperclip button, which carries the label and the
+            focus ring. Hidden from the a11y tree and taken out of the tab order
+            so it is not a second, nameless stop — `aria-hidden` on its own would
+            be invalid here, since `sr-only` leaves an input focusable.
+          */}
           <input
             ref={fileInputRef}
             type="file"
             multiple
+            tabIndex={-1}
+            aria-hidden="true"
             className="sr-only"
             onChange={(e) => {
               handleFiles(e.currentTarget.files);
@@ -360,9 +368,9 @@ export function ChatPanel({
             </Button>
           </div>
         </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">{t('chat.sendHint')}</p>
+        <p className="mt-1.5 text-2xs text-muted-foreground">{t('chat.sendHint')}</p>
         {sendMutation.error ? (
-          <p role="alert" className="mt-1.5 text-[11px] text-destructive">
+          <p role="alert" className="mt-1.5 text-2xs text-destructive">
             {(sendMutation.error as Error).message}
           </p>
         ) : null}
@@ -403,13 +411,13 @@ function MessageBubble({
           <div
             className={
               'rounded-2xl px-3 py-2 text-sm ' +
-              (isMine ? 'bg-white text-zinc-900' : 'bg-muted text-foreground')
+              (isMine ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground')
             }
           >
             <p className="whitespace-pre-wrap break-words">{message.body}</p>
           </div>
         ) : null}
-        <div className="flex items-center gap-1 px-1 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-1 px-1 text-3xs text-muted-foreground">
           <time dateTime={message.createdAt} className="tabular-nums">
             {formatDateTime(message.createdAt, bcp47)}
           </time>

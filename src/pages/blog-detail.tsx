@@ -232,6 +232,9 @@ export function BlogDetailPage() {
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t('blog.searchPreview')}
             </span>
+            {/* Deliberately off-palette: this block previews how the page looks
+                in Google's result list, so it uses Google's own link/URL colours
+                rather than the app's tokens. */}
             <p className="truncate text-base font-medium text-[#1a0dab] dark:text-blue-400">
               {post.metaTitle ?? post.title ?? postSlug(post.path)}
             </p>

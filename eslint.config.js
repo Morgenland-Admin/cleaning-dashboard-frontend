@@ -17,7 +17,6 @@ export default tseslint.config(
       'coverage/**',
       '*.tsbuildinfo',
       'public/**',
-      'src/components/ui/**',
       'tailwind.config.js',
       'postcss.config.js',
     ],
@@ -89,14 +88,44 @@ export default tseslint.config(
       'react-hooks/static-components': 'warn',
       'react-hooks/component-hook-factories': 'warn',
       'react-hooks/use-memo': 'warn',
-      // a11y signals worth keeping — but as warnings until UI gets a pass.
-      'jsx-a11y/no-autofocus': 'warn',
-      'jsx-a11y/click-events-have-key-events': 'warn',
-      'jsx-a11y/no-static-element-interactions': 'warn',
-      'jsx-a11y/label-has-associated-control': 'warn',
-      'react/no-unescaped-entities': 'warn',
+      // The UI pass happened: every one of these is now clean, so they are
+      // errors — a regression should fail the build, not join a warning list
+      // nobody reads. The handful of deliberate exceptions carry an inline
+      // disable that says why.
+      'jsx-a11y/no-autofocus': 'error',
+      'jsx-a11y/click-events-have-key-events': 'error',
+      'jsx-a11y/no-static-element-interactions': 'error',
+      'jsx-a11y/label-has-associated-control': 'error',
+      'react/no-unescaped-entities': 'error',
       'no-console': ['warn', { allow: ['warn', 'error', 'info'] }],
       eqeqeq: ['error', 'always', { null: 'ignore' }],
+    },
+  },
+  {
+    // `react-refresh/only-export-components` wants one component per module.
+    // These are the places where that is the wrong shape, not a mistake: a route
+    // manifest is a table, and the React convention for a context is that the
+    // provider and its hook live together. A cva `*Variants` export sits beside
+    // the component it configures for the same reason.
+    files: [
+      'src/router.tsx',
+      'src/i18n/index.tsx',
+      'src/contexts/*.tsx',
+      'src/components/detail-pane.tsx',
+      'src/components/command-palette.tsx',
+      'src/components/ui/*.tsx',
+    ],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
+    // Repo tooling: Node scripts, not browser code.
+    files: ['scripts/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
   {

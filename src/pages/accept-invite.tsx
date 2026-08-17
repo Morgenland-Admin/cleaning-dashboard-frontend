@@ -55,7 +55,7 @@ export function AcceptInvitePage() {
         </div>
         <Link
           to="/login"
-          className="mt-6 inline-flex items-center justify-center text-[13px] font-medium text-foreground hover:underline"
+          className="mt-6 inline-flex items-center justify-center text-2sm font-medium text-foreground hover:underline"
         >
           ← Zurück zum Login
         </Link>
@@ -88,7 +88,7 @@ export function AcceptInvitePage() {
         </div>
         <Link
           to="/login"
-          className="mt-6 inline-flex items-center justify-center text-[13px] font-medium text-foreground hover:underline"
+          className="mt-6 inline-flex items-center justify-center text-2sm font-medium text-foreground hover:underline"
         >
           ← Zurück zum Login
         </Link>
@@ -100,7 +100,7 @@ export function AcceptInvitePage() {
     return (
       <CenteredFrame>
         <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+          <div className="flex size-12 items-center justify-center rounded-full bg-success-soft text-success">
             <CheckCircle2 className="size-6" />
           </div>
           <div className="space-y-1">
@@ -189,7 +189,7 @@ export function AcceptInvitePage() {
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Mindestens 8 Zeichen.</p>
+          <p className="text-2xs text-muted-foreground">Mindestens 8 Zeichen.</p>
         </div>
 
         {error ? (

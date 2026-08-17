@@ -35,24 +35,47 @@
     --input: 34 25% 84%;
     --ring: 20 18% 14%;
 
-    /* Rust accent used for sparklines, pipeline underline, active brand dot */
-    --rust: 14 68% 46%;
+    /* Rust accent used for sparklines, pipeline underline, active brand dot.
+       46% used to be the fill, but `bg-rust` + `--primary-foreground` measured
+       4.49:1 — a hair under AA — on the notification and task counters. 43%
+       takes that pair to 5.05:1 and is otherwise indistinguishable. */
+    --rust: 14 68% 43%;
     --rust-soft: 14 68% 90%;
-    /* Darker rust for TEXT on rust-tinted surfaces (passes AA; --rust is for fills). */
-    --rust-text: 14 74% 36%;
+    /* Darker rust for TEXT on rust-tinted surfaces (--rust is for fills). 36%
+       left the avatar initials on `bg-rust/15` at 4.47:1, just under AA; 33%
+       clears it and every other rust-on-tint pairing with it. */
+    --rust-text: 14 74% 33%;
+
+    /* Gold for star ratings. Not a status — reviews are data, not a warning. */
+    --rating: 38 92% 45%;
+
+    /* Theme-invariant set. The login showcase panel and the brand wordmarks are
+       painted on a fixed brand surface, so they must NOT flip with the theme —
+       and neither may anything drawn on them. `--rust-text` is the light-theme
+       dark rust, which on the ink panel measured 2.02:1; this is the rust that
+       belongs on ink, and it is deliberately not re-declared under `.dark`. */
+    --ink: 20 22% 14%;
+    --parchment: 38 30% 92%;
+    --rust-on-ink: 14 72% 70%;
 
     /* Claude brand coral — marks the AI assistant surface only, never actions. */
     --claude: 15 63% 59%;
     --claude-soft: 15 70% 93%;
 
-    /* Semantic status tokens — the single source for success/warning/info. */
-    --success: 152 55% 32%;
+    /* Semantic status tokens — the single source for success/warning/info.
+       Each is a text colour on its own `-soft` surface (see ui/badge.tsx) AND a
+       fill behind `-foreground`, so it has to clear AA on the soft pairing; the
+       fill pairing only gets better as it darkens. Measured on the soft surface:
+       success was 4.22:1 and warning 3.30:1 — both under AA, on every status
+       badge in the app. These values are 5.04 and 5.19, with info nudged from a
+       bare-pass 4.55 to 5.07 so all three carry the same margin. */
+    --success: 152 58% 28%;
     --success-foreground: 38 40% 97%;
     --success-soft: 152 44% 90%;
-    --warning: 33 84% 40%;
+    --warning: 33 90% 30%;
     --warning-foreground: 38 40% 97%;
     --warning-soft: 38 80% 90%;
-    --info: 212 72% 43%;
+    --info: 212 74% 40%;
     --info-foreground: 38 40% 97%;
     --info-soft: 212 70% 92%;
     /* Destructive split: --destructive for fills, --destructive-text for text (AA). */
@@ -66,7 +89,7 @@
     --sidebar-accent: 34 35% 86%;
     --sidebar-accent-foreground: 20 18% 14%;
     --sidebar-border: 34 22% 80%;
-    --sidebar-ring: 14 68% 46%;
+    --sidebar-ring: var(--rust);
 
     --radius: 0.625rem;
   }
@@ -100,9 +123,15 @@
     --input: 24 10% 22%;
     --ring: 14 68% 56%;
 
-    --rust: 14 68% 58%;
+    /* Mirror of the light-theme fix: dark `bg-rust` carries dark ink, so it has
+       to go lighter, not darker. 58% measured 3.82:1; 60% is 5.03:1. */
+    --rust: 14 68% 60%;
     --rust-soft: 14 68% 22%;
-    --rust-text: 14 70% 64%;
+    /* `text-rust` on `bg-rust-soft` measured 4.37:1 here — under AA on the dark
+       side only, because rust-soft is a dark tint. 70% lightness gives 5.23. */
+    --rust-text: 14 72% 70%;
+
+    --rating: 38 92% 58%;
 
     --claude: 16 72% 64%;
     --claude-soft: 16 40% 20%;
@@ -126,7 +155,7 @@
     --sidebar-accent: 24 12% 16%;
     --sidebar-accent-foreground: 38 30% 92%;
     --sidebar-border: 24 10% 18%;
-    --sidebar-ring: 14 68% 56%;
+    --sidebar-ring: var(--rust);
   }
 }
 
@@ -182,6 +211,99 @@
   }
 }
 
+@layer base {
+  /* ── Scrollbars ───────────────────────────────────────────────────────────
+     One scrollbar design for the whole app, but it has to be written twice:
+     Firefox only honours `scrollbar-width`/`scrollbar-color`, WebKit/Blink only
+     honour the `::-webkit-scrollbar` pseudo-elements.
+
+     The two cannot simply both be declared. Since Chrome 121 the standard
+     properties WIN — set `scrollbar-color` anywhere (and it is inherited) and
+     every `::-webkit-scrollbar` rule in the document is ignored, which silently
+     costs us the radius, the inset and the hover states. So each engine is
+     given exactly one of them, selected on whether it understands the
+     pseudo-element at all.
+
+     Styling `::-webkit-scrollbar` also opts macOS out of overlay scrollbars, so
+     the bar becomes real layout. That is the trade we want on a dense console —
+     scroll position stays visible — and the thumb is inset with a transparent
+     border plus `background-clip: content-box`, so the grab target is a
+     comfortable 10px while the bar only reads as 4px. */
+  :root {
+    --scrollbar-size: 10px;
+    --scrollbar-inset: 3px;
+    /* Resting thumb lands near 1.9:1 on the canvas — quiet, but clearly there,
+       and a little stronger than the native macOS bar. Pointing at the scroller
+       takes it to ~2.8:1 and the thumb's own hover well past 4:1. */
+    --scrollbar-thumb: 24 10% 48%;
+    --scrollbar-thumb-hover: 20 18% 34%;
+  }
+
+  .dark {
+    --scrollbar-thumb: 30 8% 48%;
+    --scrollbar-thumb-hover: 34 16% 72%;
+  }
+
+  /* Firefox and anything else without the WebKit pseudo-elements. Both
+     properties are set here; only `scrollbar-color` actually inherits. */
+  @supports not selector(::-webkit-scrollbar) {
+    :root {
+      scrollbar-color: hsl(var(--scrollbar-thumb) / 0.55) transparent;
+    }
+
+    * {
+      scrollbar-width: thin;
+    }
+  }
+
+  @supports selector(::-webkit-scrollbar) {
+    ::-webkit-scrollbar {
+      width: var(--scrollbar-size);
+      height: var(--scrollbar-size);
+    }
+
+    /* Transparent track: a scroller inherits whatever surface it sits on. */
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background-color: hsl(var(--scrollbar-thumb) / 0.55);
+      background-clip: content-box;
+      border: var(--scrollbar-inset) solid transparent;
+      border-radius: 9999px;
+    }
+
+    /* Pointing anywhere at the scroller strengthens its thumb, so the bar stays
+       quiet until it is relevant. `:hover::-webkit-scrollbar-thumb` is the
+       container hover; `::-webkit-scrollbar-thumb:hover` is the thumb itself. */
+    :hover::-webkit-scrollbar-thumb {
+      background-color: hsl(var(--scrollbar-thumb) / 0.8);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: hsl(var(--scrollbar-thumb-hover) / 0.85);
+    }
+
+    ::-webkit-scrollbar-thumb:active {
+      background-color: hsl(var(--scrollbar-thumb-hover) / 0.95);
+    }
+  }
+
+  /* Reserve the gutter on the document, so moving between a short page and a
+     long one does not slide the whole layout sideways by the scrollbar's width.
+     `scrollbar-gutter: stable` does not manage that on its own here: Chromium
+     only honours it once the root is really a scroll container, and
+     `overflow-y: auto` is not enough — measured 1280 with auto, 1270 with
+     scroll, against a long page's 1270. Touch browsers keep overlay scrollbars,
+     so this costs a phone nothing. */
+  html {
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+  }
+}
+
 @layer utilities {
   /* Text rust uses the darker, AA-passing token; fills keep --rust. */
   .text-rust {
@@ -201,13 +323,51 @@
     border-color: hsl(var(--rust));
   }
 
-  /* Subtle scrollbars in light theme */
-  .scrollbar-thin::-webkit-scrollbar {
-    height: 6px;
-    width: 6px;
+  /* Scroll containers whose bar would be noise rather than information —
+     horizontal chip/tab strips, where the cut-off item is the affordance.
+     Pair it with `.scroll-fade-x` so there is still an edge cue. */
+  .scrollbar-none {
+    scrollbar-width: none;
   }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--border));
-    border-radius: 3px;
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  /* Opt a nested scroller into a reserved gutter (the document already has one). */
+  .scrollbar-stable {
+    scrollbar-gutter: stable;
+  }
+
+  /* Edge cue for a horizontal strip with its scrollbar hidden: the content
+     fades out on whichever side has more to reveal. Driven by scroll position,
+     so a strip that fits is not masked at all. Chrome/Edge 115+; everywhere
+     else the strip simply renders unmasked, which is the old behaviour. */
+  @supports (animation-timeline: scroll(self inline)) {
+    .scroll-fade-x {
+      animation: scroll-fade-x linear both;
+      animation-timeline: scroll(self inline);
+    }
+  }
+}
+
+/* Keyframes for .scroll-fade-x. Outside @layer so the mask is not flattened by
+   layer ordering; the two ends fade only when there is content past them. */
+@keyframes scroll-fade-x {
+  from {
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 2rem), transparent 100%);
+  }
+  50% {
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 2rem,
+      #000 calc(100% - 2rem),
+      transparent 100%
+    );
+  }
+  to {
+    mask-image: linear-gradient(to right, transparent 0, #000 2rem, #000 100%);
   }
 }

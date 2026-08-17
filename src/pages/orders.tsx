@@ -32,6 +32,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DetailPane, useSelectedId } from '@/components/detail-pane';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { NewOrderDialog } from '@/components/new-order-dialog';
 import { OrderCancelDialog } from '@/components/order-cancel-dialog';
@@ -45,6 +46,7 @@ import { toast } from '@/hooks/use-toast';
 import { useLocale } from '@/i18n';
 import {
   ordersAdminApi,
+  type CalendlyPickupMeta,
   type OrderDetailResponse,
   type OrderRow,
   type OrderStatus,
@@ -52,6 +54,7 @@ import {
   ApiError,
 } from '@/lib/api';
 import { useClaudeAssist } from '@/lib/use-claude-assist';
+import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -190,12 +193,15 @@ export function OrdersPage() {
   usePageTitle('Aufträge');
 
   const [tab, setTab] = useState<OrderStatus | 'all'>('all');
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Selection lives in the URL: reload-safe, linkable, and the phone's back
+  // gesture closes the detail sheet instead of leaving the page.
+  const [selectedId, setSelectedId] = useSelectedId('order');
   const [newOpen, setNewOpen] = useState(false);
 
   // The list scrolls inside its own box so it can grow to hundreds of rows
-  // without pushing the sticky detail panel out of reach.
+  // without pushing the sticky detail panel out of reach — desktop only.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
 
   const PAGE_SIZE = 50;
 
@@ -302,17 +308,15 @@ export function OrdersPage() {
         />
       ) : null}
 
-      <div className="mt-6 overflow-x-auto">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as OrderStatus | 'all')}>
-          <TabsList>
-            {TAB_FILTERS.map((f) => (
-              <TabsTrigger key={f.value} value={f.value}>
-                {f.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      </div>
+      <Tabs className="mt-6" value={tab} onValueChange={(v) => setTab(v as OrderStatus | 'all')}>
+        <TabsList overflow="scroll">
+          {TAB_FILTERS.map((f) => (
+            <TabsTrigger key={f.value} value={f.value}>
+              {f.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <div
         className={cn(
@@ -320,9 +324,15 @@ export function OrdersPage() {
           selectedId != null && 'lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]',
         )}
       >
+        {/*
+          The inner scroll box is a desktop affordance: it keeps the sticky detail
+          column in reach next to a long list. On a phone there is no second
+          column, and a nested scroller there just fights the page (double
+          scrollbars, broken momentum) — so the page scrolls instead.
+        */}
         <div
           ref={listScrollRef}
-          className="max-h-[calc(100svh-16rem)] overflow-y-auto overscroll-contain pr-1"
+          className="lg:max-h-[calc(100svh-16rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
         >
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
@@ -380,7 +390,9 @@ export function OrdersPage() {
                 }}
                 hasMore={!!infinite.hasNextPage}
                 isLoading={infinite.isFetchingNextPage}
-                rootRef={listScrollRef}
+                // Only a root when that box actually scrolls — otherwise the
+                // sentinel sits permanently inside it and pages in the whole list.
+                rootRef={isDesktop ? listScrollRef : undefined}
               />
               {infinite.isFetchingNextPage && (
                 <div className="flex items-center justify-center py-4">
@@ -391,15 +403,19 @@ export function OrdersPage() {
           )}
         </div>
 
-        {selectedId != null && (
-          <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100svh-3rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">
+        <DetailPane
+          open={selectedId != null}
+          onClose={() => setSelectedId(null)}
+          title="Auftragsdetails"
+        >
+          {selectedId != null && (
             <OrderDetail
               companySlug={activeProject.companySlug}
               orderId={selectedId}
               onClose={() => setSelectedId(null)}
             />
-          </aside>
-        )}
+          )}
+        </DetailPane>
       </div>
     </div>
   );
@@ -413,7 +429,7 @@ function EmptyState() {
         className="relative flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/40 shadow-inner"
       >
         <Inbox className="size-6 text-muted-foreground" />
-        <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-background bg-warning text-[10px] font-bold text-warning-foreground">
+        <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-background bg-warning text-3xs font-bold text-warning-foreground">
           0
         </span>
       </div>
@@ -428,7 +444,7 @@ function EmptyState() {
 
 function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+    <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
       <Icon className="size-3" aria-hidden="true" />
       {children}
     </div>
@@ -461,7 +477,7 @@ function OrderListRow({
           action and the sync control is a sibling <button> — no nested buttons. */}
       <div
         className={cn(
-          'group relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card text-left shadow-sm transition-all focus-within:ring-2 focus-within:ring-rust focus-within:ring-offset-1 hover:border-primary/40 hover:shadow-md',
+          'group relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card text-left shadow-sm transition-all focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1 hover:border-primary/40 hover:shadow-md',
           selected ? 'border-primary/60 ring-1 ring-primary/30' : 'border-border',
         )}
       >
@@ -479,7 +495,7 @@ function OrderListRow({
         <div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3 py-3 pl-3 pr-3">
           <div
             aria-hidden="true"
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-muted/80 to-muted text-[11px] font-semibold tracking-wider text-muted-foreground"
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-muted/80 to-muted text-2xs font-semibold tracking-wider text-muted-foreground"
           >
             {initialsFrom(order.customerName)}
           </div>
@@ -489,7 +505,7 @@ function OrderListRow({
               {brand && (
                 <span
                   className={cn(
-                    'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm',
+                    'inline-flex items-center rounded-md px-1.5 py-0.5 text-3xs font-bold uppercase tracking-wider text-white shadow-sm',
                     `bg-gradient-to-r ${brand.gradient}`,
                   )}
                   title={order.companyName}
@@ -500,7 +516,7 @@ function OrderListRow({
               <span className="font-mono text-xs text-muted-foreground">{order.orderNumber}</span>
               <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
             </div>
-            <div className="mt-1.5 truncate text-[15px] font-semibold leading-tight">
+            <div className="mt-1.5 truncate text-base font-semibold leading-tight">
               {order.customerName}
             </div>
             <div className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -517,7 +533,7 @@ function OrderListRow({
               })}
             </div>
             {order.preferredDate && !compact && (
-              <div className="mt-0.5 text-[11px] text-muted-foreground">
+              <div className="mt-0.5 text-2xs text-muted-foreground">
                 Wunsch: {order.preferredDate}
               </div>
             )}
@@ -603,13 +619,40 @@ function OrderDetail({
 
   const confirmAppointment = useMutation({
     mutationFn: (slot: string) => ordersAdminApi.confirmAppointment(companySlug, orderId, slot),
-    onSuccess: async () => {
+    onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: detailKey });
       await queryClient.invalidateQueries({ queryKey: listKeyPrefix, exact: false });
-      toast.success('Termin bestätigt — der Kunde wurde benachrichtigt.');
+      // The order is confirmed either way; the calendar leg can still fail, and
+      // the operator has to know before the crew relies on the calendar.
+      if (res.calendly.error) {
+        toast({
+          title: 'Termin bestätigt — Kalender nicht aktualisiert',
+          description: res.calendly.error,
+        });
+      } else if (res.calendly.booked) {
+        toast.success('Termin bestätigt — Kunde benachrichtigt, Termin im CLEANILO-Kalender.');
+      } else {
+        toast.success('Termin bestätigt — der Kunde wurde benachrichtigt.');
+      }
     },
     onError: (err) =>
       toast.error(err instanceof ApiError ? err.message : 'Termin konnte nicht bestätigt werden.'),
+  });
+
+  const sendBookingLink = useMutation({
+    mutationFn: () => ordersAdminApi.sendPickupBookingLink(companySlug, orderId),
+    onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: detailKey });
+      toast.success(
+        res.emailed
+          ? 'Buchungslink an den Kunden gesendet.'
+          : 'Buchungslink erstellt (E-Mail-Versand ist auf diesem Server deaktiviert).',
+      );
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError ? err.message : 'Buchungslink konnte nicht erstellt werden.',
+      ),
   });
 
   const proposeSlots = useMutation({
@@ -682,6 +725,8 @@ function OrderDetail({
       isConfirmingAppointment={confirmAppointment.isPending}
       onProposeSlots={(slots) => proposeSlots.mutate(slots)}
       isProposingSlots={proposeSlots.isPending}
+      onSendBookingLink={() => sendBookingLink.mutate()}
+      isSendingBookingLink={sendBookingLink.isPending}
       onSendMessage={(body) => sendMessage.mutateAsync(body)}
       isSendingMessage={sendMessage.isPending}
       syncResult={syncStripe.data ?? null}
@@ -714,6 +759,8 @@ function DetailBody({
   isConfirmingAppointment,
   onProposeSlots,
   isProposingSlots,
+  onSendBookingLink,
+  isSendingBookingLink,
   onSendMessage,
   isSendingMessage,
   syncResult,
@@ -736,6 +783,8 @@ function DetailBody({
   isConfirmingAppointment: boolean;
   onProposeSlots: (slots: string[]) => void;
   isProposingSlots: boolean;
+  onSendBookingLink: () => void;
+  isSendingBookingLink: boolean;
   onSendMessage: (body: string) => Promise<unknown>;
   isSendingMessage: boolean;
   syncResult: {
@@ -769,7 +818,7 @@ function DetailBody({
           type="button"
           aria-label="Detail schließen"
           onClick={onClose}
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust focus-visible:ring-offset-1"
+          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
         >
           <X className="size-4" />
         </button>
@@ -843,6 +892,8 @@ function DetailBody({
           isConfirmingAppointment={isConfirmingAppointment}
           onProposeSlots={onProposeSlots}
           isProposingSlots={isProposingSlots}
+          onSendBookingLink={onSendBookingLink}
+          isSendingBookingLink={isSendingBookingLink}
         />
 
         <div>
@@ -866,7 +917,7 @@ function DetailBody({
               </div>
             )}
             <div className="mt-2 flex items-baseline justify-between rounded-lg bg-muted/40 px-3 py-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <span className="text-3xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 Gesamt
               </span>
               <span className="text-xl font-semibold tabular-nums">
@@ -1033,20 +1084,27 @@ function DetailBody({
 // Termine: confirmed-slot banner, the proposed-slot list (each confirmable),
 // and — when nothing is confirmed yet — an operator input to propose up to 3
 // times directly from the panel (independent of what the booking carried).
+// Confirming also books the slot into the shared CLEANILO Calendly calendar; that
+// leg is reported separately because it can fail without invalidating the order.
 function AppointmentSection({
   order,
   onConfirmAppointment,
   isConfirmingAppointment,
   onProposeSlots,
   isProposingSlots,
+  onSendBookingLink,
+  isSendingBookingLink,
 }: {
   order: OrderRow;
   onConfirmAppointment: (slot: string) => void;
   isConfirmingAppointment: boolean;
   onProposeSlots: (slots: string[]) => void;
   isProposingSlots: boolean;
+  onSendBookingLink: () => void;
+  isSendingBookingLink: boolean;
 }) {
   const confirmedSlot = order.metadata?.confirmedSlot ?? null;
+  const calendly = order.metadata?.calendly ?? null;
   const slots = useMemo(() => order.metadata?.preferredSlots ?? [], [order.metadata]);
 
   const [drafts, setDrafts] = useState<string[]>(() => {
@@ -1068,7 +1126,7 @@ function AppointmentSection({
         <div className="mt-2 flex items-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm">
           <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-success">
+            <div className="text-3xs font-semibold uppercase tracking-[0.08em] text-success">
               Bestätigter Termin
             </div>
             <div className="font-medium tabular-nums">{formatSlotDe(confirmedSlot)}</div>
@@ -1085,6 +1143,8 @@ function AppointmentSection({
           davon.
         </p>
       )}
+
+      <CalendlyStatus calendly={calendly} confirmedSlot={confirmedSlot} />
 
       {slots.length > 0 && (
         <ul className="mt-2 space-y-1.5">
@@ -1132,7 +1192,7 @@ function AppointmentSection({
       {!confirmedSlot &&
         (proposing ? (
           <div className="mt-3 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               Terminvorschläge (bis zu 3)
             </div>
             {drafts.map((value, i) => (
@@ -1143,7 +1203,7 @@ function AppointmentSection({
                 type="datetime-local"
                 value={value}
                 onChange={(e) => setDrafts((d) => d.map((v, j) => (j === i ? e.target.value : v)))}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-rust/30"
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             ))}
             <div className="flex items-center justify-end gap-2">
@@ -1174,6 +1234,119 @@ function AppointmentSection({
             </Button>
           </div>
         ))}
+
+      {!confirmedSlot && (
+        <div className="mt-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={isSendingBookingLink}
+            onClick={onSendBookingLink}
+          >
+            {isSendingBookingLink ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Send className="size-3.5" />
+            )}
+            Kunden selbst buchen lassen
+          </Button>
+          <p className="mt-1 text-2xs text-muted-foreground">
+            Sendet einen einmaligen Buchungslink. Der gewählte Termin landet automatisch hier und im
+            CLEANILO-Kalender.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * State of the CLEANILO Calendly booking behind the confirmed appointment. Worth
+ * its own line because the calendar leg can lag or fail while the order itself is
+ * confirmed — the crew works off that calendar, so a silent failure is a no-show.
+ */
+function CalendlyStatus({
+  calendly,
+  confirmedSlot,
+}: {
+  calendly: CalendlyPickupMeta | null;
+  confirmedSlot: string | null;
+}) {
+  if (!calendly) {
+    // Nothing booked yet is only notable once a slot is actually confirmed.
+    if (!confirmedSlot) return null;
+    return (
+      <p className="mt-1.5 text-2xs text-muted-foreground">
+        Nicht im CLEANILO-Kalender (Calendly ist auf diesem Server nicht konfiguriert).
+      </p>
+    );
+  }
+
+  if (calendly.status === 'booked') {
+    // A stale booking for a slot that was later changed elsewhere — flag it.
+    const mismatch = !!confirmedSlot && !!calendly.slot && calendly.slot !== confirmedSlot;
+    return (
+      <div className="mt-1.5 text-2xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          <Check className="size-3 text-success" aria-hidden="true" />
+          Im CLEANILO-Kalender
+          {calendly.source === 'webhook' ? ' (vom Kunden gebucht)' : ''}
+        </span>
+        {mismatch && (
+          <span className="ml-1 text-destructive">
+            — gebucht für {formatSlotDe(calendly.slot!)}, bitte neu bestätigen.
+          </span>
+        )}
+        {calendly.rescheduleUrl && (
+          <a
+            href={calendly.rescheduleUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-2 inline-flex items-center gap-1 underline hover:text-foreground"
+          >
+            Verschieben <ExternalLink className="size-2.5" aria-hidden="true" />
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  if (calendly.status === 'link_sent') {
+    return (
+      <div className="mt-1.5 text-2xs text-muted-foreground">
+        Buchungslink verschickt — warten auf die Terminwahl des Kunden.
+        {calendly.bookingUrl && (
+          <a
+            href={calendly.bookingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-2 inline-flex items-center gap-1 underline hover:text-foreground"
+          >
+            Link öffnen <ExternalLink className="size-2.5" aria-hidden="true" />
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  if (calendly.status === 'cancelled') {
+    return (
+      <p className="mt-1.5 text-2xs text-muted-foreground">
+        Kalendereintrag storniert{calendly.source === 'webhook' ? ' (vom Kunden)' : ''}.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
+      <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-hidden="true" />
+      <div>
+        <div className="font-medium">Nicht im CLEANILO-Kalender</div>
+        <p className="mt-0.5 text-muted-foreground">
+          Der Termin ist im Auftrag bestätigt, die Calendly-Buchung ist aber fehlgeschlagen. Termin
+          erneut bestätigen oder den Eintrag manuell im Kalender anlegen.
+        </p>
+      </div>
     </div>
   );
 }
@@ -1259,17 +1432,17 @@ function OrderMessageComposer({
         <ul className="mt-2 space-y-1.5">
           {sent.slice(-3).map((m, i) => (
             <li key={i} className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs">
-              <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <div className="mb-1 flex items-center justify-between gap-2 text-2xs text-muted-foreground">
                 <span>{m.sentByName ?? 'Team'}</span>
                 <time className="tabular-nums">{formatDateTime(m.sentAt, bcp47)}</time>
               </div>
-              <p className="whitespace-pre-wrap text-[13px] text-foreground/90">{m.body}</p>
+              <p className="whitespace-pre-wrap text-2sm text-foreground/90">{m.body}</p>
             </li>
           ))}
         </ul>
       )}
 
-      <div className="group mt-2 overflow-hidden rounded-2xl border border-border bg-card transition-colors focus-within:border-rust/40 focus-within:ring-2 focus-within:ring-rust/15">
+      <div className="group mt-2 overflow-hidden rounded-2xl border border-border bg-card transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
         <Textarea
           rows={5}
           value={body}
@@ -1282,13 +1455,13 @@ function OrderMessageComposer({
           placeholder="Nachricht an den Kunden …"
           disabled={isSending}
           aria-label="Nachricht an den Kunden"
-          className="min-h-[120px] resize-none border-0 bg-transparent px-3.5 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0 sm:text-[13.5px]"
+          className="min-h-[120px] resize-none border-0 bg-transparent px-3.5 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0 sm:text-2sm"
         />
         {localError && (
           <div
             role="alert"
             aria-live="assertive"
-            className="flex items-start gap-1.5 px-3.5 pb-2 text-[12px] text-destructive"
+            className="flex items-start gap-1.5 px-3.5 pb-2 text-xs text-destructive"
           >
             <AlertCircle className="mt-0.5 size-3 shrink-0" />
             <span>{localError}</span>
@@ -1298,7 +1471,7 @@ function OrderMessageComposer({
           <div
             role="status"
             aria-live="polite"
-            className="flex items-center gap-1.5 px-3.5 pb-2 text-[12px] text-success"
+            className="flex items-center gap-1.5 px-3.5 pb-2 text-xs text-success"
           >
             <Check className="size-3.5" />
             <span>Nachricht gesendet.</span>
@@ -1328,14 +1501,14 @@ function OrderMessageComposer({
           onSend={(instruction) => assist.run(instruction, instruction)}
         />
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3.5 py-2">
-          <span className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1.5 truncate text-2xs text-muted-foreground">
             <Mail className="size-3" />
             <span>
               An <span className="font-medium text-foreground/80">{order.customerEmail}</span>
             </span>
           </span>
           <div className="flex items-center gap-2">
-            <kbd className="hidden items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
+            <kbd className="hidden items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-3xs text-muted-foreground sm:inline-flex">
               ⌘↩
             </kbd>
             <Button size="sm" onClick={requestSend} disabled={isSending || body.trim() === ''}>
@@ -1385,7 +1558,7 @@ function RowSyncButton({
       aria-label="Mit Stripe abgleichen"
       title="Mit Stripe abgleichen"
       onClick={onClick}
-      className="pointer-events-auto relative z-10 ml-2 inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-rust focus-visible:ring-offset-1"
+      className="pointer-events-auto relative z-10 ml-2 inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
     >
       {isSyncing ? (
         <Loader2 className="size-3.5 animate-spin" />
@@ -1519,7 +1692,7 @@ function AfterServicePaymentBlock({
                 <input
                   readOnly
                   value={linkUrl}
-                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-base sm:text-[11px]"
+                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-base sm:text-2xs"
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <Button

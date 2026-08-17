@@ -1,9 +1,9 @@
-import * as React from "react";
-import * as ToastPrimitives from "@radix-ui/react-toast";
-import { cva, type VariantProps } from "class-variance-authority";
-import { X } from "lucide-react";
+import * as ToastPrimitives from '@radix-ui/react-toast';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { X } from 'lucide-react';
+import * as React from 'react';
 
-import { cn } from "@/lib/utils";
+import { cn } from '@/lib/utils';
 
 const ToastProvider = ToastPrimitives.Provider;
 
@@ -14,7 +14,7 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse gap-2 p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-sm",
+      'fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse gap-2 p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-sm',
       className,
     )}
     {...props}
@@ -23,16 +23,16 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName;
 
 const toastVariants = cva(
-  "group pointer-events-auto relative flex w-full items-start justify-between gap-3 overflow-hidden rounded-lg border p-4 pr-8 shadow-lg transition-all data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
+  'group pointer-events-auto relative flex w-full items-start justify-between gap-3 overflow-hidden rounded-lg border p-4 pr-8 shadow-lg transition-all data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full',
   {
     variants: {
       variant: {
-        default: "border-border bg-card text-card-foreground",
-        success: "border-transparent bg-success text-success-foreground",
-        destructive: "border-transparent bg-destructive text-destructive-foreground",
+        default: 'border-border bg-card text-card-foreground',
+        success: 'border-transparent bg-success text-success-foreground',
+        destructive: 'border-transparent bg-destructive text-destructive-foreground',
       },
     },
-    defaultVariants: { variant: "default" },
+    defaultVariants: { variant: 'default' },
   },
 );
 
@@ -40,7 +40,11 @@ const Toast = React.forwardRef<
   React.ElementRef<typeof ToastPrimitives.Root>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> & VariantProps<typeof toastVariants>
 >(({ className, variant, ...props }, ref) => (
-  <ToastPrimitives.Root ref={ref} className={cn(toastVariants({ variant }), className)} {...props} />
+  <ToastPrimitives.Root
+    ref={ref}
+    className={cn(toastVariants({ variant }), className)}
+    {...props}
+  />
 ));
 Toast.displayName = ToastPrimitives.Root.displayName;
 
@@ -51,7 +55,7 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-1.5 top-1.5 rounded-md p-1 opacity-60 transition-opacity hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring",
+      'absolute right-1.5 top-1.5 rounded-md p-1 opacity-60 transition-opacity hover:opacity-100 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       className,
     )}
     aria-label="Schließen"
@@ -67,7 +71,7 @@ const ToastTitle = React.forwardRef<
   React.ElementRef<typeof ToastPrimitives.Title>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitives.Title>
 >(({ className, ...props }, ref) => (
-  <ToastPrimitives.Title ref={ref} className={cn("text-sm font-semibold", className)} {...props} />
+  <ToastPrimitives.Title ref={ref} className={cn('text-sm font-semibold', className)} {...props} />
 ));
 ToastTitle.displayName = ToastPrimitives.Title.displayName;
 
@@ -77,7 +81,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Description
     ref={ref}
-    className={cn("text-sm opacity-90", className)}
+    className={cn('text-sm opacity-90', className)}
     {...props}
   />
 ));

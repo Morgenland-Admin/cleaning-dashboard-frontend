@@ -48,6 +48,9 @@ export function ConfirmDialog({
             variant={isDangerous ? 'destructive' : 'default'}
             onClick={onConfirm}
             disabled={isPending}
+            // Focus must move into a modal on open. Landing on the confirm
+            // button is what a keyboard user expects, and Escape still cancels.
+            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
           >
             {isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}

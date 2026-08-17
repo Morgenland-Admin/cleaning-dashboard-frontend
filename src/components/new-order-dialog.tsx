@@ -295,7 +295,7 @@ export function NewOrderDialog({
               </ul>
             ) : null}
             {noCustomerMatch ? (
-              <p className="-mt-1 text-[11px] text-muted-foreground">
+              <p className="-mt-1 text-2xs text-muted-foreground">
                 Kein Treffer — wird als neuer Kunde angelegt.
               </p>
             ) : null}
@@ -519,7 +519,7 @@ export function NewOrderDialog({
 
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 pt-1">
             {!canSubmit ? (
-              <p className="mr-auto text-[11px] text-muted-foreground">
+              <p className="mr-auto text-2xs text-muted-foreground">
                 Name, gültige E-Mail und mindestens ein Posten erforderlich.
               </p>
             ) : null}

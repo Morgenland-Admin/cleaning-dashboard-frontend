@@ -52,6 +52,7 @@ import {
   type SubscriptionStatus,
   type SubscriptionUpdateInput,
 } from '@/lib/api';
+import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils';
 
@@ -98,6 +99,7 @@ export function SubscriptionsPage() {
   // without the page growing to many screens tall. The table header sticks to
   // the top of that box.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
   const [sheet, setSheet] = useState<
     { mode: 'create' } | { mode: 'edit'; sub: SubscriptionRow } | null
   >(null);
@@ -222,11 +224,11 @@ export function SubscriptionsPage() {
               aria-selected={active}
               onClick={() => setStatusFilter(value)}
               className={cn(
-                'inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:px-2.5 sm:text-[11px] sm:uppercase sm:tracking-wide',
+                'inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:px-2.5 sm:text-2xs sm:uppercase sm:tracking-wide',
                 active
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                value === 'past_due' && !active && 'text-destructive/80 hover:text-destructive',
+                value === 'past_due' && !active && 'text-destructive',
               )}
             >
               {value === 'all'
@@ -288,7 +290,7 @@ export function SubscriptionsPage() {
       ) : (
         <div
           ref={listScrollRef}
-          className="flex max-h-[calc(100svh-17rem)] flex-col gap-5 overflow-y-auto overscroll-contain"
+          className="flex flex-col gap-5 lg:max-h-[calc(100svh-17rem)] lg:overflow-y-auto lg:overscroll-contain"
         >
           {/* Mobile: stacked cards */}
           <ul className="flex flex-col gap-2 md:hidden">
@@ -308,7 +310,7 @@ export function SubscriptionsPage() {
           <div className="hidden rounded-xl border border-border bg-card md:block">
             <Table containerClassName="w-full">
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
-                <TableRow className="border-b border-border text-[11px] uppercase tracking-wide hover:bg-transparent">
+                <TableRow className="border-b border-border text-2xs uppercase tracking-wide hover:bg-transparent">
                   <TableHead>{t('subscriptions.plan')}</TableHead>
                   <TableHead>{t('subscriptions.customer')}</TableHead>
                   <TableHead>{t('subscriptions.price')}</TableHead>
@@ -340,7 +342,9 @@ export function SubscriptionsPage() {
             onIntersect={() => {
               if (!listQuery.isFetchingNextPage) void listQuery.fetchNextPage();
             }}
-            rootRef={listScrollRef}
+            // Only a root when that box actually scrolls (lg+); otherwise the
+            // sentinel sits inside it forever and pages in the whole list.
+            rootRef={isDesktop ? listScrollRef : undefined}
           />
         </div>
       )}
@@ -402,7 +406,7 @@ function PriceLabel({ sub, bcp47 }: { sub: SubscriptionRow; bcp47: string }) {
 function StripeLinkedBadge() {
   const t = useT();
   return (
-    <Badge variant="info" className="gap-1 whitespace-nowrap px-1.5 py-px text-[10px]">
+    <Badge variant="info" className="gap-1 whitespace-nowrap px-1.5 py-px text-3xs">
       <CreditCard className="size-3" aria-hidden="true" />
       {t('subscriptions.stripeLinked')}
     </Badge>
@@ -732,7 +736,8 @@ function SubscriptionSheet({
     >
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-5 overflow-y-auto bg-card text-foreground sm:max-w-md"
+        variant="content"
+        className="flex flex-col gap-5 overflow-y-auto sm:max-w-md"
       >
         <div>
           <SheetTitle className="not-sr-only font-serif text-xl tracking-tight">

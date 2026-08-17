@@ -56,8 +56,6 @@ interface FormState {
   postalCode: string;
   city: string;
   country: string;
-  customerNumber: string;
-  externalNumber: string;
   loyaltyTier: LoyaltyTier;
   defaultPaymentTermsDays: string;
   tags: string;
@@ -86,8 +84,6 @@ const EMPTY_FORM: FormState = {
   postalCode: '',
   city: '',
   country: 'DE',
-  customerNumber: '',
-  externalNumber: '',
   loyaltyTier: 'neukunde',
   defaultPaymentTermsDays: '',
   tags: '',
@@ -134,8 +130,6 @@ function toForm(customer: Customer): FormState {
     postalCode: customer.postalCode ?? '',
     city: customer.city ?? '',
     country: customer.country ?? 'DE',
-    customerNumber: customer.customerNumber ?? '',
-    externalNumber: customer.externalNumber ?? '',
     loyaltyTier: customer.loyaltyTier,
     defaultPaymentTermsDays:
       customer.defaultPaymentTermsDays != null ? String(customer.defaultPaymentTermsDays) : '',
@@ -171,8 +165,6 @@ function toPayload(form: FormState): CustomerUpdateInput {
     postalCode: form.postalCode,
     city: form.city,
     country: country.length === 2 ? country : null,
-    customerNumber: form.customerNumber,
-    externalNumber: form.externalNumber,
     loyaltyTier: form.loyaltyTier,
     defaultPaymentTermsDays:
       termNumber != null && Number.isFinite(termNumber) ? Math.round(termNumber) : null,
@@ -541,26 +533,6 @@ export function CustomerFormPage() {
 
         <Section title={t('customers.section.admin')} hint={t('customers.section.adminHint')}>
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
-              label={t('customers.form.customerNumber')}
-              hint={t('customers.form.customerNumberHint')}
-            >
-              <Input
-                value={form.customerNumber}
-                onChange={(e) => set('customerNumber', e.target.value)}
-                className="h-11 sm:h-9"
-              />
-            </FormField>
-            <FormField
-              label={t('customers.form.externalNumber')}
-              hint={t('customers.form.externalNumberHint')}
-            >
-              <Input
-                value={form.externalNumber}
-                onChange={(e) => set('externalNumber', e.target.value)}
-                className="h-11 sm:h-9"
-              />
-            </FormField>
             <FormField label={t('customers.form.tier')}>
               <Select
                 value={form.loyaltyTier}

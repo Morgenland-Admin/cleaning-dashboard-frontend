@@ -43,6 +43,7 @@ import {
   type Customer,
   type LoyaltyTier,
 } from '@/lib/api';
+import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
 import {
   cn,
@@ -79,6 +80,7 @@ export function CustomersPage() {
   // without the page growing to many screens tall. The table header sticks to
   // the top of that box.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
   const [confirming, setConfirming] = useState<Customer | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -218,7 +220,7 @@ export function CustomersPage() {
                 aria-selected={active}
                 onClick={() => setTier(value)}
                 className={cn(
-                  'inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:px-2.5 sm:text-[11px] sm:uppercase sm:tracking-wide',
+                  'inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:px-2.5 sm:text-2xs sm:uppercase sm:tracking-wide',
                   active
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -248,7 +250,7 @@ export function CustomersPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('customers.searchPlaceholder')}
             aria-label={t('customers.searchPlaceholder')}
-            className="h-11 pl-9 pr-9 sm:h-9"
+            className="pl-9 pr-9"
           />
           {search ? (
             <button
@@ -330,7 +332,7 @@ export function CustomersPage() {
       ) : (
         <div
           ref={listScrollRef}
-          className="flex max-h-[calc(100svh-17rem)] flex-col gap-5 overflow-y-auto overscroll-contain"
+          className="flex flex-col gap-5 lg:max-h-[calc(100svh-17rem)] lg:overflow-y-auto lg:overscroll-contain"
         >
           <ul className="flex flex-col gap-2 md:hidden">
             {rows.map((c) => (
@@ -346,7 +348,7 @@ export function CustomersPage() {
           <div className="hidden rounded-xl border border-border bg-card md:block">
             <Table containerClassName="w-full">
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
-                <TableRow className="border-b border-border text-[11px] uppercase tracking-wide hover:bg-transparent">
+                <TableRow className="border-b border-border text-2xs uppercase tracking-wide hover:bg-transparent">
                   <TableHead className="w-16">{t('customers.colId')}</TableHead>
                   <TableHead>{t('customers.colCustomer')}</TableHead>
                   <TableHead>{t('customers.colPhone')}</TableHead>
@@ -379,7 +381,9 @@ export function CustomersPage() {
             onIntersect={() => {
               if (!listQuery.isFetchingNextPage) void listQuery.fetchNextPage();
             }}
-            rootRef={listScrollRef}
+            // Only a root when that box actually scrolls (lg+); otherwise the
+            // sentinel sits inside it forever and pages in the whole list.
+            rootRef={isDesktop ? listScrollRef : undefined}
           />
         </div>
       )}
@@ -439,9 +443,6 @@ function CustomerCard({
         <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium tabular-nums text-foreground">
           #{customer.id}
         </span>
-        {customer.customerNumber ? (
-          <span className="tabular-nums">{customer.customerNumber}</span>
-        ) : null}
         {customer.phone ? <span>{customer.phone}</span> : null}
         <span>
           {t('customers.colOrders')}: {formatNumber(customer.totalOrders, bcp47)}
@@ -498,9 +499,6 @@ function CustomerTableRow({
           </p>
           <p className="truncate text-xs text-muted-foreground">
             {noEmail ? t('customers.noEmail') : customer.email}
-            {customer.customerNumber ? (
-              <span className="tabular-nums"> · {customer.customerNumber}</span>
-            ) : null}
           </p>
         </Link>
       </TableCell>

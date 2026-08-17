@@ -3,6 +3,7 @@ import { LogOut, Menu, Search } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { CommandPalette, useCommandPaletteShortcut } from '@/components/command-palette';
 import { NotificationBell } from '@/components/notification-bell';
 import { SidebarBody } from '@/components/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -28,6 +29,8 @@ import { cn } from '@/lib/utils';
 export function Header() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useCommandPaletteShortcut(() => setPaletteOpen(true));
   const { data } = useSession();
   const { t, locale, setLocale } = useLocale();
   const [signingOut, setSigningOut] = useState(false);
@@ -59,7 +62,7 @@ export function Header() {
           <button
             type="button"
             aria-label={t('header.openMenu')}
-            className="-ml-1 inline-flex size-9 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 lg:hidden"
+            className="-ml-1 inline-flex size-9 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
           >
             <Menu className="size-5" />
           </button>
@@ -71,27 +74,35 @@ export function Header() {
         </SheetContent>
       </Sheet>
 
-      {/* Search bar — full pill on desktop, icon-only on mobile */}
-      <div className="relative hidden w-full max-w-[520px] sm:block">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="search"
-          aria-label={t('header.searchPlaceholder')}
-          placeholder={t('header.searchPlaceholder')}
-          className="h-9 w-full rounded-full border border-border bg-card pl-9 pr-16 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/10"
-        />
-        <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 select-none items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground md:inline-flex">
-          ⌘K
-        </kbd>
-      </div>
-      {/* Mobile-only search icon button (no input until expanded — future) */}
+      {/*
+        A button, not an input: the palette owns the real field. Typing here and
+        having nothing happen was the old bug — now the whole pill is the affordance
+        that opens it, and ⌘K does the same from anywhere.
+      */}
       <button
         type="button"
-        aria-label={t('a11y.openSearch')}
-        className="ml-1 inline-flex size-9 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 sm:hidden"
+        onClick={() => setPaletteOpen(true)}
+        className="group relative hidden h-9 w-full max-w-[520px] items-center rounded-full border border-border bg-card pl-9 pr-16 text-left text-sm text-muted-foreground shadow-sm transition-colors hover:border-foreground/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
+      >
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
+          aria-hidden="true"
+        />
+        {t('search.placeholder')}
+        <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 select-none items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-3xs font-medium md:inline-flex">
+          ⌘K
+        </kbd>
+      </button>
+      {/* Mobile: the pill has no room, so search is an icon button. */}
+      <button
+        type="button"
+        onClick={() => setPaletteOpen(true)}
+        aria-label={t('search.title')}
+        className="ml-1 inline-flex size-10 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
       >
         <Search className="size-4" aria-hidden="true" />
       </button>
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         <NotificationBell />
@@ -103,12 +114,12 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="ml-0.5 rounded-full outline-none ring-rust transition focus-visible:ring-2"
+              className="ml-0.5 rounded-full outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label={t('header.accountMenu')}
             >
               <Avatar className="size-8 ring-2 ring-background">
                 {user?.image ? <AvatarImage src={user.image} alt={displayName} /> : null}
-                <AvatarFallback className="bg-rust/15 text-[12px] font-semibold uppercase text-rust">
+                <AvatarFallback className="bg-rust/15 text-xs font-semibold uppercase text-rust">
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -175,7 +186,7 @@ function LocaleToggle({
           aria-pressed={value === option}
           aria-label={option === 'de' ? 'Deutsch' : 'English'}
           className={cn(
-            'rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors',
+            'rounded-full px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide transition-colors',
             value === option
               ? 'bg-foreground text-background'
               : 'text-muted-foreground hover:text-foreground',

@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 
 import { BrandMark } from '@/components/brand-mark';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { CountPill } from '@/components/count-pill';
 import { CsvImportSheet } from '@/components/csv-import-sheet';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,7 @@ import {
   type NewsletterSubscriber,
   ApiError,
 } from '@/lib/api';
+import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -73,6 +75,7 @@ export function NewsletterPage() {
   // without the page growing to many screens tall. The table header sticks to
   // the top of that box.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
   const [confirming, setConfirming] = useState<{
     companySlug: CompanySlug;
     id: number;
@@ -216,7 +219,7 @@ export function NewsletterPage() {
               disabled={isAllBrands}
               disabledTitle={t('newsletter.importPickBrand')}
               headerChip={
-                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                <div className="flex items-center gap-2 text-3xs uppercase tracking-[0.14em] text-muted-foreground">
                   <BrandMark brand={activeProject} size="xs" />
                   <span>{activeProject.shortName}</span>
                   <span aria-hidden="true">·</span>
@@ -233,22 +236,13 @@ export function NewsletterPage() {
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as SubscriberStatus | 'all')}>
-        <TabsList className="flex-wrap">
+        <TabsList>
           {tabs.map((tabItem) => {
             const active = tab === tabItem.value;
             return (
               <TabsTrigger key={tabItem.value} value={tabItem.value} className="gap-1.5">
                 {tabItem.label}
-                <span
-                  className={cn(
-                    'rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums',
-                    active
-                      ? 'bg-rust/15 text-rust'
-                      : 'bg-muted-foreground/15 text-muted-foreground',
-                  )}
-                >
-                  {counts[tabItem.value]}
-                </span>
+                <CountPill tone={active ? 'accent' : 'muted'}>{counts[tabItem.value]}</CountPill>
               </TabsTrigger>
             );
           })}
@@ -277,7 +271,7 @@ export function NewsletterPage() {
         </CardHeader>
         <CardContent
           ref={listScrollRef}
-          className="max-h-[calc(100svh-17rem)] overflow-y-auto overscroll-contain p-0"
+          className="p-0 lg:max-h-[calc(100svh-17rem)] lg:overflow-y-auto lg:overscroll-contain"
         >
           {isLoading ? (
             <div className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -291,7 +285,7 @@ export function NewsletterPage() {
             </div>
           ) : (
             <Table containerClassName="w-full">
-              <TableHeader className="sticky top-0 z-10 border-y border-border/70 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border/70 [&_th]:bg-muted">
+              <TableHeader className="sticky top-0 z-10 border-y border-border/70 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border/70 [&_th]:bg-muted">
                 <TableRow>
                   <TableHead className="py-2.5 sm:px-6">{t('newsletter.colEmail')}</TableHead>
                   <TableHead className="hidden px-5 py-2.5 sm:table-cell">
@@ -394,7 +388,9 @@ export function NewsletterPage() {
               hasMore={!!singleInfinite.hasNextPage}
               isLoading={singleInfinite.isFetchingNextPage}
               onIntersect={loadMore}
-              rootRef={listScrollRef}
+              // Only a root when that box actually scrolls (lg+); otherwise the
+              // sentinel sits inside it forever and pages in the whole list.
+              rootRef={isDesktop ? listScrollRef : undefined}
             />
           ) : null}
           {allBrandsHasMore ? (

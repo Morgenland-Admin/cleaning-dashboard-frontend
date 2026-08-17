@@ -26,11 +26,18 @@ export function useChatSocket({
   onStatusChange,
   enabled = true,
 }: Options) {
-  // Callbacks in refs so re-renders don't tear down the socket.
+  // Callbacks in refs so re-renders don't tear down the socket. The refs are
+  // seeded on mount and then synced after each commit — assigning during render
+  // is unsafe, because React may discard that render and the ref would keep a
+  // callback from a pass that never happened. This effect is declared before
+  // the socket effect, so a reconnect always sees the current callbacks.
   const eventRef = useRef(onEvent);
   const statusRef = useRef(onStatusChange);
-  eventRef.current = onEvent;
-  statusRef.current = onStatusChange;
+
+  useEffect(() => {
+    eventRef.current = onEvent;
+    statusRef.current = onStatusChange;
+  });
 
   const socketRef = useRef<WebSocket | null>(null);
 

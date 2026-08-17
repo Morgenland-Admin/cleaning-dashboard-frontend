@@ -19,8 +19,9 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm run lint && pnpm run format:check && pnpm run typecheck",
-    "prepare": "husky || true"
+    "check": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run check:tokens",
+    "prepare": "husky || true",
+    "check:tokens": "node scripts/check-design-tokens.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs,cjs}": [
@@ -36,8 +37,6 @@
     "@radix-ui/react-dialog": "^1.1.4",
     "@radix-ui/react-dropdown-menu": "^2.1.4",
     "@radix-ui/react-label": "^2.1.1",
-    "@radix-ui/react-popover": "^1.1.4",
-    "@radix-ui/react-scroll-area": "^1.2.2",
     "@radix-ui/react-separator": "^1.1.1",
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.2",
@@ -47,12 +46,10 @@
     "better-auth": "^1.1.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cmdk": "^1.0.4",
     "lucide-react": "^0.469.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.1.1",
-    "recharts": "^2.15.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7"
   },

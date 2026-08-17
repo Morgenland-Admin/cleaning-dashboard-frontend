@@ -95,6 +95,33 @@ function safeJson(text: string): unknown {
   }
 }
 
+// --- Global search (⌘K palette) -------------------------------------------
+
+export type SearchKind = 'order' | 'customer' | 'inquiry' | 'contact' | 'invoice' | 'partner';
+
+/** One row in the palette. `href` is a dashboard path, already brand-scoped. */
+export interface SearchHit {
+  kind: SearchKind;
+  companySlug: CompanySlug;
+  companyName: string;
+  id: number;
+  title: string;
+  subtitle: string | null;
+  meta: string | null;
+  href: string;
+}
+
+export const searchApi = {
+  /**
+   * Look across every brand the user can see. No `companySlug` header — the
+   * backend derives scope from the caller's memberships.
+   */
+  query(q: string, signal?: AbortSignal) {
+    const qs = new URLSearchParams({ q }).toString();
+    return request<{ hits: SearchHit[]; query: string }>(`/admin/search?${qs}`, { signal });
+  },
+};
+
 // --- Contact ---------------------------------------------------------------
 
 export type ContactStatus = 'new' | 'read' | 'replied' | 'archived';
@@ -678,6 +705,8 @@ export interface OrderRow {
     preferredSlots?: string[];
     /** The slot the admin confirmed. */
     confirmedSlot?: string;
+    /** State of the CLEANILO Calendly booking for this order's pickup. */
+    calendly?: CalendlyPickupMeta;
     /** Operator messages sent to the customer from the panel (newest last). */
     messages?: Array<{
       body: string;
@@ -690,6 +719,36 @@ export interface OrderRow {
   } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Pickup appointments are booked into the ONE CLEANILO Calendly account for every
+ * brand — the single deliberate brand-sharing exception. Calendly syncs the entry
+ * to the CLEANILO Google Calendar, so `booked` means it is on that calendar.
+ */
+export interface CalendlyPickupMeta {
+  status: 'booked' | 'link_sent' | 'cancelled' | 'failed';
+  /** Berlin wall-clock slot ("YYYY-MM-DDTHH:mm") the booking holds. */
+  slot?: string | null;
+  startTime?: string | null;
+  eventUri?: string | null;
+  inviteeUri?: string | null;
+  cancelUrl?: string | null;
+  rescheduleUrl?: string | null;
+  /** Single-use scheduling URL when the customer books themselves. */
+  bookingUrl?: string | null;
+  source: 'dashboard' | 'webhook';
+  error?: string | null;
+  updatedAt: string;
+}
+
+export interface CalendlyConfirmResult {
+  /** False when the server has no Calendly credentials — nothing was attempted. */
+  configured: boolean;
+  booked: boolean;
+  /** The time is not free in the CLEANILO calendar — pick another one. */
+  slotUnavailable: boolean;
+  error: string | null;
 }
 
 export interface OrderItem {
@@ -812,12 +871,34 @@ export const ordersAdminApi = {
       companySlug,
     });
   },
+  /**
+   * Confirm one slot. The backend also books it into the CLEANILO Calendly
+   * calendar (shared across brands by design) — `calendly.booked` says whether
+   * that worked, and the order stands either way.
+   */
   confirmAppointment(companySlug: CompanySlug, id: number, slot: string) {
-    return request<{ order: OrderRow }>(`/admin/orders/${id}/confirm-appointment`, {
-      method: 'POST',
-      body: { slot },
-      companySlug,
-    });
+    return request<{ order: OrderRow; calendly: CalendlyConfirmResult }>(
+      `/admin/orders/${id}/confirm-appointment`,
+      {
+        method: 'POST',
+        body: { slot },
+        companySlug,
+      },
+    );
+  },
+  /**
+   * Fallback route: create a single-use CLEANILO scheduling link and (by default)
+   * email it to the customer so they pick the time themselves.
+   */
+  sendPickupBookingLink(companySlug: CompanySlug, id: number, send = true) {
+    return request<{ order: OrderRow; bookingUrl: string; emailed: boolean }>(
+      `/admin/orders/${id}/pickup-booking-link`,
+      {
+        method: 'POST',
+        body: { send },
+        companySlug,
+      },
+    );
   },
   /** Operator proposes up to 3 pickup/appointment times ("YYYY-MM-DDTHH:mm") from the panel. */
   proposeSlots(companySlug: CompanySlug, id: number, slots: string[]) {
@@ -2067,6 +2148,11 @@ export interface InvoiceRow {
   taxCents: number;
   totalCents: number;
   lineItems: InvoiceLineItem[];
+  /**
+   * Paketrechnung: the positions are scope of work only — no per-line price is
+   * stored or printed, and `subtotalCents` holds the one agreed package price.
+   */
+  packageMode: boolean;
   paymentTermsDays: number;
   paymentMethod: InvoicePaymentMethod;
   dueAt: string | null;
@@ -2105,6 +2191,10 @@ export interface InvoiceCreateInput {
   serviceDate?: string | null;
   serviceDateEnd?: string | null;
   lineItems: InvoiceLineItem[];
+  /** Paketrechnung — positions without prices; requires `packageNetCents`. */
+  packageMode?: boolean;
+  /** The agreed net package price in cents; becomes the invoice subtotal. */
+  packageNetCents?: number;
   taxRatePercent?: InvoiceTaxRate;
   paymentTermsDays?: number;
   paymentMethod?: InvoicePaymentMethod;
@@ -2129,6 +2219,10 @@ export interface InvoiceUpdateInput {
   serviceDate?: string | null;
   serviceDateEnd?: string | null;
   lineItems?: InvoiceLineItem[];
+  /** Paketrechnung — positions without prices (see `packageNetCents`). */
+  packageMode?: boolean;
+  /** The agreed net package price in cents; becomes the invoice subtotal. */
+  packageNetCents?: number;
   taxRatePercent?: InvoiceTaxRate;
   paymentTermsDays?: number;
   paymentMethod?: InvoicePaymentMethod;

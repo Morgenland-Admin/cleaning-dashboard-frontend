@@ -200,7 +200,7 @@ function CounterBadge({ current, rec }: { current: number; rec: number }) {
     <span
       className={cn(
         'text-xs tabular-nums',
-        current > rec ? 'text-amber-600' : 'text-muted-foreground',
+        current > rec ? 'text-warning' : 'text-muted-foreground',
       )}
     >
       {current}/{rec}

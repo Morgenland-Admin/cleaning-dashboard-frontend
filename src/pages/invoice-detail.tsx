@@ -564,6 +564,9 @@ export function InvoiceDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">{t('invoices.form.lineItems')}</CardTitle>
+              {invoice.packageMode ? (
+                <p className="text-xs text-muted-foreground">{t('invoices.packageModeNote')}</p>
+              ) : null}
             </CardHeader>
             <CardContent>
               <ul className="divide-y rounded-md border">
@@ -585,12 +588,18 @@ export function InvoiceDetailPage() {
                         </span>
                       ) : null}
                     </span>
+                    {/* A package invoice prices the job as a whole — showing a
+                        per-position 0,00 € here would misread as "free". */}
                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                      {li.quantity} ×
+                      {invoice.packageMode ? li.quantity : `${li.quantity} ×`}
                     </span>
-                    <span className={cn('shrink-0 tabular-nums', li.isPackage && 'font-semibold')}>
-                      {formatEur(li.unitPriceCents, bcp47, invoice.currency)}
-                    </span>
+                    {invoice.packageMode ? null : (
+                      <span
+                        className={cn('shrink-0 tabular-nums', li.isPackage && 'font-semibold')}
+                      >
+                        {formatEur(li.unitPriceCents, bcp47, invoice.currency)}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -690,7 +699,7 @@ export function InvoiceDetailPage() {
                       {entry.reason ? (
                         <p className="text-xs text-muted-foreground">{entry.reason}</p>
                       ) : null}
-                      <p className="text-[11px] tabular-nums text-muted-foreground">
+                      <p className="text-2xs tabular-nums text-muted-foreground">
                         {formatDateTime(entry.createdAt, bcp47)}
                       </p>
                     </li>

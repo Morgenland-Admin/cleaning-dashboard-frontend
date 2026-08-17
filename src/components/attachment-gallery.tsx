@@ -60,7 +60,7 @@ export function AttachmentGallery({ companySlug, attachments, className }: Props
                 type="button"
                 disabled={!isClickable}
                 onClick={() => isClickable && setLightboxIndex(i)}
-                className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/40 disabled:cursor-default"
+                className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
                 aria-label={t('attachment.openImage', { name: att.name })}
               >
                 <div className="relative flex aspect-[4/3] items-center justify-center bg-background/60">
@@ -76,12 +76,12 @@ export function AttachmentGallery({ companySlug, attachments, className }: Props
                       loading="lazy"
                     />
                   ) : (
-                    <span className="px-2 text-center text-[11px] text-muted-foreground">
+                    <span className="px-2 text-center text-2xs text-muted-foreground">
                       {att.name}
                     </span>
                   )}
                 </div>
-                <div className="truncate px-2 py-1 text-[11px] text-foreground/80">{att.name}</div>
+                <div className="truncate px-2 py-1 text-2xs text-foreground/80">{att.name}</div>
               </button>
             </li>
           );
@@ -153,20 +153,27 @@ function Lightbox({
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{current.name}</p>
               {total > 1 ? (
-                <p className="text-[11px] text-white/60">
+                <p className="text-2xs text-white/60">
                   {index + 1} / {total}
                 </p>
               ) : null}
             </div>
             <DialogPrimitive.Close
               aria-label={t('common.close')}
-              className="inline-flex size-9 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              className="inline-flex size-9 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <X className="size-5" />
             </DialogPrimitive.Close>
           </div>
 
+          {/*
+            Clicking the empty space around the image closes the lightbox. It is a
+            pointer-only shortcut, not the control: Escape (Radix) and the Close
+            button above are the keyboard paths, so this stays presentational
+            rather than becoming a focusable div with a key handler.
+          */}
           <div
+            role="presentation"
             className="relative flex flex-1 items-center justify-center px-4 pb-6"
             onClick={(e) => {
               if (e.target === e.currentTarget) onClose();
@@ -210,7 +217,7 @@ function NavButton({ side, onClick }: { side: 'left' | 'right'; onClick: () => v
       onClick={onClick}
       aria-label={t(side === 'left' ? 'attachment.previousImage' : 'attachment.nextImage')}
       className={cn(
-        'absolute top-1/2 inline-flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white/90 transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60',
+        'absolute top-1/2 inline-flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white/90 transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white',
         side === 'left' ? 'left-3' : 'right-3',
       )}
     >

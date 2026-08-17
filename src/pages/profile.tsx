@@ -76,6 +76,9 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (!user) return;
+    // Seeds the form from the server record. Keyed on the user's id (not the
+    // whole object), so a background refetch cannot overwrite live typing.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm({
       firstName: user.firstName ?? '',
       lastName: user.lastName ?? '',
@@ -284,10 +287,7 @@ export function ProfilePage() {
 
           <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border/60 pt-4">
             {saved ? (
-              <span
-                role="status"
-                className="inline-flex items-center gap-1.5 text-xs text-emerald-700"
-              >
+              <span role="status" className="inline-flex items-center gap-1.5 text-xs text-success">
                 <CheckCircle2 className="size-3.5" /> {t('common.saved')}
               </span>
             ) : null}
@@ -654,7 +654,7 @@ function AddressForm({
         </Field>
       </div>
 
-      <label className="flex cursor-pointer select-none items-center gap-2.5 text-[13px] text-muted-foreground">
+      <label className="flex cursor-pointer select-none items-center gap-2.5 text-2sm text-muted-foreground">
         <Checkbox checked={state.isDefault} onChange={(e) => set('isDefault', e.target.checked)} />
         <span>{t('profile.addressIsDefault')}</span>
       </label>
@@ -716,7 +716,7 @@ function Field({
     <div className="grid gap-1.5">
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
-      {hint ? <span className="text-[11px] text-muted-foreground">{hint}</span> : null}
+      {hint ? <span className="text-2xs text-muted-foreground">{hint}</span> : null}
     </div>
   );
 }
@@ -734,12 +734,12 @@ function Pill({
     tone === 'rust'
       ? 'bg-rust/12 text-rust ring-rust/25'
       : tone === 'positive'
-        ? 'bg-emerald-100 text-emerald-800 ring-emerald-200'
+        ? 'bg-success-soft text-success ring-success/20'
         : 'bg-muted text-muted-foreground ring-border';
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset',
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs font-medium ring-1 ring-inset',
         cls,
       )}
     >
@@ -766,7 +766,7 @@ function NativeSelect({
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="flex h-9 w-full appearance-none rounded-md border border-input bg-background pl-3 pr-8 text-base shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rust/30 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+        className="flex h-9 w-full appearance-none rounded-md border border-input bg-background pl-3 pr-8 text-base shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
       >
         {children}
       </select>
