@@ -646,6 +646,10 @@ export type OrderStatus =
   | 'delivered'
   | 'completed'
   | 'cancelled'
+  // A partial refund is its own terminal-ish state server-side (see
+  // modules/orders/lib.ts) and is offered as an allowed transition. It was
+  // missing here, so its button rendered with no label at all.
+  | 'partially_refunded'
   | 'refunded';
 
 export type OrderTransitionStatus = Exclude<OrderStatus, 'pending' | 'payment_pending' | 'paid'>;
@@ -785,11 +789,24 @@ export interface OrderListAllResponse {
   nextCursor: null;
 }
 
+/** The order's invoice, if one exists — summary only; full record at /rechnungen/:id. */
+export interface OrderInvoiceSummary {
+  id: number;
+  number: string | null;
+  status: InvoiceStatus;
+  totalCents: number;
+  currency: string;
+  issuedAt: string | null;
+  dueAt: string | null;
+}
+
 export interface OrderDetailResponse {
   order: OrderRow;
   items: OrderItem[];
   statusLog: OrderStatusLogEntry[];
   allowedNextStatuses: OrderStatus[];
+  /** Null until an invoice is created for this order. */
+  invoice: OrderInvoiceSummary | null;
 }
 
 export type OrderKind = OrderRow['kind'];
@@ -844,6 +861,18 @@ export const ordersAdminApi = {
   },
   get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
     return request<OrderDetailResponse>(`/admin/orders/${id}`, { companySlug, signal });
+  },
+  /**
+   * Create this order's invoice as a DRAFT, carrying the order's positions.
+   * Never issues — the point is that positions stay editable, so work agreed
+   * after the booking can be added and the customer gets one invoice.
+   * Idempotent: an order that already has one gets it back with created:false.
+   */
+  createInvoice(companySlug: CompanySlug, id: number) {
+    return request<{ invoice: OrderInvoiceSummary; created: boolean }>(
+      `/admin/orders/${id}/invoice`,
+      { method: 'POST', companySlug, body: {} },
+    );
   },
   /** Create an order manually (offline / after-service). */
   create(companySlug: CompanySlug, input: OrderCreateInput) {
@@ -1436,6 +1465,12 @@ export interface CompanyListRow {
   senderEmail: string | null;
   senderName: string | null;
   storefrontOrigin: string | null;
+  /**
+   * Whether a paid order's automatic invoice issues + emails itself right away.
+   * Off = it stops at a draft, so positions agreed after the booking can be
+   * added before the invoice is finalised.
+   */
+  autoIssueInvoices: boolean;
   isActive: boolean;
   role: string;
 }
@@ -1463,6 +1498,7 @@ export interface CompanyUpdateInput {
   senderEmail?: string | null;
   senderName?: string | null;
   storefrontOrigin?: string | null;
+  autoIssueInvoices?: boolean;
   isActive?: boolean;
 }
 
