@@ -210,6 +210,7 @@ export function EditBrandingForm({
   const [senderEmail, setSenderEmail] = useState(company.senderEmail ?? '');
   const [senderName, setSenderName] = useState(company.senderName ?? '');
   const [storefrontOrigin, setStorefrontOrigin] = useState(company.storefrontOrigin ?? '');
+  const [autoIssueInvoices, setAutoIssueInvoices] = useState(company.autoIssueInvoices);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -241,6 +242,7 @@ export function EditBrandingForm({
         senderEmail: nl(senderEmail),
         senderName: nl(senderName),
         storefrontOrigin: nl(storefrontOrigin),
+        autoIssueInvoices,
       }),
     onSuccess: onSaved,
     onError: (err) => setError(err instanceof ApiError ? err.message : (err as Error).message),
@@ -391,6 +393,22 @@ export function EditBrandingForm({
             placeholder={t('companies.edit.fields.chamberPlaceholder')}
           />
         </Field>
+      </Section>
+
+      <Section title={t('companies.edit.sections.invoicing')}>
+        <label className="flex cursor-pointer items-start gap-2 self-start text-sm">
+          <Checkbox
+            className="mt-0.5"
+            checked={autoIssueInvoices}
+            onChange={(e) => setAutoIssueInvoices(e.target.checked)}
+          />
+          <span>
+            {t('companies.edit.fields.autoIssueInvoices')}
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {t('companies.edit.fields.autoIssueInvoicesHint')}
+            </span>
+          </span>
+        </label>
       </Section>
 
       <Section title={t('companies.edit.sections.branding')}>

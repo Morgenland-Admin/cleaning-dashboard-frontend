@@ -16,7 +16,7 @@ export function NotFoundPage() {
       </p>
       <Link
         to="/"
-        className="text-rust-foreground mt-2 inline-flex items-center rounded-full bg-rust px-4 py-2 text-sm font-medium hover:bg-rust/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rust"
+        className="mt-2 inline-flex items-center rounded-full bg-rust px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-rust/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rust"
       >
         Zurück zur Übersicht
       </Link>

@@ -19,6 +19,7 @@ import {
   NotebookPen,
   Phone,
   Plus,
+  Receipt,
   RefreshCcw,
   Save,
   Send,
@@ -29,6 +30,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { ConfirmDialog } from '@/components/confirm-dialog';
@@ -43,11 +45,13 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject } from '@/contexts/project-context';
 import { toast } from '@/hooks/use-toast';
-import { useLocale } from '@/i18n';
+import { useLocale, useT, type DictKey } from '@/i18n';
 import {
   ordersAdminApi,
   type CalendlyPickupMeta,
+  type InvoiceStatus,
   type OrderDetailResponse,
+  type OrderInvoiceSummary,
   type OrderRow,
   type OrderStatus,
   type OrderTransitionStatus,
@@ -60,18 +64,19 @@ import { cn, formatDateTime } from '@/lib/utils';
 
 import type { CompanySlug } from '@/contexts/project-context';
 
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  pending: 'Erstellt',
-  payment_pending: 'Zahlung offen',
-  paid: 'Bezahlt',
-  accepted: 'Angenommen',
-  picked_up: 'Abgeholt',
-  in_cleaning: 'In der Reinigung',
-  ready: 'Bereit zur Lieferung',
-  delivered: 'Geliefert',
-  completed: 'Abgeschlossen',
-  cancelled: 'Storniert',
-  refunded: 'Erstattet',
+const STATUS_LABEL: Record<OrderStatus, DictKey> = {
+  pending: 'orders.status.pending',
+  payment_pending: 'orders.status.paymentPending',
+  paid: 'orders.status.paid',
+  accepted: 'orders.status.accepted',
+  picked_up: 'orders.status.pickedUp',
+  in_cleaning: 'orders.status.inCleaning',
+  ready: 'orders.status.ready',
+  delivered: 'orders.status.delivered',
+  completed: 'orders.status.completed',
+  cancelled: 'orders.status.cancelled',
+  partially_refunded: 'orders.status.partiallyRefunded',
+  refunded: 'orders.status.refunded',
 };
 
 const STATUS_VARIANT: Record<
@@ -88,6 +93,8 @@ const STATUS_VARIANT: Record<
   delivered: 'success',
   completed: 'success',
   cancelled: 'destructive',
+  // A partial refund is not a dead order — it keeps running with less money on it.
+  partially_refunded: 'warning',
   refunded: 'destructive',
 };
 
@@ -103,25 +110,29 @@ const CUSTOMER_NOTIFYING: ReadonlySet<OrderTransitionStatus> = new Set([
 
 /** Confirmation dialog copy for a pending status transition. */
 function transitionConfirmCopy(
+  t: Translate,
   status: OrderTransitionStatus,
   order: OrderRow,
 ): { title: string; description: string; isDangerous: boolean } {
-  const title = `Auf „${STATUS_LABEL[status]}“ setzen?`;
-  if (status === 'refunded') {
+  const title = t('orders.transition.confirmTitle', { status: t(STATUS_LABEL[status]) });
+  if (status === 'refunded' || status === 'partially_refunded') {
+    const full = status === 'refunded';
     return {
       title,
       description:
         order.paymentProvider === 'paypal'
-          ? 'PayPal-Zahlungen müssen direkt in PayPal erstattet werden — hier wird keine Rückerstattung ausgelöst.'
-          : 'Dies löst eine volle Stripe-Rückerstattung aus, falls eine Zahlung vorhanden ist.',
+          ? t('orders.transition.refundPaypal')
+          : full
+            ? t('orders.transition.refundFull')
+            : t('orders.transition.refundPartial'),
       isDangerous: true,
     };
   }
   return {
     title,
     description: CUSTOMER_NOTIFYING.has(status)
-      ? 'Der Kunde wird per E-Mail über den neuen Status informiert.'
-      : 'Möchtest du den Status dieser Bestellung wirklich ändern?',
+      ? t('orders.transition.notifies')
+      : t('orders.transition.generic'),
     isDangerous: false,
   };
 }
@@ -137,6 +148,7 @@ const STATUS_ACCENT: Record<OrderStatus, string> = {
   delivered: 'bg-gradient-to-b from-emerald-300 to-emerald-500',
   completed: 'bg-gradient-to-b from-emerald-400 to-emerald-600',
   cancelled: 'bg-gradient-to-b from-rose-300 to-rose-500',
+  partially_refunded: 'bg-gradient-to-b from-rose-200 to-rose-400',
   refunded: 'bg-gradient-to-b from-rose-400 to-rose-600',
 };
 
@@ -153,14 +165,28 @@ const KIND_LABEL: Record<OrderRow['kind'], string> = {
   teppichbodenreinigung: 'Teppichbodenreinigung',
 };
 
-const TAB_FILTERS: Array<{ value: OrderStatus | 'all'; label: string }> = [
-  { value: 'all', label: 'Alle' },
-  { value: 'paid', label: 'Neu (bezahlt)' },
-  { value: 'accepted', label: 'Angenommen' },
-  { value: 'in_cleaning', label: 'In Reinigung' },
-  { value: 'ready', label: 'Bereit' },
-  { value: 'completed', label: 'Abgeschlossen' },
+const TAB_FILTERS: Array<{ value: OrderStatus | 'all'; labelKey: DictKey }> = [
+  { value: 'all', labelKey: 'orders.tab.all' },
+  { value: 'paid', labelKey: 'orders.tab.paid' },
+  { value: 'accepted', labelKey: 'orders.tab.accepted' },
+  { value: 'in_cleaning', labelKey: 'orders.tab.inCleaning' },
+  { value: 'ready', labelKey: 'orders.tab.ready' },
+  { value: 'completed', labelKey: 'orders.tab.completed' },
 ];
+
+/** The `t` from `useT()`, so module-level helpers can take it as a parameter. */
+type Translate = ReturnType<typeof useT>;
+
+/**
+ * Status-log entries carry whatever the server wrote. A value this build has no
+ * label for is shown raw rather than blank — the history stays readable even if
+ * the backend gains a status before the frontend does.
+ */
+function statusText(t: Translate, status: string | null | undefined): string {
+  if (!status) return '—';
+  const key = STATUS_LABEL[status as OrderStatus];
+  return key ? t(key) : status;
+}
 
 function formatEur(cents: number, bcp47: string): string {
   return (cents / 100).toLocaleString(bcp47, {
@@ -187,10 +213,11 @@ function initialsFrom(name: string): string {
 }
 
 export function OrdersPage() {
+  const t = useT();
   const { activeProject, isAllBrands, setBrandView, projects } = useProject();
   const { bcp47 } = useLocale();
   const queryClient = useQueryClient();
-  usePageTitle('Aufträge');
+  usePageTitle(t('orders.title'));
 
   const [tab, setTab] = useState<OrderStatus | 'all'>('all');
   // Selection lives in the URL: reload-safe, linkable, and the phone's back
@@ -267,11 +294,11 @@ export function OrdersPage() {
   return (
     <div className="mx-auto w-full max-w-[1320px]">
       <PageHeading
-        title="Aufträge"
+        title={t('orders.title')}
         subtitle={
           isAllBrands
-            ? 'Bezahlte Online-Buchungen über alle Marken hinweg.'
-            : `Bezahlte Online-Buchungen für ${activeProject.name}.`
+            ? t('orders.subtitleAll')
+            : t('orders.subtitleBrand', { brand: activeProject.name })
         }
         actions={
           <div className="flex items-center gap-2">
@@ -279,10 +306,10 @@ export function OrdersPage() {
               size="sm"
               onClick={() => setNewOpen(true)}
               disabled={isAllBrands}
-              title={isAllBrands ? 'Bitte zuerst eine Marke auswählen.' : undefined}
+              title={isAllBrands ? t('orders.pickBrandFirst') : undefined}
             >
               <Plus className="size-4" />
-              Neue Bestellung
+              {t('orders.newOrder')}
             </Button>
             <Button variant="outline" size="sm" onClick={refetchActive} disabled={isFetching}>
               {isFetching ? (
@@ -290,7 +317,7 @@ export function OrdersPage() {
               ) : (
                 <RefreshCcw className="size-4" />
               )}
-              Aktualisieren
+              {t('common.refresh')}
             </Button>
           </div>
         }
@@ -312,7 +339,7 @@ export function OrdersPage() {
         <TabsList overflow="scroll">
           {TAB_FILTERS.map((f) => (
             <TabsTrigger key={f.value} value={f.value}>
-              {f.label}
+              {t(f.labelKey)}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -406,7 +433,7 @@ export function OrdersPage() {
         <DetailPane
           open={selectedId != null}
           onClose={() => setSelectedId(null)}
-          title="Auftragsdetails"
+          title={t('orders.detailTitle')}
         >
           {selectedId != null && (
             <OrderDetail
@@ -422,6 +449,7 @@ export function OrdersPage() {
 }
 
 function EmptyState() {
+  const t = useT();
   return (
     <div className="flex flex-col items-center px-6 py-24 text-center">
       <div
@@ -433,11 +461,100 @@ function EmptyState() {
           0
         </span>
       </div>
-      <h2 className="mt-6 text-2xl font-semibold tracking-tight">Noch keine Aufträge</h2>
+      <h2 className="mt-6 text-2xl font-semibold tracking-tight">{t('orders.empty')}</h2>
       <p className="mx-auto mt-2 max-w-[42ch] text-sm text-muted-foreground">
         Sobald Kunden online buchen, erscheinen die bezahlten Aufträge hier — gefiltert nach Marke
         und Status.
       </p>
+    </div>
+  );
+}
+
+const INVOICE_STATUS_LABEL: Record<InvoiceStatus, DictKey> = {
+  draft: 'orders.invoice.status.draft',
+  sent: 'orders.invoice.status.sent',
+  paid: 'orders.invoice.status.paid',
+  overdue: 'orders.invoice.status.overdue',
+  void: 'orders.invoice.status.void',
+};
+
+const INVOICE_STATUS_VARIANT: Record<
+  InvoiceStatus,
+  'secondary' | 'info' | 'success' | 'destructive' | 'outline'
+> = {
+  draft: 'secondary',
+  sent: 'info',
+  paid: 'success',
+  overdue: 'destructive',
+  void: 'outline',
+};
+
+/**
+ * The order's invoice: create it, or jump to the one that exists.
+ *
+ * Creating never issues. The draft carries this order's positions, so anything
+ * agreed after the booking — a repair on top of the cleaning — can be added on
+ * the invoice and the customer still receives a single document. Finalising is
+ * a separate, deliberate step there.
+ */
+function InvoiceSection({
+  invoice,
+  bcp47,
+  onCreate,
+  isCreating,
+}: {
+  invoice: OrderInvoiceSummary | null;
+  bcp47: string;
+  onCreate: () => void;
+  isCreating: boolean;
+}) {
+  const t = useT();
+  return (
+    <div>
+      <SectionLabel icon={Receipt}>{t('orders.section.invoice')}</SectionLabel>
+
+      {invoice ? (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-2sm">
+                {invoice.number ?? t('orders.invoice.noNumber')}
+              </span>
+              <Badge variant={INVOICE_STATUS_VARIANT[invoice.status]}>
+                {t(INVOICE_STATUS_LABEL[invoice.status])}
+              </Badge>
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {formatEur(invoice.totalCents, bcp47)}
+              {invoice.status === 'draft'
+                ? ` · ${t('orders.invoice.editable')}`
+                : invoice.issuedAt
+                  ? ` · ${t('orders.invoice.issuedAt', { date: formatDateTime(invoice.issuedAt, bcp47) })}`
+                  : null}
+            </div>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/rechnungen/${invoice.id}`}>
+              {invoice.status === 'draft' ? t('orders.invoice.edit') : t('orders.invoice.open')}
+              <ExternalLink className="size-3.5" aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-2 rounded-lg border border-dashed border-border px-3 py-3">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t('orders.invoice.createHint')}
+          </p>
+          <Button className="mt-2.5" size="sm" onClick={onCreate} disabled={isCreating}>
+            {isCreating ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Receipt className="size-4" aria-hidden="true" />
+            )}
+            {t('orders.invoice.create')}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -470,6 +587,7 @@ function OrderListRow({
   onSelect: () => void;
   onSync: () => void;
 }) {
+  const t = useT();
   const canSync = order.status === 'payment_pending';
   return (
     <li>
@@ -484,7 +602,7 @@ function OrderListRow({
         <button
           type="button"
           onClick={onSelect}
-          aria-label={`Auftrag ${order.orderNumber} öffnen`}
+          aria-label={t('orders.openOrder', { number: order.orderNumber })}
           className="absolute inset-0 z-0 cursor-pointer rounded-xl focus:outline-none"
         />
         <span
@@ -514,7 +632,7 @@ function OrderListRow({
                 </span>
               )}
               <span className="font-mono text-xs text-muted-foreground">{order.orderNumber}</span>
-              <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
+              <Badge variant={STATUS_VARIANT[order.status]}>{t(STATUS_LABEL[order.status])}</Badge>
             </div>
             <div className="mt-1.5 truncate text-base font-semibold leading-tight">
               {order.customerName}
@@ -561,6 +679,7 @@ function OrderDetail({
   orderId: number;
   onClose: () => void;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const { bcp47 } = useLocale();
   const detailKey = ['order-detail', companySlug, orderId] as const;
@@ -588,10 +707,26 @@ function OrderDetail({
     onSuccess: async (_res, toStatus) => {
       await queryClient.invalidateQueries({ queryKey: detailKey });
       await queryClient.invalidateQueries({ queryKey: listKeyPrefix, exact: false });
-      toast.success(`Status auf „${STATUS_LABEL[toStatus]}“ gesetzt.`);
+      toast.success(t('orders.transition.done', { status: t(STATUS_LABEL[toStatus]) }));
     },
     onError: (err) =>
-      toast.error(err instanceof ApiError ? err.message : 'Statusänderung fehlgeschlagen.'),
+      toast.error(err instanceof ApiError ? err.message : t('orders.transition.failed')),
+  });
+
+  const navigate = useNavigate();
+
+  // Creates the DRAFT and goes straight to it — the point of the button is to
+  // land on an editable invoice, not to leave one sitting somewhere unseen.
+  const createInvoice = useMutation({
+    mutationFn: () => ordersAdminApi.createInvoice(companySlug, orderId),
+    onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: detailKey });
+      await queryClient.invalidateQueries({ queryKey: ['invoices'], exact: false });
+      toast.success(res.created ? t('orders.invoice.created') : t('orders.invoice.exists'));
+      navigate(`/rechnungen/${res.invoice.id}`);
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : t('orders.invoice.failed')),
   });
 
   const saveNotes = useMutation({
@@ -603,9 +738,7 @@ function OrderDetail({
       toast.success('Notizen gespeichert.');
     },
     onError: (err) =>
-      toast.error(
-        err instanceof ApiError ? err.message : 'Notizen konnten nicht gespeichert werden.',
-      ),
+      toast.error(err instanceof ApiError ? err.message : t('orders.notesSaveFailed')),
   });
 
   const syncStripe = useMutation({
@@ -626,17 +759,17 @@ function OrderDetail({
       // the operator has to know before the crew relies on the calendar.
       if (res.calendly.error) {
         toast({
-          title: 'Termin bestätigt — Kalender nicht aktualisiert',
+          title: t('orders.appointment.calendarFailedTitle'),
           description: res.calendly.error,
         });
       } else if (res.calendly.booked) {
-        toast.success('Termin bestätigt — Kunde benachrichtigt, Termin im CLEANILO-Kalender.');
+        toast.success(t('orders.appointment.calendarOk'));
       } else {
-        toast.success('Termin bestätigt — der Kunde wurde benachrichtigt.');
+        toast.success(t('orders.appointment.calendarSkipped'));
       }
     },
     onError: (err) =>
-      toast.error(err instanceof ApiError ? err.message : 'Termin konnte nicht bestätigt werden.'),
+      toast.error(err instanceof ApiError ? err.message : t('orders.appointment.confirmFailed')),
   });
 
   const sendBookingLink = useMutation({
@@ -644,15 +777,11 @@ function OrderDetail({
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: detailKey });
       toast.success(
-        res.emailed
-          ? 'Buchungslink an den Kunden gesendet.'
-          : 'Buchungslink erstellt (E-Mail-Versand ist auf diesem Server deaktiviert).',
+        res.emailed ? t('orders.appointment.linkSent') : t('orders.appointment.linkCreatedNoMail'),
       );
     },
     onError: (err) =>
-      toast.error(
-        err instanceof ApiError ? err.message : 'Buchungslink konnte nicht erstellt werden.',
-      ),
+      toast.error(err instanceof ApiError ? err.message : t('orders.appointment.linkFailed')),
   });
 
   const proposeSlots = useMutation({
@@ -660,24 +789,20 @@ function OrderDetail({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: detailKey });
       await queryClient.invalidateQueries({ queryKey: listKeyPrefix, exact: false });
-      toast.success('Terminvorschläge gespeichert.');
+      toast.success(t('orders.appointment.proposalsSaved'));
     },
     onError: (err) =>
-      toast.error(
-        err instanceof ApiError ? err.message : 'Vorschläge konnten nicht gespeichert werden.',
-      ),
+      toast.error(err instanceof ApiError ? err.message : t('orders.appointment.proposalsFailed')),
   });
 
   const sendMessage = useMutation({
     mutationFn: (body: string) => ordersAdminApi.sendMessage(companySlug, orderId, body),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: detailKey });
-      toast.success('Nachricht an den Kunden gesendet.');
+      toast.success(t('orders.message.sent'));
     },
     onError: (err) =>
-      toast.error(
-        err instanceof ApiError ? err.message : 'Nachricht konnte nicht gesendet werden.',
-      ),
+      toast.error(err instanceof ApiError ? err.message : t('orders.message.sendFailed')),
   });
 
   if (detail.isLoading) {
@@ -689,15 +814,13 @@ function OrderDetail({
   }
   if (detail.isError || !detail.data) {
     const message =
-      detail.error instanceof ApiError
-        ? detail.error.message
-        : 'Auftrag konnte nicht geladen werden.';
+      detail.error instanceof ApiError ? detail.error.message : t('orders.loadFailed');
     return (
       <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-sm">
         <AlertCircle className="size-5 text-destructive" aria-hidden="true" />
         <p className="mt-2">{message}</p>
         <Button variant="outline" size="sm" className="mt-3" onClick={() => detail.refetch()}>
-          Erneut versuchen
+          {t('orders.retry')}
         </Button>
       </div>
     );
@@ -729,12 +852,14 @@ function OrderDetail({
       isSendingBookingLink={sendBookingLink.isPending}
       onSendMessage={(body) => sendMessage.mutateAsync(body)}
       isSendingMessage={sendMessage.isPending}
+      onCreateInvoice={() => createInvoice.mutate()}
+      isCreatingInvoice={createInvoice.isPending}
       syncResult={syncStripe.data ?? null}
       syncError={
         syncStripe.error instanceof ApiError
           ? syncStripe.error.message
           : syncStripe.isError
-            ? 'Stripe-Abgleich fehlgeschlagen.'
+            ? t('orders.stripe.syncFailed')
             : null
       }
     />
@@ -763,6 +888,8 @@ function DetailBody({
   isSendingBookingLink,
   onSendMessage,
   isSendingMessage,
+  onCreateInvoice,
+  isCreatingInvoice,
   syncResult,
   syncError,
 }: {
@@ -787,6 +914,8 @@ function DetailBody({
   isSendingBookingLink: boolean;
   onSendMessage: (body: string) => Promise<unknown>;
   isSendingMessage: boolean;
+  onCreateInvoice: () => void;
+  isCreatingInvoice: boolean;
   syncResult: {
     order: OrderRow | null;
     stripe: { sessionStatus: string; paymentStatus: string };
@@ -794,7 +923,8 @@ function DetailBody({
   } | null;
   syncError: string | null;
 }) {
-  const { order, items, statusLog, allowedNextStatuses } = data;
+  const t = useT();
+  const { order, items, statusLog, allowedNextStatuses, invoice } = data;
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   // Every status change is confirmed first; `pendingStatus` is the one awaiting it.
   const [pendingStatus, setPendingStatus] = useState<OrderTransitionStatus | null>(null);
@@ -802,7 +932,7 @@ function DetailBody({
   // bare /transition path — /transition doesn't refund on `cancelled`.
   const cancelOffered = allowedNextStatuses.includes('cancelled');
   const transitionStatuses = allowedNextStatuses.filter((s) => s !== 'cancelled');
-  const pendingCopy = pendingStatus ? transitionConfirmCopy(pendingStatus, order) : null;
+  const pendingCopy = pendingStatus ? transitionConfirmCopy(t, pendingStatus, order) : null;
 
   return (
     <div className="space-y-5 overflow-hidden rounded-2xl border border-border bg-card">
@@ -810,13 +940,13 @@ function DetailBody({
         <div>
           <div className="font-mono text-xs text-muted-foreground">{order.orderNumber}</div>
           <div className="mt-1 flex items-center gap-2">
-            <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
+            <Badge variant={STATUS_VARIANT[order.status]}>{t(STATUS_LABEL[order.status])}</Badge>
             <span className="text-sm text-muted-foreground">{KIND_LABEL[order.kind]}</span>
           </div>
         </div>
         <button
           type="button"
-          aria-label="Detail schließen"
+          aria-label={t('orders.closeDetail')}
           onClick={onClose}
           className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
         >
@@ -826,7 +956,7 @@ function DetailBody({
 
       <div className="space-y-5 px-5 pb-5">
         <div>
-          <SectionLabel icon={User}>Kunde</SectionLabel>
+          <SectionLabel icon={User}>{t('orders.section.customer')}</SectionLabel>
           <div className="mt-2 space-y-1 text-sm">
             <div className="font-medium">{order.customerName}</div>
             <a
@@ -848,7 +978,9 @@ function DetailBody({
 
         <div>
           <SectionLabel icon={Truck}>
-            {order.pickupMode === 'onsite' ? 'Service-Adresse' : 'Abholung'}
+            {order.pickupMode === 'onsite'
+              ? t('orders.section.serviceAddress')
+              : t('orders.section.pickup')}
           </SectionLabel>
           <div className="mt-2 space-y-1 text-sm">
             <div className="flex items-start gap-2">
@@ -897,7 +1029,7 @@ function DetailBody({
         />
 
         <div>
-          <SectionLabel icon={ClipboardList}>Positionen</SectionLabel>
+          <SectionLabel icon={ClipboardList}>{t('orders.section.positions')}</SectionLabel>
           <ul className="mt-2 space-y-1.5 text-sm">
             {items.map((it) => (
               <li key={it.id} className="flex items-start justify-between gap-3">
@@ -912,13 +1044,13 @@ function DetailBody({
           <div className="mt-3 space-y-1 border-t border-border pt-2 text-sm">
             {order.pickupFeeCents > 0 && (
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Abholung</span>
+                <span>{t('orders.section.pickup')}</span>
                 <span className="tabular-nums">{formatEur(order.pickupFeeCents, bcp47)}</span>
               </div>
             )}
             <div className="mt-2 flex items-baseline justify-between rounded-lg bg-muted/40 px-3 py-2">
               <span className="text-3xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Gesamt
+                {t('orders.total')}
               </span>
               <span className="text-xl font-semibold tabular-nums">
                 {formatEur(order.totalCents, bcp47)}
@@ -926,6 +1058,13 @@ function DetailBody({
             </div>
           </div>
         </div>
+
+        <InvoiceSection
+          invoice={invoice}
+          bcp47={bcp47}
+          onCreate={onCreateInvoice}
+          isCreating={isCreatingInvoice}
+        />
 
         {order.customerNotes && (
           <div>
@@ -935,12 +1074,12 @@ function DetailBody({
         )}
 
         <div>
-          <SectionLabel icon={NotebookPen}>Interne Notizen</SectionLabel>
+          <SectionLabel icon={NotebookPen}>{t('orders.section.internalNotes')}</SectionLabel>
           <Textarea
             rows={3}
             value={notes}
             onChange={(e) => onNotesChange(e.target.value)}
-            placeholder="Nur intern sichtbar"
+            placeholder={t('orders.notesPlaceholder')}
             className="mt-2"
           />
           <div className="mt-2 flex justify-end">
@@ -955,7 +1094,7 @@ function DetailBody({
               ) : (
                 <Save className="size-3.5" />
               )}
-              Speichern
+              {t('common.save')}
             </Button>
           </div>
         </div>
@@ -981,11 +1120,9 @@ function DetailBody({
         )}
 
         <div>
-          <SectionLabel icon={Check}>Status ändern</SectionLabel>
+          <SectionLabel icon={Check}>{t('orders.section.statusChange')}</SectionLabel>
           {transitionStatuses.length === 0 && !cancelOffered ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Keine weiteren Statusübergänge möglich.
-            </p>
+            <p className="mt-2 text-xs text-muted-foreground">{t('orders.transition.none')}</p>
           ) : (
             <div className="mt-2 flex flex-wrap gap-2">
               {transitionStatuses.map((s) => {
@@ -1003,7 +1140,7 @@ function DetailBody({
                     ) : (
                       <Check className="size-3.5" />
                     )}
-                    {STATUS_LABEL[s]}
+                    {t(STATUS_LABEL[s])}
                   </Button>
                 );
               })}
@@ -1015,7 +1152,7 @@ function DetailBody({
                   onClick={() => setCancelDialogOpen(true)}
                 >
                   <Ban className="size-3.5" />
-                  Stornieren …
+                  {t('orders.transition.cancelAction')}
                 </Button>
               )}
             </div>
@@ -1039,7 +1176,7 @@ function DetailBody({
           }}
           title={pendingCopy?.title ?? ''}
           description={pendingCopy?.description ?? ''}
-          confirmLabel="Bestätigen"
+          confirmLabel={t('orders.appointment.confirm')}
           isDangerous={pendingCopy?.isDangerous ?? false}
           isPending={isTransitioning}
           onConfirm={() => {
@@ -1061,8 +1198,8 @@ function DetailBody({
                   <span className="flex-1">
                     <span className="text-foreground">
                       {entry.fromStatus
-                        ? `${STATUS_LABEL[entry.fromStatus as OrderStatus] ?? entry.fromStatus} → ${STATUS_LABEL[entry.toStatus as OrderStatus] ?? entry.toStatus}`
-                        : (STATUS_LABEL[entry.toStatus as OrderStatus] ?? entry.toStatus)}
+                        ? `${statusText(t, entry.fromStatus)} → ${statusText(t, entry.toStatus)}`
+                        : statusText(t, entry.toStatus)}
                     </span>
                     {entry.reason && (
                       <span className="text-muted-foreground"> · {entry.reason}</span>
@@ -1103,6 +1240,7 @@ function AppointmentSection({
   onSendBookingLink: () => void;
   isSendingBookingLink: boolean;
 }) {
+  const t = useT();
   const confirmedSlot = order.metadata?.confirmedSlot ?? null;
   const calendly = order.metadata?.calendly ?? null;
   const slots = useMemo(() => order.metadata?.preferredSlots ?? [], [order.metadata]);
@@ -1120,14 +1258,14 @@ function AppointmentSection({
 
   return (
     <div>
-      <SectionLabel icon={CalendarClock}>Termine</SectionLabel>
+      <SectionLabel icon={CalendarClock}>{t('orders.section.appointments')}</SectionLabel>
 
       {confirmedSlot ? (
         <div className="mt-2 flex items-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm">
           <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
           <div>
             <div className="text-3xs font-semibold uppercase tracking-[0.08em] text-success">
-              Bestätigter Termin
+              {t('orders.appointment.confirmedTitle')}
             </div>
             <div className="font-medium tabular-nums">{formatSlotDe(confirmedSlot)}</div>
           </div>
@@ -1138,10 +1276,7 @@ function AppointmentSection({
           Bestätigungs-E-Mail.
         </p>
       ) : (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Noch keine Termine hinterlegt. Schlage bis zu 3 Zeiten vor — danach bestätigst du einen
-          davon.
-        </p>
+        <p className="mt-2 text-xs text-muted-foreground">{t('orders.appointment.noSlotsYet')}</p>
       )}
 
       <CalendlyStatus calendly={calendly} confirmedSlot={confirmedSlot} />
@@ -1167,7 +1302,8 @@ function AppointmentSection({
                 </span>
                 {isConfirmed ? (
                   <span className="flex items-center gap-1 text-xs font-medium text-success">
-                    <Check className="size-3.5" aria-hidden="true" /> Bestätigt
+                    <Check className="size-3.5" aria-hidden="true" />{' '}
+                    {t('orders.appointment.confirmed')}
                   </span>
                 ) : (
                   <Button
@@ -1179,7 +1315,7 @@ function AppointmentSection({
                     {isConfirmingAppointment ? (
                       <Loader2 className="size-3.5 animate-spin" />
                     ) : (
-                      'Bestätigen'
+                      t('orders.appointment.confirm')
                     )}
                   </Button>
                 )}
@@ -1193,7 +1329,7 @@ function AppointmentSection({
         (proposing ? (
           <div className="mt-3 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
             <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Terminvorschläge (bis zu 3)
+              {t('orders.appointment.proposals')}
             </div>
             {drafts.map((value, i) => (
               <input
@@ -1201,6 +1337,9 @@ function AppointmentSection({
 
                 key={i}
                 type="datetime-local"
+                // The three slots share one heading, so each needs its own name:
+                // a screen reader otherwise reaches three identical blank fields.
+                aria-label={t('orders.appointment.slot', { n: i + 1, total: drafts.length })}
                 value={value}
                 onChange={(e) => setDrafts((d) => d.map((v, j) => (j === i ? e.target.value : v)))}
                 className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1222,7 +1361,7 @@ function AppointmentSection({
                 ) : (
                   <Save className="size-3.5" />
                 )}
-                Vorschläge speichern
+                {t('orders.appointment.saveProposals')}
               </Button>
             </div>
           </div>
@@ -1248,11 +1387,10 @@ function AppointmentSection({
             ) : (
               <Send className="size-3.5" />
             )}
-            Kunden selbst buchen lassen
+            {t('orders.appointment.letCustomerBook')}
           </Button>
           <p className="mt-1 text-2xs text-muted-foreground">
-            Sendet einen einmaligen Buchungslink. Der gewählte Termin landet automatisch hier und im
-            CLEANILO-Kalender.
+            {t('orders.appointment.bookingLinkHint')}
           </p>
         </div>
       )}
@@ -1272,12 +1410,13 @@ function CalendlyStatus({
   calendly: CalendlyPickupMeta | null;
   confirmedSlot: string | null;
 }) {
+  const t = useT();
   if (!calendly) {
     // Nothing booked yet is only notable once a slot is actually confirmed.
     if (!confirmedSlot) return null;
     return (
       <p className="mt-1.5 text-2xs text-muted-foreground">
-        Nicht im CLEANILO-Kalender (Calendly ist auf diesem Server nicht konfiguriert).
+        {t('orders.appointment.calendarNotConfigured')}
       </p>
     );
   }
@@ -1290,7 +1429,7 @@ function CalendlyStatus({
         <span className="inline-flex items-center gap-1">
           <Check className="size-3 text-success" aria-hidden="true" />
           Im CLEANILO-Kalender
-          {calendly.source === 'webhook' ? ' (vom Kunden gebucht)' : ''}
+          {calendly.source === 'webhook' ? t('orders.appointment.bookedByCustomer') : ''}
         </span>
         {mismatch && (
           <span className="ml-1 text-destructive">
@@ -1304,7 +1443,8 @@ function CalendlyStatus({
             rel="noreferrer"
             className="ml-2 inline-flex items-center gap-1 underline hover:text-foreground"
           >
-            Verschieben <ExternalLink className="size-2.5" aria-hidden="true" />
+            {t('orders.appointment.reschedule')}{' '}
+            <ExternalLink className="size-2.5" aria-hidden="true" />
           </a>
         )}
       </div>
@@ -1322,7 +1462,8 @@ function CalendlyStatus({
             rel="noreferrer"
             className="ml-2 inline-flex items-center gap-1 underline hover:text-foreground"
           >
-            Link öffnen <ExternalLink className="size-2.5" aria-hidden="true" />
+            {t('orders.appointment.openLink')}{' '}
+            <ExternalLink className="size-2.5" aria-hidden="true" />
           </a>
         )}
       </div>
@@ -1332,7 +1473,8 @@ function CalendlyStatus({
   if (calendly.status === 'cancelled') {
     return (
       <p className="mt-1.5 text-2xs text-muted-foreground">
-        Kalendereintrag storniert{calendly.source === 'webhook' ? ' (vom Kunden)' : ''}.
+        {t('orders.appointment.calendarEntryCancelled')}
+        {calendly.source === 'webhook' ? t('orders.appointment.byCustomer') : ''}.
       </p>
     );
   }
@@ -1341,10 +1483,9 @@ function CalendlyStatus({
     <div className="mt-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
       <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-hidden="true" />
       <div>
-        <div className="font-medium">Nicht im CLEANILO-Kalender</div>
+        <div className="font-medium">{t('orders.appointment.calendarMissingTitle')}</div>
         <p className="mt-0.5 text-muted-foreground">
-          Der Termin ist im Auftrag bestätigt, die Calendly-Buchung ist aber fehlgeschlagen. Termin
-          erneut bestätigen oder den Eintrag manuell im Kalender anlegen.
+          {t('orders.appointment.calendarMissingBody')}
         </p>
       </div>
     </div>
@@ -1366,6 +1507,7 @@ function OrderMessageComposer({
   onSend: (body: string) => Promise<unknown>;
   isSending: boolean;
 }) {
+  const t = useT();
   const [body, setBody] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
@@ -1382,7 +1524,7 @@ function OrderMessageComposer({
       setLocalError(null);
       setJustSent(false);
     },
-    updatedLabel: 'Entwurf aktualisiert.',
+    updatedLabel: t('orders.message.aiUpdated'),
   });
 
   useEffect(() => {
@@ -1394,7 +1536,7 @@ function OrderMessageComposer({
   // Both the button and ⌘↵ ask first — the mail leaves immediately once sent.
   function requestSend() {
     if (!body.trim()) {
-      setLocalError('Bitte zuerst eine Nachricht verfassen.');
+      setLocalError(t('orders.message.needBody'));
       return;
     }
     setLocalError(null);
@@ -1426,7 +1568,7 @@ function OrderMessageComposer({
 
   return (
     <div>
-      <SectionLabel icon={Mail}>Nachricht an den Kunden</SectionLabel>
+      <SectionLabel icon={Mail}>{t('orders.section.message')}</SectionLabel>
 
       {sent.length > 0 && (
         <ul className="mt-2 space-y-1.5">
@@ -1452,9 +1594,9 @@ function OrderMessageComposer({
             if (justSent) setJustSent(false);
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Nachricht an den Kunden …"
+          placeholder={t('orders.message.placeholder')}
           disabled={isSending}
-          aria-label="Nachricht an den Kunden"
+          aria-label={t('orders.section.message')}
           className="min-h-[120px] resize-none border-0 bg-transparent px-3.5 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0 sm:text-2sm"
         />
         {localError && (
@@ -1474,28 +1616,31 @@ function OrderMessageComposer({
             className="flex items-center gap-1.5 px-3.5 pb-2 text-xs text-success"
           >
             <Check className="size-3.5" />
-            <span>Nachricht gesendet.</span>
+            <span>{t('orders.message.sentNotice')}</span>
           </div>
         )}
         <ClaudeChatBox
           editablePrompt={{ kind: 'order_message', companySlug }}
           busy={assist.busy}
           history={assist.history}
-          placeholder="Claude bitten, eine Nachricht zu schreiben oder anzupassen …"
-          idleHint={
-            body.trim() ? 'Verbessert deinen Entwurf' : 'Schreibt eine Nachricht zum Auftrag'
-          }
+          placeholder={t('orders.message.aiPlaceholder')}
+          idleHint={body.trim() ? t('orders.message.aiRefine') : t('orders.message.aiFresh')}
           busyHint="schreibt …"
           sendLabel="An Claude senden"
           quickActions={[
             {
-              label: 'Nachricht entwerfen',
-              run: () => assist.run(undefined, 'Nachricht entwerfen', { fresh: true }),
+              label: t('orders.message.aiDraft'),
+              run: () => assist.run(undefined, t('orders.message.aiDraft'), { fresh: true }),
             },
-            { label: 'Kürzer', run: () => assist.run('Deutlich kürzer formulieren.', 'Kürzer') },
             {
-              label: 'Freundlicher',
-              run: () => assist.run('Wärmer und freundlicher formulieren.', 'Freundlicher'),
+              label: t('orders.message.aiShorter'),
+              run: () =>
+                assist.run(t('orders.message.aiShorterPrompt'), t('orders.message.aiShorter')),
+            },
+            {
+              label: t('orders.message.aiWarmer'),
+              run: () =>
+                assist.run(t('orders.message.aiWarmerPrompt'), t('orders.message.aiWarmer')),
             },
           ]}
           onSend={(instruction) => assist.run(instruction, instruction)}
@@ -1504,7 +1649,8 @@ function OrderMessageComposer({
           <span className="flex items-center gap-1.5 truncate text-2xs text-muted-foreground">
             <Mail className="size-3" />
             <span>
-              An <span className="font-medium text-foreground/80">{order.customerEmail}</span>
+              {t('orders.message.recipientPrefix')}{' '}
+              <span className="font-medium text-foreground/80">{order.customerEmail}</span>
             </span>
           </span>
           <div className="flex items-center gap-2">
@@ -1515,12 +1661,12 @@ function OrderMessageComposer({
               {isSending ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />
-                  Senden …
+                  {t('orders.message.sending')}
                 </>
               ) : (
                 <>
                   <Send className="size-3.5" />
-                  Senden
+                  {t('orders.message.send')}
                 </>
               )}
             </Button>
@@ -1531,9 +1677,9 @@ function OrderMessageComposer({
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Nachricht wirklich senden?"
-        description={`Die E-Mail geht sofort an ${order.customerEmail} und kann nicht zurückgeholt werden.`}
-        confirmLabel="Senden"
+        title={t('orders.message.confirmTitle')}
+        description={t('orders.message.confirmBody', { email: order.customerEmail })}
+        confirmLabel={t('orders.message.send')}
         onConfirm={() => void handleSend()}
         isPending={isSending}
       />
@@ -1551,12 +1697,13 @@ function RowSyncButton({
   isSyncing: boolean;
   onClick: (e: React.MouseEvent) => void;
 }) {
+  const t = useT();
   if (!show) return null;
   return (
     <button
       type="button"
-      aria-label="Mit Stripe abgleichen"
-      title="Mit Stripe abgleichen"
+      aria-label={t('orders.stripe.sync')}
+      title={t('orders.stripe.sync')}
       onClick={onClick}
       className="pointer-events-auto relative z-10 ml-2 inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
     >
@@ -1578,6 +1725,7 @@ function AfterServicePaymentBlock({
   order: OrderRow;
   bcp47: string;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const detailKey = ['order-detail', companySlug, order.id] as const;
   const listKeyPrefix = ['orders-infinite', companySlug] as const;
@@ -1616,7 +1764,7 @@ function AfterServicePaymentBlock({
 
   return (
     <div>
-      <SectionLabel icon={CreditCard}>Zahlung nach Leistung</SectionLabel>
+      <SectionLabel icon={CreditCard}>{t('orders.section.payAfterService')}</SectionLabel>
 
       {isPaid ? (
         <div className="mt-2 flex items-center gap-2 rounded-xl border border-success/30 bg-success-soft px-3 py-2.5 text-sm">
@@ -1636,8 +1784,9 @@ function AfterServicePaymentBlock({
       ) : (
         <>
           <p className="mt-2 text-xs text-muted-foreground">
-            Service erbracht? Erfassen Sie hier, wie der Kunde die{' '}
-            {formatEur(order.totalCents, bcp47)} bezahlt hat.
+            {t('orders.afterService.recordHint', {
+              amount: formatEur(order.totalCents, bcp47),
+            })}
           </p>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             <Button
@@ -1684,9 +1833,7 @@ function AfterServicePaymentBlock({
           {linkUrl && (
             <div className="mt-3 rounded-xl border border-info/30 bg-info-soft p-3 text-xs">
               <p className="text-info">
-                Zahlungslink erstellt und per E-Mail an{' '}
-                <span className="font-medium">{order.customerEmail}</span> gesendet. Sie können ihn
-                auch direkt teilen:
+                {t('orders.afterService.linkCreated', { email: order.customerEmail })}
               </p>
               <div className="mt-2 flex items-center gap-2">
                 <input
@@ -1739,6 +1886,7 @@ function StripePaymentBlock({
   } | null;
   syncError: string | null;
 }) {
+  const t = useT();
   // PayPal orders settle in the PayPal account — no Stripe IDs and no Stripe sync.
   if (order.paymentProvider === 'paypal') {
     return <PayPalPaymentBlock order={order} />;
@@ -1756,12 +1904,10 @@ function StripePaymentBlock({
 
   return (
     <div>
-      <SectionLabel icon={CreditCard}>Zahlung</SectionLabel>
+      <SectionLabel icon={CreditCard}>{t('orders.section.payment')}</SectionLabel>
 
       {!hasAnyStripeId ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Keine Stripe-Daten vorhanden — Auftrag wurde vor dem Checkout abgebrochen.
-        </p>
+        <p className="mt-2 text-xs text-muted-foreground">{t('orders.stripe.noData')}</p>
       ) : (
         <div className="mt-2 overflow-hidden rounded-xl border border-border bg-background">
           {/* Header strip — payment status + quick deep links */}
@@ -1777,7 +1923,7 @@ function StripePaymentBlock({
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
               >
-                Im Stripe Dashboard öffnen
+                {t('orders.stripe.openDashboard')}
                 <ExternalLink className="size-3" aria-hidden="true" />
               </a>
             )}
@@ -1841,10 +1987,11 @@ function StripePaymentBlock({
 }
 
 function PayPalPaymentBlock({ order }: { order: OrderRow }) {
+  const t = useT();
   const hasIds = !!(order.paypalOrderId || order.paypalCaptureId);
   return (
     <div>
-      <SectionLabel icon={CreditCard}>Zahlung</SectionLabel>
+      <SectionLabel icon={CreditCard}>{t('orders.section.payment')}</SectionLabel>
       <div className="mt-2 overflow-hidden rounded-xl border border-border bg-background">
         <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
           <CreditCard className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -1860,9 +2007,7 @@ function PayPalPaymentBlock({ order }: { order: OrderRow }) {
             )}
           </dl>
         ) : (
-          <p className="px-3 py-2 text-xs text-muted-foreground">
-            Keine PayPal-Daten vorhanden — Auftrag wurde vor der Zahlung abgebrochen.
-          </p>
+          <p className="px-3 py-2 text-xs text-muted-foreground">{t('orders.paypal.noData')}</p>
         )}
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
@@ -1919,22 +2064,26 @@ function SyncResultBanner({
     action: 'marked_paid' | 'marked_cancelled' | 'still_pending' | 'noop';
   };
 }) {
+  const t = useT();
   const map = {
     marked_paid: {
       cls: 'border-success/30 bg-success-soft text-success',
-      text: 'Stripe-Zahlung bestätigt — Auftrag ist jetzt bezahlt und Bestätigungs-E-Mail wurde versendet.',
+      text: t('orders.stripe.markedPaid'),
     },
     marked_cancelled: {
       cls: 'border-destructive/30 bg-destructive/10 text-destructive',
-      text: 'Stripe-Session ist abgelaufen — Auftrag wurde storniert.',
+      text: t('orders.stripe.markedCancelled'),
     },
     still_pending: {
       cls: 'border-warning/30 bg-warning-soft text-warning',
-      text: `Zahlung läuft noch (Stripe: ${result.stripe.sessionStatus}/${result.stripe.paymentStatus}). Kein Handlungsbedarf.`,
+      text: t('orders.stripe.stillPending', {
+        sessionStatus: result.stripe.sessionStatus,
+        paymentStatus: result.stripe.paymentStatus,
+      }),
     },
     noop: {
       cls: 'border-border bg-muted/40 text-foreground',
-      text: 'Auftrag ist bereits im Endstatus — kein Abgleich nötig.',
+      text: t('orders.stripe.noop'),
     },
   } as const;
   const m = map[result.action];

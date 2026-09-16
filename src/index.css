@@ -6,6 +6,21 @@
 
 @layer base {
   :root {
+    /*
+     * Tell the browser which scheme its OWN chrome should use — scrollbars,
+     * native date/time inputs, select popups, spinners, the caret.
+     *
+     * The app picks its theme itself (a `.dark` class, which may be an explicit
+     * choice rather than the OS setting), but `index.html` only advertises
+     * `color-scheme: light dark`, i.e. "either is fine — you decide". So the
+     * browser decided from the OS: with the OS in dark mode and the app in its
+     * light theme, every UA-drawn control came out dark. That is where the black
+     * scrollbars on the order list and the black date fields came from.
+     *
+     * Declaring it here binds the UA's chrome to the resolved theme instead.
+     */
+    color-scheme: light;
+
     /* Reinigungs-Portal warm palette — cream surfaces, rust accents, dark warm-brown ink */
     --background: 34 32% 94%;
     --foreground: 20 22% 14%;
@@ -95,6 +110,8 @@
   }
 
   .dark {
+    color-scheme: dark;
+
     --background: 24 14% 10%;
     --foreground: 38 30% 92%;
 
