@@ -363,6 +363,7 @@ export const en: Dict = {
       super_admin: 'Super admin',
       admin: 'Admin',
       manager: 'Manager',
+      seo: 'SEO / Blog',
       viewer: 'Viewer',
       none: 'No access',
     },

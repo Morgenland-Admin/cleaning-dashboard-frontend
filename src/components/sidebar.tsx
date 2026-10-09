@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useProject } from '@/contexts/project-context';
 import { useT, type DictKey } from '@/i18n';
+import { seoMayOpen, useIsSeoOnly } from '@/lib/access';
 import { chatAdminApi } from '@/lib/api';
 import { authClient, useSession } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
@@ -87,6 +88,8 @@ interface SidebarBodyProps {
 
 export function SidebarBody({ onNavigate }: SidebarBodyProps = {}) {
   const t = useT();
+  const seoOnly = useIsSeoOnly();
+  const nav = seoOnly ? primaryNav.filter((item) => seoMayOpen(item.to)) : primaryNav;
   return (
     <>
       <BrandBlock className="px-1 pt-1" />
@@ -94,9 +97,11 @@ export function SidebarBody({ onNavigate }: SidebarBodyProps = {}) {
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain">
         <SectionLabel>{t('nav.section')}</SectionLabel>
         <nav className="flex flex-col gap-0.5">
-          {primaryNav.map((item) => (
+          {nav.map((item) => (
             <span key={item.to} className="contents">
-              {item.to === '/companies' ? <ChatNavEntry onNavigate={onNavigate} t={t} /> : null}
+              {item.to === '/companies' && !seoOnly ? (
+                <ChatNavEntry onNavigate={onNavigate} t={t} />
+              ) : null}
               <NavItem item={item} onNavigate={onNavigate} t={t} />
             </span>
           ))}

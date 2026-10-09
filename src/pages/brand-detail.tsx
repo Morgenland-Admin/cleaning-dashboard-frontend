@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { EmptyState } from '@/components/empty-state';
 import { PageHeading } from '@/components/page-heading';
 import { useT } from '@/i18n';
+import { useIsSeoOnly } from '@/lib/access';
 import { ApiError, companiesAdminApi, type CompanyListRow, type CompanyStats } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { CompanyLogoOrMark, EditBrandingForm } from '@/pages/companies';
@@ -18,6 +19,7 @@ export function BrandDetailPage() {
   const { data: session } = useSession();
   const userMeta = session?.user as { accessLevel?: string } | undefined;
   const isSuperAdmin = userMeta?.accessLevel === 'super_admin';
+  const seoOnly = useIsSeoOnly();
 
   const listQuery = useQuery({
     queryKey: ['companies-admin'],
@@ -27,7 +29,8 @@ export function BrandDetailPage() {
   const statsQuery = useQuery({
     queryKey: ['company-stats', slug],
     queryFn: ({ signal }) => companiesAdminApi.stats(slug, signal),
-    enabled: !!slug,
+    // Order counts + revenue are outside the `seo` scope (backend 403s it).
+    enabled: !!slug && !seoOnly,
   });
 
   const company = listQuery.data?.companies.find((c) => c.slug === slug) ?? null;
@@ -122,12 +125,14 @@ export function BrandDetailPage() {
         actions={<CompanyLogoOrMark company={company} size="lg" />}
       />
 
-      <StatsRow
-        stats={statsQuery.data?.stats}
-        isLoading={statsQuery.isLoading}
-        error={statsQuery.error as Error | null}
-        t={t}
-      />
+      {seoOnly ? null : (
+        <StatsRow
+          stats={statsQuery.data?.stats}
+          isLoading={statsQuery.isLoading}
+          error={statsQuery.error as Error | null}
+          t={t}
+        />
+      )}
 
       <section
         aria-labelledby="brand-edit-heading"

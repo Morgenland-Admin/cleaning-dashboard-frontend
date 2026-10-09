@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTheme, type Theme } from '@/contexts/theme-context';
 import { useLocale, useT, type Locale } from '@/i18n';
+import { useIsSeoOnly } from '@/lib/access';
 import {
   usersApi,
   type SettingsPatch,
@@ -47,6 +48,7 @@ const LOCALES: { value: Locale; label: string; flag: string }[] = [
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
+  const seoOnly = useIsSeoOnly();
   const { setTheme: applyTheme } = useTheme();
   const { locale, setLocale } = useLocale();
   const t = useT();
@@ -257,7 +259,7 @@ export function SettingsPage() {
         </div>
       </SectionCard>
 
-      <PushNotificationsSection />
+      {seoOnly ? null : <PushNotificationsSection />}
 
       <ChangePasswordSection />
     </div>

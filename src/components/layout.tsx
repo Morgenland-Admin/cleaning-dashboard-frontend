@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { Header } from '@/components/header';
 import { MobileBottomNav } from '@/components/mobile-bottom-nav';
@@ -8,6 +8,7 @@ import { PwaPrompts } from '@/components/pwa-prompts';
 import { Sidebar } from '@/components/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useT } from '@/i18n';
+import { SEO_HOME, seoMayOpen, useIsSeoOnly } from '@/lib/access';
 
 // Routes that strip `<main>` padding (own their own scroll container).
 const FULL_BLEED_ROUTES = ['/chat'];
@@ -16,6 +17,10 @@ export function AppLayout() {
   const t = useT();
   const { pathname } = useLocation();
   const isFullBleed = FULL_BLEED_ROUTES.some((p) => pathname.startsWith(p));
+  const seoOnly = useIsSeoOnly();
+  // Blog/SEO writers land on the blog; any other page (incl. the overview at /)
+  // bounces there. The backend 403s those APIs regardless.
+  const blocked = seoOnly && !seoMayOpen(pathname);
 
   return (
     <div className="flex min-h-svh bg-muted/30">
@@ -46,13 +51,14 @@ export function AppLayout() {
               </div>
             }
           >
-            <Outlet />
+            {blocked ? <Navigate to={SEO_HOME} replace /> : <Outlet />}
           </Suspense>
         </main>
       </div>
       <MobileBottomNav />
       <OfflineBanner />
-      <PwaPrompts />
+      {/* Push alerts are order/inquiry events — nothing an seo user receives. */}
+      {seoOnly ? null : <PwaPrompts />}
     </div>
   );
 }

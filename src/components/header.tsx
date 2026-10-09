@@ -23,6 +23,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { useLocale, type Locale } from '@/i18n';
+import { useIsSeoOnly } from '@/lib/access';
 import { authClient, useSession } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
 
@@ -30,7 +31,12 @@ export function Header() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  useCommandPaletteShortcut(() => setPaletteOpen(true));
+  // Global search + notifications cover orders/customers/inquiries — out of the
+  // `seo` scope, and their APIs 403 for it.
+  const seoOnly = useIsSeoOnly();
+  useCommandPaletteShortcut(() => {
+    if (!seoOnly) setPaletteOpen(true);
+  });
   const { data } = useSession();
   const { t, locale, setLocale } = useLocale();
   const [signingOut, setSigningOut] = useState(false);
@@ -74,38 +80,42 @@ export function Header() {
         </SheetContent>
       </Sheet>
 
-      {/*
+      {seoOnly ? null : (
+        <>
+          {/*
         A button, not an input: the palette owns the real field. Typing here and
         having nothing happen was the old bug — now the whole pill is the affordance
         that opens it, and ⌘K does the same from anywhere.
       */}
-      <button
-        type="button"
-        onClick={() => setPaletteOpen(true)}
-        className="group relative hidden h-9 w-full max-w-[520px] items-center rounded-full border border-border bg-card pl-9 pr-16 text-left text-sm text-muted-foreground shadow-sm transition-colors hover:border-foreground/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
-      >
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
-          aria-hidden="true"
-        />
-        {t('search.placeholder')}
-        <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 select-none items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-3xs font-medium md:inline-flex">
-          ⌘K
-        </kbd>
-      </button>
-      {/* Mobile: the pill has no room, so search is an icon button. */}
-      <button
-        type="button"
-        onClick={() => setPaletteOpen(true)}
-        aria-label={t('search.title')}
-        className="ml-1 inline-flex size-10 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
-      >
-        <Search className="size-4" aria-hidden="true" />
-      </button>
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="group relative hidden h-9 w-full max-w-[520px] items-center rounded-full border border-border bg-card pl-9 pr-16 text-left text-sm text-muted-foreground shadow-sm transition-colors hover:border-foreground/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
+          >
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
+              aria-hidden="true"
+            />
+            {t('search.placeholder')}
+            <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 select-none items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-3xs font-medium md:inline-flex">
+              ⌘K
+            </kbd>
+          </button>
+          {/* Mobile: the pill has no room, so search is an icon button. */}
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label={t('search.title')}
+            className="ml-1 inline-flex size-10 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
+          >
+            <Search className="size-4" aria-hidden="true" />
+          </button>
+          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+        </>
+      )}
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-        <NotificationBell />
+        {seoOnly ? null : <NotificationBell />}
 
         {/* Locale toggle — hidden on smallest screens, available in Settings */}
         <LocaleToggle value={locale} onChange={setLocale} className="hidden sm:flex" />

@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject, type CompanySlug } from '@/contexts/project-context';
 import { useLocale, useT, type DictKey } from '@/i18n';
+import { useIsSeoOnly } from '@/lib/access';
 import { ApiError, reviewsAdminApi, type ReviewRow, type ReviewStatus } from '@/lib/api';
 import { useClaudeAssist } from '@/lib/use-claude-assist';
 import { useIsDesktop } from '@/lib/use-is-desktop';
@@ -64,6 +65,8 @@ export function ReviewsPage() {
   const t = useT();
   const { bcp47 } = useLocale();
   usePageTitle(t('reviews.title'));
+  // `seo` reads reviews for content; moderation stays manager+.
+  const readOnly = useIsSeoOnly();
 
   const slug = activeProject.companySlug;
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | 'all'>('all');
@@ -293,6 +296,7 @@ export function ReviewsPage() {
                 t={t}
                 bcp47={bcp47}
                 disabled={busyId === review.id}
+                readOnly={readOnly}
                 onPublish={() => statusMutation.mutate({ id: review.id, status: 'published' })}
                 onHide={() => statusMutation.mutate({ id: review.id, status: 'hidden' })}
                 onFlag={() => {
@@ -430,6 +434,7 @@ function ReviewCard({
   t,
   bcp47,
   disabled,
+  readOnly,
   onPublish,
   onHide,
   onFlag,
@@ -440,6 +445,7 @@ function ReviewCard({
   t: ReturnType<typeof useT>;
   bcp47: string;
   disabled: boolean;
+  readOnly: boolean;
   onPublish: () => void;
   onHide: () => void;
   onFlag: () => void;
@@ -507,43 +513,45 @@ function ReviewCard({
           </blockquote>
         ) : null}
 
-        <div className="flex flex-wrap gap-2 pt-1">
-          {review.status !== 'published' ? (
-            <Button variant="outline" className="h-11" onClick={onPublish} disabled={disabled}>
-              <Eye className="size-4" aria-hidden="true" />
-              {t('reviews.publish')}
+        {readOnly ? null : (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {review.status !== 'published' ? (
+              <Button variant="outline" className="h-11" onClick={onPublish} disabled={disabled}>
+                <Eye className="size-4" aria-hidden="true" />
+                {t('reviews.publish')}
+              </Button>
+            ) : null}
+            {review.status !== 'hidden' ? (
+              <Button variant="outline" className="h-11" onClick={onHide} disabled={disabled}>
+                <EyeOff className="size-4" aria-hidden="true" />
+                {t('reviews.hide')}
+              </Button>
+            ) : null}
+            <Button variant="outline" className="h-11" onClick={onRespond} disabled={disabled}>
+              <Reply className="size-4" aria-hidden="true" />
+              {t('reviews.respond')}
             </Button>
-          ) : null}
-          {review.status !== 'hidden' ? (
-            <Button variant="outline" className="h-11" onClick={onHide} disabled={disabled}>
-              <EyeOff className="size-4" aria-hidden="true" />
-              {t('reviews.hide')}
+            {!review.flagged ? (
+              <Button variant="outline" className="h-11" onClick={onFlag} disabled={disabled}>
+                <Flag className="size-4" aria-hidden="true" />
+                {t('reviews.flag')}
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              className="h-11 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={onDelete}
+              disabled={disabled}
+            >
+              {disabled ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Trash2 className="size-4" aria-hidden="true" />
+              )}
+              {t('reviews.deleteAction')}
             </Button>
-          ) : null}
-          <Button variant="outline" className="h-11" onClick={onRespond} disabled={disabled}>
-            <Reply className="size-4" aria-hidden="true" />
-            {t('reviews.respond')}
-          </Button>
-          {!review.flagged ? (
-            <Button variant="outline" className="h-11" onClick={onFlag} disabled={disabled}>
-              <Flag className="size-4" aria-hidden="true" />
-              {t('reviews.flag')}
-            </Button>
-          ) : null}
-          <Button
-            variant="outline"
-            className="h-11 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={onDelete}
-            disabled={disabled}
-          >
-            {disabled ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Trash2 className="size-4" aria-hidden="true" />
-            )}
-            {t('reviews.deleteAction')}
-          </Button>
-        </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

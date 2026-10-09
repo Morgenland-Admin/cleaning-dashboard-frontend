@@ -1,7 +1,18 @@
-import { Briefcase, ClipboardList, LayoutGrid, Mail, User, type LucideIcon } from 'lucide-react';
+import {
+  Briefcase,
+  Building2,
+  ClipboardList,
+  LayoutGrid,
+  Mail,
+  Newspaper,
+  Star,
+  User,
+  type LucideIcon,
+} from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 import { useT, type DictKey } from '@/i18n';
+import { useIsSeoOnly } from '@/lib/access';
 import { cn } from '@/lib/utils';
 
 interface Tab {
@@ -19,6 +30,14 @@ const TABS: Tab[] = [
   { to: '/profile', labelKey: 'mobileNav.profile', icon: User },
 ];
 
+/** The `seo` level's pages (see lib/access.ts) — no orders/inquiries/contacts. */
+const SEO_TABS: Tab[] = [
+  { to: '/blog', labelKey: 'nav.blog', icon: Newspaper },
+  { to: '/bewertungen', labelKey: 'nav.reviews', icon: Star },
+  { to: '/companies', labelKey: 'nav.companies', icon: Building2 },
+  { to: '/profile', labelKey: 'mobileNav.profile', icon: User },
+];
+
 /**
  * App-style tab bar: icon over a visible label, with the active tab tinted.
  *
@@ -29,13 +48,14 @@ const TABS: Tab[] = [
  */
 export function MobileBottomNav() {
   const t = useT();
+  const tabs = useIsSeoOnly() ? SEO_TABS : TABS;
   return (
     <nav
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/85 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl lg:hidden"
     >
       <div className="mx-auto flex max-w-md items-stretch justify-around px-1">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <TabItem key={tab.to} tab={tab} label={t(tab.labelKey)} />
         ))}
       </div>

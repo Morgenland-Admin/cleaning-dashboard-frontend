@@ -367,6 +367,7 @@ export const de = {
       super_admin: 'Super-Admin',
       admin: 'Admin',
       manager: 'Manager',
+      seo: 'SEO / Blog',
       viewer: 'Beobachter',
       none: 'Kein Zugriff',
     },

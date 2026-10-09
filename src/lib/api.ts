@@ -168,7 +168,7 @@ export interface ContactSubmitInput {
 // --- Users / Profile / Settings -------------------------------------------
 
 export type UserAudience = 'admin' | 'partner' | 'customer';
-export type UserAccessLevel = 'super_admin' | 'admin' | 'manager' | 'viewer' | 'none';
+export type UserAccessLevel = 'super_admin' | 'admin' | 'manager' | 'seo' | 'viewer' | 'none';
 
 export interface MeUser {
   id: string;
@@ -1599,7 +1599,7 @@ export interface InviteCreateInput {
   companySlug: string;
   role?: 'owner' | 'admin' | 'manager' | 'viewer' | 'partner';
   audience?: 'admin' | 'partner';
-  accessLevel?: 'super_admin' | 'admin' | 'manager' | 'viewer' | 'none';
+  accessLevel?: UserAccessLevel;
   /** Pre-fill the partner profile on accept (only honoured when audience=partner). */
   partner?: {
     companyName: string;
