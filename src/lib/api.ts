@@ -2573,12 +2573,47 @@ export interface SeoPageListParams {
   cursor?: string;
 }
 
+export type SeoPageJsonLd = Record<string, unknown> | unknown[];
+
 export interface SeoPagePatch {
   status?: SeoPageStatus;
+  path?: string;
   title?: string;
   metaTitle?: string;
   metaDescription?: string;
   h1?: string;
+  bodyHtml?: string;
+  schemaJsonld?: SeoPageJsonLd;
+  faq?: Array<{ question: string; answer: string }>;
+}
+
+export interface SeoPageCreate extends SeoPagePatch {
+  type: SeoPageType;
+  path: string;
+  source?: string;
+}
+
+/**
+ * Sign + stream an image to the public S3 prefix. Returns its permanent public
+ * URL — used for blog featured images and images inside the article body.
+ */
+export async function uploadPublicImage(companySlug: CompanySlug, file: File): Promise<string> {
+  const contentType = file.type || 'application/octet-stream';
+  const sign = await request<{ uploadUrl: string; key: string; publicUrl: string }>(
+    '/admin/uploads/sign-public-image',
+    {
+      method: 'POST',
+      companySlug,
+      body: { filename: file.name, contentType, size: file.size },
+    },
+  );
+  const put = await fetch(sign.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: file,
+  });
+  if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+  return sign.publicUrl;
 }
 
 export const seoPagesAdminApi = {
@@ -2597,6 +2632,13 @@ export const seoPagesAdminApi = {
   get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
     return request<{ page: SeoPageRow }>(`/admin/seo-pages/${id}`, { companySlug, signal });
   },
+  create(companySlug: CompanySlug, input: SeoPageCreate) {
+    return request<{ page: SeoPageRow }>('/admin/seo-pages', {
+      method: 'POST',
+      companySlug,
+      body: input,
+    });
+  },
   update(companySlug: CompanySlug, id: number, patch: SeoPagePatch) {
     return request<{ page: SeoPageRow }>(`/admin/seo-pages/${id}`, {
       method: 'PATCH',
@@ -2614,27 +2656,10 @@ export const seoPagesAdminApi = {
   remove(companySlug: CompanySlug, id: number) {
     return request<void>(`/admin/seo-pages/${id}`, { method: 'DELETE', companySlug });
   },
-  /** Sign + stream a public image to S3, then store its URL as the featured image. */
+  /** Upload a public image, then store its URL as the featured image. */
   async uploadFeaturedImage(companySlug: CompanySlug, id: number, file: File) {
-    const sign = await request<{ uploadUrl: string; key: string; publicUrl: string }>(
-      '/admin/uploads/sign-public-image',
-      {
-        method: 'POST',
-        companySlug,
-        body: {
-          filename: file.name,
-          contentType: file.type || 'application/octet-stream',
-          size: file.size,
-        },
-      },
-    );
-    const put = await fetch(sign.uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'application/octet-stream' },
-      body: file,
-    });
-    if (!put.ok) throw new Error(`Upload failed (${put.status})`);
-    return seoPagesAdminApi.setFeaturedImage(companySlug, id, sign.publicUrl);
+    const publicUrl = await uploadPublicImage(companySlug, file);
+    return seoPagesAdminApi.setFeaturedImage(companySlug, id, publicUrl);
   },
 };
 

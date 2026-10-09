@@ -25,6 +25,9 @@ export default defineConfig({
       ],
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webp,woff2}'],
+        // Storefront typefaces for the blog editor only — fetched when someone
+        // opens the editor, not pushed into every install's precache.
+        globIgnores: ['**/{dm-sans,lora}-*.woff2'],
       },
       manifest: {
         name: 'Reinigungs-Portal',

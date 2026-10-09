@@ -15,7 +15,6 @@ import {
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { BlogEditDialog } from '@/components/blog-edit-dialog';
 import { BlogImageDialog } from '@/components/blog-image-dialog';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeading } from '@/components/page-heading';
@@ -27,19 +26,22 @@ import { useProject } from '@/contexts/project-context';
 import { toast } from '@/hooks/use-toast';
 import { useLocale, useT } from '@/i18n';
 import { ApiError, seoPagesAdminApi, type SeoPageStatus } from '@/lib/api';
-import { articleMeta, featuredImageUrl, postSlug, STATUS_KEY, STATUS_TONE } from '@/lib/blog-utils';
+import {
+  articleMeta,
+  featuredImageUrl,
+  postSlug,
+  siteThemeClass,
+  STATUS_KEY,
+  STATUS_TONE,
+} from '@/lib/blog-utils';
 import { usePageTitle } from '@/lib/use-page-title';
-import { formatDateTime } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 
-// Scoped typographic styling for the rendered (already-sanitized) article body —
-// the dashboard has no global prose plugin.
-const PROSE =
-  'max-w-none text-sm leading-relaxed text-foreground/90 ' +
-  '[&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:tracking-tight ' +
-  '[&_h3]:mt-4 [&_h3]:text-lg [&_h3]:font-semibold ' +
-  '[&_p]:mt-3 [&_ul]:mt-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-3 [&_ol]:list-decimal [&_ol]:pl-5 ' +
-  '[&_li]:mt-1 [&_a]:text-primary [&_a]:underline [&_strong]:font-semibold ' +
-  '[&_img]:my-4 [&_img]:rounded-lg';
+// Same storefront typefaces as the editor, so the body reads like the live site.
+import '@fontsource-variable/dm-sans';
+import '@fontsource-variable/dm-sans/wght-italic.css';
+import '@fontsource-variable/lora';
+import '@fontsource-variable/lora/wght-italic.css';
 
 export function BlogDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -51,7 +53,6 @@ export function BlogDetailPage() {
   const t = useT();
   const { bcp47 } = useLocale();
 
-  const [editOpen, setEditOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -144,9 +145,11 @@ export function BlogDetailPage() {
         subtitle={`/${post.path}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="h-11" onClick={() => setEditOpen(true)}>
-              <Pencil className="size-4" aria-hidden="true" />
-              {t('common.edit')}
+            <Button variant="outline" className="h-11" asChild>
+              <Link to={`/blog/${post.id}/edit`}>
+                <Pencil className="size-4" aria-hidden="true" />
+                {t('common.edit')}
+              </Link>
             </Button>
             <Button variant="outline" className="h-11" onClick={() => setImageOpen(true)}>
               <ImagePlus className="size-4" aria-hidden="true" />
@@ -247,19 +250,22 @@ export function BlogDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Article body */}
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            {post.h1 && post.h1 !== post.title ? (
-              <h2 className="mb-4 text-2xl font-bold tracking-tight">{post.h1}</h2>
-            ) : null}
-            {post.bodyHtml ? (
-              <div className={PROSE} dangerouslySetInnerHTML={{ __html: post.bodyHtml }} />
-            ) : (
-              <p className="text-sm text-muted-foreground">{t('blog.noBody')}</p>
-            )}
-          </CardContent>
-        </Card>
+        {/* Article body, in the storefront's look (see .site-theme-* in index.css). */}
+        <div
+          className={cn(
+            'blog-canvas overflow-hidden rounded-xl border border-border p-4 shadow-sm sm:p-8',
+            siteThemeClass(slug),
+          )}
+        >
+          {post.bodyHtml ? (
+            <div
+              className="blog-editor-content blog-preview"
+              dangerouslySetInnerHTML={{ __html: post.bodyHtml }}
+            />
+          ) : (
+            <p className="text-sm">{t('blog.noBody')}</p>
+          )}
+        </div>
 
         {/* FAQ */}
         {post.faq.length > 0 ? (
@@ -292,14 +298,6 @@ export function BlogDetailPage() {
         </div>
       </div>
 
-      <BlogEditDialog
-        key={`edit-${editOpen}`}
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        companySlug={slug}
-        post={post}
-        onSuccess={invalidate}
-      />
       <BlogImageDialog
         key={`img-${imageOpen}`}
         open={imageOpen}

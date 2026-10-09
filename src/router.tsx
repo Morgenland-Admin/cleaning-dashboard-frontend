@@ -20,6 +20,9 @@ const BlogPage = lazy(() => import('@/pages/blog').then((m) => ({ default: m.Blo
 const BlogDetailPage = lazy(() =>
   import('@/pages/blog-detail').then((m) => ({ default: m.BlogDetailPage })),
 );
+const BlogEditorPage = lazy(() =>
+  import('@/pages/blog-editor').then((m) => ({ default: m.BlogEditorPage })),
+);
 const BrandNewPage = lazy(() =>
   import('@/pages/brand-new').then((m) => ({ default: m.BrandNewPage })),
 );
@@ -108,7 +111,9 @@ export const router = createBrowserRouter([
           { path: 'abos', element: <SubscriptionsPage /> },
           { path: 'bewertungen', element: <ReviewsPage /> },
           { path: 'blog', element: <BlogPage /> },
+          { path: 'blog/new', element: <BlogEditorPage /> },
           { path: 'blog/:id', element: <BlogDetailPage /> },
+          { path: 'blog/:id/edit', element: <BlogEditorPage /> },
           { path: 'inquiries', element: <InquiriesPage /> },
           { path: 'callbacks', element: <CallbacksPage /> },
           { path: 'contacts', element: <ContactsPage /> },

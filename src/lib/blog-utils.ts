@@ -78,3 +78,119 @@ export function articleMeta(row: SeoPageRow): {
   }
   return { author, datePublished };
 }
+
+/** Path prefix every blog row carries in seo_pages (`blog/<slug>`). */
+export const BLOG_PATH_PREFIX = 'blog/';
+
+const UMLAUTS: Record<string, string> = { ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' };
+
+/**
+ * German-aware URL slug: umlauts transliterated (ä → ae), everything else
+ * reduced to a-z0-9 joined by single hyphens. Matches the backend PATH_RE.
+ */
+export function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[äöüß]/g, (c) => UMLAUTS[c] ?? c)
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120)
+    .replace(/-+$/, '');
+}
+
+export const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+export interface ArticleFields {
+  image: string | null;
+  author: string | null;
+  datePublished: string | null;
+}
+
+export function readArticle(row: Pick<SeoPageRow, 'schemaJsonld'>): ArticleFields {
+  const { author, datePublished } = articleMeta(row as SeoPageRow);
+  return { image: featuredImageUrl(row as SeoPageRow), author, datePublished };
+}
+
+function isObject(node: unknown): node is Record<string, unknown> {
+  return !!node && typeof node === 'object' && !Array.isArray(node);
+}
+
+function isArticle(node: unknown): node is Record<string, unknown> {
+  return isObject(node) && /article|blogposting/i.test(String(node['@type'] ?? ''));
+}
+
+/**
+ * Write the editor's article fields onto the JSON-LD Article node, keeping
+ * every other node and key the automation put there. Empty values delete the
+ * key so the storefront falls back to its defaults.
+ */
+export function writeArticle(
+  schema: SeoPageRow['schemaJsonld'],
+  fields: ArticleFields & { headline: string; description: string },
+): Record<string, unknown> | unknown[] {
+  const apply = (node: Record<string, unknown>) => {
+    const next: Record<string, unknown> = { ...node };
+    if (!next['@context']) next['@context'] = 'https://schema.org';
+    if (!next['@type']) next['@type'] = 'BlogPosting';
+    const set = (key: string, value: unknown) => {
+      if (value === null || value === '') delete next[key];
+      else next[key] = value;
+    };
+    set('headline', fields.headline);
+    set('description', fields.description);
+    set('image', fields.image);
+    set('datePublished', fields.datePublished);
+    const prevAuthor = node.author;
+    if (!fields.author) delete next.author;
+    else if (isObject(prevAuthor)) next.author = { ...prevAuthor, name: fields.author };
+    else next.author = { '@type': 'Organization', name: fields.author };
+    return next;
+  };
+
+  if (Array.isArray(schema)) {
+    const idx = schema.findIndex(isArticle);
+    const at = idx >= 0 ? idx : schema.findIndex(isObject);
+    if (at < 0) return [...schema, apply({})];
+    return schema.map((n, i) => (i === at ? apply(n as Record<string, unknown>) : n));
+  }
+  return apply(isObject(schema) ? schema : {});
+}
+
+/** Plain text of an HTML fragment (for word counts and SEO checks). */
+export function htmlToText(html: string): string {
+  if (typeof DOMParser === 'undefined') return html.replace(/<[^>]+>/g, ' ');
+  return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '';
+}
+
+export function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/** Same rate the storefront uses for its "Min. Lesezeit". */
+export function readingMinutes(words: number): number {
+  return Math.max(1, Math.round(words / 200));
+}
+
+/** `2026-10-09T…Z` → `2026-10-09` for a date input, in local time. */
+export function toDateInput(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * Storefronts whose look the editor canvas and preview reproduce (see
+ * `.site-theme-*` in index.css). Brands without an entry fall back to the
+ * dashboard palette.
+ */
+const SITE_THEME: Partial<Record<string, string>> = {
+  hamburg_teppichreinigung: 'site-theme-hamburg',
+};
+
+export function siteThemeClass(companySlug: string): string | null {
+  return SITE_THEME[companySlug] ?? null;
+}

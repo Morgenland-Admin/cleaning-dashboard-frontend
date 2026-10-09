@@ -6,14 +6,14 @@ import {
   Loader2,
   Newspaper,
   Pencil,
+  Plus,
   RefreshCcw,
   Trash2,
   Undo2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
-import { BlogEditDialog } from '@/components/blog-edit-dialog';
 import { BlogImageDialog } from '@/components/blog-image-dialog';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
@@ -57,7 +57,7 @@ export function BlogPage() {
   // without the page growing to many screens tall.
   const listScrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
-  const [editTarget, setEditTarget] = useState<SeoPageRow | null>(null);
+  const navigate = useNavigate();
   const [imageTarget, setImageTarget] = useState<SeoPageRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SeoPageRow | null>(null);
 
@@ -139,18 +139,26 @@ export function BlogPage() {
       subtitle={t('blog.subtitle')}
       actions={
         isAllBrands ? undefined : (
-          <Button
-            variant="outline"
-            className="h-11"
-            onClick={() => void listQuery.refetch()}
-            disabled={listQuery.isFetching}
-          >
-            <RefreshCcw
-              className={cn('size-4', listQuery.isFetching && 'animate-spin')}
-              aria-hidden="true"
-            />
-            {t('common.refresh')}
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              className="h-11"
+              onClick={() => void listQuery.refetch()}
+              disabled={listQuery.isFetching}
+            >
+              <RefreshCcw
+                className={cn('size-4', listQuery.isFetching && 'animate-spin')}
+                aria-hidden="true"
+              />
+              {t('common.refresh')}
+            </Button>
+            <Button className="h-11" asChild>
+              <Link to="/blog/new">
+                <Plus className="size-4" aria-hidden="true" />
+                {t('blog.newPost')}
+              </Link>
+            </Button>
+          </>
         )
       }
     />
@@ -223,7 +231,7 @@ export function BlogPage() {
                 t={t}
                 bcp47={bcp47}
                 disabled={busyId === post.id}
-                onEdit={() => setEditTarget(post)}
+                onEdit={() => navigate(`/blog/${post.id}/edit`)}
                 onImage={() => setImageTarget(post)}
                 onPublish={() => statusMutation.mutate({ id: post.id, status: 'live' })}
                 onUnpublish={() => statusMutation.mutate({ id: post.id, status: 'draft' })}
@@ -242,14 +250,6 @@ export function BlogPage() {
         )}
       </div>
 
-      <BlogEditDialog
-        key={editTarget ? `edit-${editTarget.id}` : 'edit-none'}
-        open={!!editTarget}
-        onOpenChange={(o) => !o && setEditTarget(null)}
-        companySlug={slug}
-        post={editTarget}
-        onSuccess={invalidate}
-      />
       <BlogImageDialog
         key={imageTarget ? `img-${imageTarget.id}` : 'img-none'}
         open={!!imageTarget}
