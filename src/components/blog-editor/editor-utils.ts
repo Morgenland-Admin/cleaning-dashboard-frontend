@@ -1,4 +1,3 @@
-/** `www.x.de` → `https://www.x.de`; site-relative, anchors, mail and tel stay as typed. */
 export function normalizeHref(raw: string): string {
   const href = raw.trim();
   if (!href) return '';

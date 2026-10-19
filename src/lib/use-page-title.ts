@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 
 const SUFFIX = 'Reinigungs-Portal';
 
-/** Sets document.title for the component's lifetime. */
 export function usePageTitle(title: string | null | undefined) {
   useEffect(() => {
     if (title) {

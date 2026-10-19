@@ -1,10 +1,7 @@
 import {
-  AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
   ArrowRight,
-  Eye,
-  EyeOff,
-  Info,
-  Loader2,
   Lock,
   Mail,
   Server,
@@ -14,21 +11,24 @@ import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { BrandBlock } from '@/components/brand-logo';
+import { FormField } from '@/components/form-field';
+import { PasswordInput } from '@/components/password-input';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PROJECTS } from '@/contexts/project-context';
 import { useT, type DictKey } from '@/i18n';
 import { authClient, useSession } from '@/lib/auth-client';
+import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 
 interface LocationState {
   from?: { pathname: string };
 }
 
-// The mark and gradient are a brand's identity, owned by PROJECTS. This page
-// used to restate both, so a brand re-colour would have silently left the login
-// screen showing the old one.
+// Brand mark and gradient are owned by PROJECTS; do not restate them here.
 const BRAND_CARD_COPY: Record<string, { nameKey: DictKey; metaKey: DictKey }> = {
   cleanilo: { nameKey: 'brandFilter.cleanilo.name', metaKey: 'brandFilter.cleanilo.meta' },
   hamburg_teppichreinigung: {
@@ -99,11 +99,11 @@ export function LoginPage() {
   const [forgotSent, setForgotSent] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [notice, setNotice] = useState<Notice>(null);
   const [submitting, setSubmitting] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
+  usePageTitle(mode === 'signin' ? t('login.submit') : t('login.forgotTitle'));
 
   const fromState = location.state as LocationState | null;
   const redirectTo = fromState?.from?.pathname ?? '/';
@@ -142,7 +142,7 @@ export function LoginPage() {
         setNotice({ kind: 'error', text: translateAuthError(result.error, t) });
         return;
       }
-      // Better Auth returns data.user on success; guard against proxy hiccups producing no user.
+      // Guard against a proxy returning success without a user.
       if (!result.data?.user) {
         setNotice({
           kind: 'error',
@@ -167,7 +167,7 @@ export function LoginPage() {
     setNotice(null);
     setSubmitting(true);
     try {
-      // Same success state regardless to avoid email enumeration.
+      // Same success state regardless, to avoid email enumeration.
       await authClient.requestPasswordReset({ email: email.trim() });
       setForgotSent(true);
     } catch (err) {
@@ -184,178 +184,173 @@ export function LoginPage() {
     <div className="grid min-h-svh grid-cols-1 lg:grid-cols-[1.05fr_0.95fr]">
       <BrandCanvas />
 
-      <section className="relative flex flex-col items-center bg-background px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))] sm:px-10 sm:pt-[max(4rem,env(safe-area-inset-top))] lg:justify-center lg:py-10">
-        <div className="w-full max-w-md">
-          <div className="mb-7 flex lg:hidden">
-            <BrandBlock size={40} />
+      <main className="relative flex flex-col items-center bg-background px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))] sm:px-10 sm:pt-[max(4rem,env(safe-area-inset-top))] lg:justify-center lg:py-10">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 flex lg:hidden">
+            <BrandBlock size={36} />
           </div>
 
-          <div className="mb-7">
-            <h1 className="font-serif text-display-sm font-semibold sm:text-display-md">
+          <div className="mb-6 space-y-1.5">
+            <h1 className="text-title font-semibold text-foreground">
               {mode === 'signin' ? t('login.welcome') : t('login.forgotPassword')}
             </h1>
-            <p className="mt-2 text-2sm text-muted-foreground sm:text-sm">
+            <p className="text-2sm text-muted-foreground">
               {mode === 'signin' ? t('login.subtitle') : t('login.forgotPasswordPrompt')}
             </p>
           </div>
 
           <form onSubmit={mode === 'signin' ? onSubmit : onForgotSubmit} className="grid gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="email">{t('login.email')}</Label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  spellCheck="false"
-                  required
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    clearNotice();
-                  }}
-                  disabled={submitting || forgotSent}
-                  placeholder={t('login.emailPlaceholder')}
-                  className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
-                />
-              </div>
-            </div>
+            <FormField label={t('login.email')} htmlFor="email">
+              <EmailInput
+                value={email}
+                onChange={(next) => {
+                  setEmail(next);
+                  clearNotice();
+                }}
+                disabled={submitting || forgotSent}
+                placeholder={t('login.emailPlaceholder')}
+              />
+            </FormField>
 
             {mode === 'signin' ? (
               <>
-                <div className="grid gap-1.5">
-                  <div className="flex items-end justify-between gap-2">
-                    <Label htmlFor="password">{t('login.password')}</Label>
-                    <button
-                      type="button"
-                      className="text-2xs font-medium text-muted-foreground hover:text-foreground focus-visible:underline focus-visible:outline-none"
-                      onClick={() => switchMode('forgot')}
-                    >
-                      {t('login.forgotPassword')}
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      id="password"
-                      name="password"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      required
-                      minLength={8}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        clearNotice();
-                      }}
-                      onKeyUp={handleCapsLock}
-                      onKeyDown={handleCapsLock}
-                      disabled={submitting}
-                      placeholder={t('login.passwordPlaceholder')}
-                      className="h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
-                      aria-pressed={showPassword}
-                    >
-                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                    </button>
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="password">{t('login.password')}</Label>
+                  <PasswordInput
+                    id="password"
+                    name="password"
+                    autoComplete="current-password"
+                    required
+                    minLength={8}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      clearNotice();
+                    }}
+                    onKeyUp={handleCapsLock}
+                    onKeyDown={handleCapsLock}
+                    disabled={submitting}
+                    placeholder={t('login.passwordPlaceholder')}
+                    aria-describedby={capsLockOn ? 'caps-lock-warning' : undefined}
+                  />
                   {capsLockOn ? (
-                    <p role="status" className="flex items-center gap-1 text-2xs text-warning">
-                      <AlertCircle className="size-3" />
+                    <p
+                      id="caps-lock-warning"
+                      role="status"
+                      className="flex items-center gap-1.5 text-xs font-medium text-warning"
+                    >
+                      <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
                       {t('login.capsLock')}
                     </p>
                   ) : null}
                 </div>
 
-                <label className="flex cursor-pointer select-none items-center gap-2.5 py-1 text-2sm text-muted-foreground">
-                  <Checkbox
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                  />
-                  <span>{t('login.rememberMe')}</span>
-                </label>
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <div className="flex items-center gap-2.5">
+                    <Checkbox
+                      id="remember-me"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                    />
+                    <label
+                      htmlFor="remember-me"
+                      className="cursor-pointer select-none text-2sm text-muted-foreground"
+                    >
+                      {t('login.rememberMe')}
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-sm text-2sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => switchMode('forgot')}
+                  >
+                    {t('login.forgotPassword')}
+                  </button>
+                </div>
               </>
             ) : null}
 
             {forgotSent ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex items-start gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm text-success"
-              >
-                <Info className="mt-0.5 size-4 shrink-0" />
-                <span>{t('login.forgotPasswordSent')}</span>
-              </div>
+              <Alert tone="success">{t('login.forgotPasswordSent')}</Alert>
             ) : notice ? (
-              <div
-                role={notice.kind === 'error' ? 'alert' : 'status'}
-                aria-live={notice.kind === 'error' ? 'assertive' : 'polite'}
-                className={cn(
-                  'flex items-start gap-2 rounded-lg border px-3 py-2 text-sm',
-                  notice.kind === 'error'
-                    ? 'border-destructive/30 bg-destructive/5 text-destructive'
-                    : 'border-rust/30 bg-rust/5 text-foreground/85',
-                )}
-              >
-                {notice.kind === 'error' ? (
-                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                ) : (
-                  <Info className="mt-0.5 size-4 shrink-0 text-rust" />
-                )}
-                <span>{notice.text}</span>
-              </div>
+              <Alert tone={notice.kind === 'error' ? 'destructive' : 'info'}>{notice.text}</Alert>
             ) : null}
 
             {!forgotSent ? (
-              <Button
-                type="submit"
-                disabled={submitting}
-                className="h-11 rounded-lg text-sm font-semibold shadow-sm"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    {mode === 'signin' ? t('login.submitting') : t('login.forgotPasswordSending')}
-                  </>
-                ) : mode === 'signin' ? (
-                  <>
-                    {t('login.submit')}
-                    <ArrowRight className="size-4" />
-                  </>
-                ) : (
-                  t('login.forgotPasswordSubmit')
-                )}
+              <Button type="submit" loading={submitting} className="w-full">
+                {mode === 'signin'
+                  ? submitting
+                    ? t('login.submitting')
+                    : t('login.submit')
+                  : submitting
+                    ? t('login.forgotPasswordSending')
+                    : t('login.forgotPasswordSubmit')}
+                {mode === 'signin' && !submitting ? <ArrowRight aria-hidden="true" /> : null}
               </Button>
             ) : null}
 
             {mode === 'forgot' ? (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => switchMode('signin')}
-                className="text-center text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:underline focus-visible:outline-none"
+                className="justify-self-center text-muted-foreground"
               >
-                ← {t('login.forgotPasswordBack')}
-              </button>
+                <ArrowLeft aria-hidden="true" />
+                {t('login.forgotPasswordBack')}
+              </Button>
             ) : null}
           </form>
 
-          <div className="mt-8 flex items-center gap-2 rounded-xl border border-border bg-card/60 px-3 py-2.5 text-xs text-muted-foreground">
-            <ShieldCheck className="size-4 shrink-0 text-rust" />
+          <p className="mt-8 flex items-start gap-2 text-xs text-muted-foreground">
+            <ShieldCheck className="mt-px size-4 shrink-0" aria-hidden="true" />
             <span>{t('login.trustNote')}</span>
-          </div>
+          </p>
 
           <p className="mt-6 text-center text-2xs text-muted-foreground">
             {t('login.copyright', { year: new Date().getFullYear() })}
           </p>
         </div>
-      </section>
+      </main>
+    </div>
+  );
+}
+
+function EmailInput({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  ...aria
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+  id?: string;
+  'aria-invalid'?: boolean;
+  'aria-describedby'?: string;
+}) {
+  return (
+    <div className="relative">
+      <Mail
+        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <Input
+        {...aria}
+        name="email"
+        type="email"
+        autoComplete="email"
+        spellCheck="false"
+        required
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="pl-9"
+      />
     </div>
   );
 }
@@ -368,16 +363,8 @@ function BrandCanvas() {
       className="relative hidden overflow-hidden bg-ink text-parchment lg:flex lg:flex-col"
     >
       <div
-        aria-hidden
-        className="absolute inset-0 opacity-90"
-        style={{
-          background:
-            'radial-gradient(60% 60% at 18% 22%, hsla(14, 68%, 46%, 0.22) 0%, transparent 60%), radial-gradient(50% 60% at 85% 88%, hsla(38, 60%, 50%, 0.10) 0%, transparent 60%)',
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.06]"
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-[0.05]"
         style={{
           backgroundImage:
             'linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)',
@@ -388,31 +375,26 @@ function BrandCanvas() {
       />
 
       <div className="relative flex flex-1 flex-col p-12">
-        <BrandBlock tone="dark" size={40} />
+        <BrandBlock tone="dark" size={36} />
 
-        <div className="mt-auto max-w-xl">
-          <span className="inline-flex items-center gap-2 rounded-full border border-parchment/15 bg-parchment/5 px-2.5 py-1 text-3xs font-semibold uppercase tracking-[0.18em] text-parchment/70">
-            {t('brand.canvas.pill')}
-          </span>
-          <h2 className="mt-5 font-serif text-display-lg font-semibold">
-            {t('brand.canvas.headlinePre')}{' '}
-            <span className="italic text-rust-on-ink">{t('brand.canvas.headlineAccent')}</span>
+        <div className="mt-auto max-w-lg">
+          <p className="text-xs font-medium text-parchment/70">{t('brand.canvas.pill')}</p>
+          <h2 className="mt-3 text-metric font-semibold">
+            {t('brand.canvas.headlinePre')} <span>{t('brand.canvas.headlineAccent')}</span>
             {t('brand.canvas.headlinePost')}
           </h2>
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-parchment/65">
-            {t('brand.canvas.body')}
-          </p>
+          <p className="mt-3 max-w-md text-sm text-parchment/70">{t('brand.canvas.body')}</p>
         </div>
 
-        <ul className="mt-10 grid max-w-xl gap-2.5">
+        <ul className="mt-10 grid max-w-lg gap-2">
           {BRAND_CARDS.map((b) => (
             <li
               key={b.mark}
-              className="flex items-center gap-3 rounded-xl border border-parchment/10 bg-parchment/[0.04] px-3.5 py-3 backdrop-blur-sm"
+              className="flex items-center gap-3 rounded-lg border border-parchment/10 bg-parchment/[0.04] px-3.5 py-3"
             >
               <div
                 className={cn(
-                  'flex size-9 items-center justify-center rounded-md bg-gradient-to-br text-xs font-bold text-white shadow-sm',
+                  'flex size-8 items-center justify-center rounded-md bg-gradient-to-br text-xs font-bold text-white',
                   b.gradient,
                 )}
                 aria-hidden="true"
@@ -420,14 +402,14 @@ function BrandCanvas() {
                 {b.mark}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-2sm font-semibold tracking-tight">{t(b.nameKey)}</div>
-                <div className="truncate text-2xs text-parchment/55">{t(b.metaKey)}</div>
+                <div className="truncate text-2sm font-semibold">{t(b.nameKey)}</div>
+                <div className="truncate text-xs text-parchment/70">{t(b.metaKey)}</div>
               </div>
             </li>
           ))}
         </ul>
 
-        <div className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-parchment/10 pt-5 text-2xs text-parchment/60">
+        <div className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-parchment/10 pt-5 text-xs text-parchment/70">
           <span className="inline-flex items-center gap-1.5">
             <ShieldCheck className="size-3.5" aria-hidden="true" />
             {t('brand.canvas.gdpr')}

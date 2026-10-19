@@ -1,40 +1,116 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 
-/** Page-level header. Renders the single <h1> for the route. */
+import { useT } from '@/i18n';
+import { cn } from '@/lib/utils';
+
+export interface Crumb {
+  label: ReactNode;
+  /** Omit for the current page (plain text, `aria-current`). */
+  to?: string;
+  state?: unknown;
+}
+
+/** Page-level header; renders the route's single <h1>. */
 export function PageHeading({
   title,
   subtitle,
   breadcrumb,
   actions,
+  meta,
   className,
 }: {
-  title: string;
+  title: ReactNode;
   subtitle?: ReactNode;
-  breadcrumb?: ReactNode;
+  breadcrumb?: Crumb[] | ReactNode;
   actions?: ReactNode;
+  meta?: ReactNode;
   className?: string;
 }) {
+  const t = useT();
   return (
     <header
-      className={
-        'mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between' +
-        (className ? ` ${className}` : '')
-      }
+      className={cn(
+        'mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between',
+        className,
+      )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 space-y-1">
         {breadcrumb ? (
-          <nav aria-label="Breadcrumb" className="mb-1 text-xs text-muted-foreground">
-            {breadcrumb}
-          </nav>
+          Array.isArray(breadcrumb) ? (
+            <Breadcrumbs items={breadcrumb} />
+          ) : (
+            <nav aria-label={t('a11y.breadcrumb')} className="text-xs text-muted-foreground">
+              {breadcrumb}
+            </nav>
+          )
         ) : null}
-        <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl lg:text-4xl">
-          {title}
-        </h1>
-        {subtitle ? (
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{subtitle}</p>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="min-w-0 break-words text-title font-semibold text-foreground">{title}</h1>
+          {meta ? <div className="flex flex-wrap items-center gap-1.5">{meta}</div> : null}
+        </div>
+        {subtitle ? <p className="max-w-3xl text-2sm text-muted-foreground">{subtitle}</p> : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
+  );
+}
+
+export function Breadcrumbs({ items, className }: { items: Crumb[]; className?: string }) {
+  const t = useT();
+  return (
+    <nav
+      aria-label={t('a11y.breadcrumb')}
+      className={cn('text-xs text-muted-foreground', className)}
+    >
+      <ol className="flex flex-wrap items-center gap-1.5">
+        {items.map((item, i) => {
+          const last = i === items.length - 1;
+          return (
+            <Fragment key={i}>
+              <li className="min-w-0 truncate">
+                {item.to && !last ? (
+                  <Link
+                    to={item.to}
+                    state={item.state}
+                    className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span aria-current={last ? 'page' : undefined}>{item.label}</span>
+                )}
+              </li>
+              {last ? null : (
+                <li aria-hidden="true" className="text-muted-foreground">
+                  /
+                </li>
+              )}
+            </Fragment>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+/** One frame for every page (full width up to 100rem); `narrow` keeps a reading width but stays left-aligned so titles line up. */
+export function PageContainer({
+  width = 'full',
+  className,
+  children,
+}: {
+  width?: 'full' | 'default' | 'narrow';
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mx-auto w-full min-w-0 max-w-[100rem]">
+      <div
+        className={cn('flex w-full min-w-0 flex-col', width === 'narrow' && 'max-w-4xl', className)}
+      >
+        {children}
+      </div>
+    </div>
   );
 }

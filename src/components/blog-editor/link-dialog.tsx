@@ -1,6 +1,7 @@
 import { Link2, Unlink } from 'lucide-react';
 import { useState } from 'react';
 
+import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -12,7 +13,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useT } from '@/i18n';
 
 import { isAllowedHref, normalizeHref } from './editor-utils';
@@ -49,7 +49,6 @@ export function LinkDialog({
     const attrs = { href: url, target: newTab ? '_blank' : null };
     const chain = editor.chain().focus();
     if (empty && !isEditing) {
-      // Nothing selected: insert the label (or the URL itself) as a new link.
       const label = text.trim() || url;
       chain.insertContent({ type: 'text', text: label, marks: [{ type: 'link', attrs }] }).run();
     } else {
@@ -65,7 +64,7 @@ export function LinkDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>
             {isEditing ? t('blogEditor.linkEditTitle') : t('blogEditor.linkInsertTitle')}
@@ -79,8 +78,7 @@ export function LinkDialog({
             apply();
           }}
         >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="link-href">{t('blogEditor.linkUrl')}</Label>
+          <FormField label={t('blogEditor.linkUrl')} htmlFor="link-href" error={error}>
             <Input
               id="link-href"
               value={href}
@@ -90,36 +88,32 @@ export function LinkDialog({
               }}
               placeholder="/leistungen/teppichreinigung/ · https://…"
               autoComplete="off"
-              aria-invalid={!!error}
-              aria-describedby={error ? 'link-href-error' : undefined}
             />
-            {error ? (
-              <p id="link-href-error" role="alert" className="text-xs text-destructive">
-                {error}
-              </p>
-            ) : null}
-          </div>
+          </FormField>
           {empty && !isEditing ? (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="link-text">{t('blogEditor.linkText')}</Label>
+            <FormField label={t('blogEditor.linkText')} htmlFor="link-text">
               <Input
                 id="link-text"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder={t('blogEditor.linkTextPlaceholder')}
               />
-            </div>
+            </FormField>
           ) : null}
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <Checkbox checked={newTab} onChange={(e) => setNewTab(e.target.checked)} />
+          <label htmlFor="link-new-tab" className="flex cursor-pointer items-center gap-2 text-2sm">
+            <Checkbox
+              id="link-new-tab"
+              checked={newTab}
+              onChange={(e) => setNewTab(e.target.checked)}
+            />
             {t('blogEditor.linkNewTab')}
           </label>
-          <DialogFooter className="gap-2 sm:justify-between">
+          <DialogFooter className="sm:justify-between">
             {isEditing ? (
               <Button
                 type="button"
                 variant="ghost"
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="text-destructive hover:bg-destructive-soft hover:text-destructive"
                 onClick={remove}
               >
                 <Unlink aria-hidden="true" />
@@ -128,7 +122,7 @@ export function LinkDialog({
             ) : (
               <span />
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 {t('common.cancel')}
               </Button>

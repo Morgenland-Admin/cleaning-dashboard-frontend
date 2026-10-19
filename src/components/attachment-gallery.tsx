@@ -1,6 +1,6 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useQueries } from '@tanstack/react-query';
-import { AlertCircle, ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
+import { AlertCircle, ChevronLeft, ChevronRight, FileText, Loader2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useT } from '@/i18n';
@@ -24,8 +24,19 @@ interface Props {
 
 function isImageAttachment(att: Attachment): boolean {
   return (
-    att.contentType?.startsWith('image/') ?? /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(att.name)
+    att.contentType?.startsWith('image/') ??
+    /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(att.name || att.key)
   );
+}
+
+/** Imported rows can lack a file name; the key's last segment stands in. */
+function nameOf(att: Attachment): string {
+  return att.name?.trim() || att.key.split('/').pop() || att.key;
+}
+
+function extensionOf(att: Attachment): string | null {
+  const m = /\.([a-z0-9]{1,5})$/i.exec(nameOf(att));
+  return m ? m[1]!.toUpperCase() : null;
 }
 
 // Cache URL ~8min (backend TTL is 10min).
@@ -42,6 +53,8 @@ export function AttachmentGallery({ companySlug, attachments, className }: Props
   });
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // Signed URLs can point at files that are gone; those fall back to the file tile.
+  const [broken, setBroken] = useState<ReadonlySet<string>>(() => new Set());
 
   return (
     <>
@@ -51,37 +64,53 @@ export function AttachmentGallery({ companySlug, attachments, className }: Props
           const url = q?.data?.downloadUrl;
           const isImage = isImageAttachment(att);
           const isClickable = !!url;
+          const name = nameOf(att);
+          const ext = extensionOf(att);
           return (
             <li
-              key={att.key}
-              className="overflow-hidden rounded-lg border border-border bg-muted/30"
+              key={`${i}:${att.key}`}
+              className="overflow-hidden rounded-lg border border-border bg-card"
             >
               <button
                 type="button"
                 disabled={!isClickable}
                 onClick={() => isClickable && setLightboxIndex(i)}
-                className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                aria-label={t('attachment.openImage', { name: att.name })}
+                className="block w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+                aria-label={
+                  q?.isError
+                    ? t('attachment.loadFailed', { name })
+                    : t('attachment.openImage', { name })
+                }
               >
-                <div className="relative flex aspect-[4/3] items-center justify-center bg-background/60">
+                <div className="relative flex aspect-[4/3] items-center justify-center bg-muted">
                   {q?.isLoading ? (
-                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    <Loader2
+                      className="size-4 animate-spin text-muted-foreground"
+                      aria-hidden="true"
+                    />
                   ) : q?.isError ? (
-                    <AlertCircle className="size-4 text-rust" />
-                  ) : url && isImage ? (
+                    <AlertCircle className="size-4 text-destructive" aria-hidden="true" />
+                  ) : url && isImage && !broken.has(att.key) ? (
                     <img
                       src={url}
-                      alt={att.name}
-                      className="size-full object-contain"
+                      alt=""
+                      className="size-full object-cover"
                       loading="lazy"
+                      onError={() => setBroken((prev) => new Set(prev).add(att.key))}
                     />
                   ) : (
-                    <span className="px-2 text-center text-2xs text-muted-foreground">
-                      {att.name}
+                    <span
+                      className="flex flex-col items-center gap-1 text-muted-foreground"
+                      aria-hidden="true"
+                    >
+                      <FileText className="size-6" />
+                      {ext ? <span className="text-2xs font-medium">{ext}</span> : null}
                     </span>
                   )}
                 </div>
-                <div className="truncate px-2 py-1 text-2xs text-foreground/80">{att.name}</div>
+                <div className="truncate border-t border-border px-2 py-1 text-2xs text-foreground">
+                  {name}
+                </div>
               </button>
             </li>
           );
@@ -101,7 +130,7 @@ export function AttachmentGallery({ companySlug, attachments, className }: Props
   );
 }
 
-function Lightbox({
+export function Lightbox({
   attachments,
   urls,
   index,
@@ -118,9 +147,7 @@ function Lightbox({
   const total = attachments.length;
   const current = attachments[index];
   const url = urls[index];
-  const isImage = isImageAttachment(current);
 
-  // Arrow keys navigate; Radix handles Esc/scroll-lock/focus-trap.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'ArrowRight' && total > 1) {
@@ -135,6 +162,10 @@ function Lightbox({
     return () => window.removeEventListener('keydown', onKey);
   }, [index, total, onIndex]);
 
+  if (!current) return null;
+  const name = nameOf(current);
+  const isImage = isImageAttachment(current);
+
   return (
     <DialogPrimitive.Root
       open
@@ -145,13 +176,13 @@ function Lightbox({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm" />
         <DialogPrimitive.Content
-          aria-label={current.name}
+          aria-label={name}
           className="fixed inset-0 z-50 flex flex-col outline-none"
         >
-          <DialogPrimitive.Title className="sr-only">{current.name}</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="sr-only">{name}</DialogPrimitive.Title>
           <div className="flex items-center justify-between gap-3 px-4 py-3 text-white">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{current.name}</p>
+              <p className="truncate text-sm font-medium">{name}</p>
               {total > 1 ? (
                 <p className="text-2xs text-white/60">
                   {index + 1} / {total}
@@ -162,16 +193,12 @@ function Lightbox({
               aria-label={t('common.close')}
               className="inline-flex size-9 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
-              <X className="size-5" />
+              <X className="size-5" aria-hidden="true" />
             </DialogPrimitive.Close>
           </div>
 
-          {/*
-            Clicking the empty space around the image closes the lightbox. It is a
-            pointer-only shortcut, not the control: Escape (Radix) and the Close
-            button above are the keyboard paths, so this stays presentational
-            rather than becoming a focusable div with a key handler.
-          */}
+          {/* Pointer-only close shortcut; keyboard users have Escape and the Close button,
+              so this stays presentational. */}
           <div
             role="presentation"
             className="relative flex flex-1 items-center justify-center px-4 pb-6"
@@ -184,7 +211,7 @@ function Lightbox({
             ) : null}
 
             {url && isImage ? (
-              <img src={url} alt={current.name} className="max-h-full max-w-full object-contain" />
+              <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
             ) : url ? (
               <a
                 href={url}
@@ -195,7 +222,10 @@ function Lightbox({
                 {t('common.openInNewTab')}
               </a>
             ) : (
-              <Loader2 className="size-6 animate-spin text-white/70" />
+              <span role="status" className="inline-flex">
+                <Loader2 className="size-6 animate-spin text-white/70" aria-hidden="true" />
+                <span className="sr-only">{t('common.loading')}</span>
+              </span>
             )}
 
             {total > 1 ? (
@@ -221,7 +251,7 @@ function NavButton({ side, onClick }: { side: 'left' | 'right'; onClick: () => v
         side === 'left' ? 'left-3' : 'right-3',
       )}
     >
-      <Icon className="size-6" />
+      <Icon className="size-6" aria-hidden="true" />
     </button>
   );
 }

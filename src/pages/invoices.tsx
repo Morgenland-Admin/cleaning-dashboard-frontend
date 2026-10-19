@@ -1,27 +1,17 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  Ban,
-  BellRing,
-  CheckCircle2,
-  FileText,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Printer,
-  RefreshCcw,
-  Send,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { BellRing, FileText, MoreHorizontal, Plus, SearchX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
+import { FilterChip } from '@/components/filter-chip';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
-import { PageHeading } from '@/components/page-heading';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
+import { SearchInput } from '@/components/search-input';
 import { StatusBadge } from '@/components/status-badge';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -30,6 +20,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { ListSkeleton } from '@/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -39,91 +31,84 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useProject } from '@/contexts/project-context';
-import { useLocale, useT } from '@/i18n';
-import { ApiError, invoicesAdminApi, type InvoiceRow, type InvoiceStatus } from '@/lib/api';
+import { useLocale, useT, type DictKey } from '@/i18n';
+import { useCanWrite } from '@/lib/access';
+import { ApiError, invoicesAdminApi, type InvoiceRow } from '@/lib/api';
 import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
-import { cn, formatShortDate } from '@/lib/utils';
+import { useUrlSearch } from '@/lib/use-url-search';
+import { cn, formatCurrency, formatShortDate } from '@/lib/utils';
+import {
+  INVOICE_ACTION_META,
+  INVOICE_FILTERS,
+  invoiceActionsFor,
+  invoiceConfirmCopy,
+  invoiceFilterCount,
+  invoiceFilterQuery,
+  invoiceNumber,
+  invoiceRecipient,
+  invoiceStatusLabel,
+  invoiceStatusTone,
+  parseInvoiceFilter,
+  type InvoiceAction,
+  type InvoiceConfirmAction,
+  type InvoiceFilter,
+} from '@/pages/invoices-shared';
+
+import type { ListNavState } from '@/lib/list-nav';
 
 const PAGE_SIZE = 50;
 
-const STATUS_FILTERS: Array<InvoiceStatus | 'all'> = [
-  'all',
-  'draft',
-  'sent',
-  'paid',
-  'overdue',
-  'void',
-];
-
-const STATUS_TONE: Record<InvoiceStatus, 'info' | 'warning' | 'success' | 'danger' | 'neutral'> = {
-  draft: 'neutral',
-  sent: 'info',
-  paid: 'success',
-  overdue: 'danger',
-  void: 'neutral',
+const FILTER_LABEL: Record<'open' | 'all', DictKey> = {
+  open: 'invoices.filterOpen',
+  all: 'invoices.filterAll',
 };
 
-// Quick actions available from the list. `edit` opens the invoice form page;
-// everything richer (preview, issue & print, history) lives on the detail page.
-type InvoiceAction = 'edit' | 'send' | 'issuePrint' | 'resend' | 'markPaid' | 'dunning' | 'void';
-
-const ACTION_META: Record<InvoiceAction, { labelKey: string; icon: LucideIcon }> = {
-  edit: { labelKey: 'invoices.edit', icon: Pencil },
-  send: { labelKey: 'invoices.send', icon: Send },
-  issuePrint: { labelKey: 'invoices.issuePrint', icon: Printer },
-  resend: { labelKey: 'invoices.resend', icon: Send },
-  markPaid: { labelKey: 'invoices.markPaid', icon: CheckCircle2 },
-  dunning: { labelKey: 'invoices.dunning', icon: BellRing },
-  void: { labelKey: 'invoices.voidAction', icon: Ban },
-};
-
-function actionsFor(status: InvoiceStatus): InvoiceAction[] {
-  switch (status) {
-    case 'draft':
-      return ['edit', 'send', 'issuePrint', 'void'];
-    case 'sent':
-    case 'overdue':
-      return ['resend', 'markPaid', 'dunning', 'void'];
-    default:
-      // paid / void: GoBD-immutable, read-only.
-      return [];
-  }
+/** Invoice amounts are stored in cents; formatCurrency takes the major unit. */
+function formatAmount(inv: InvoiceRow, bcp47: string): string {
+  return formatCurrency(inv.totalCents / 100, inv.currency || 'EUR', bcp47);
 }
 
-// Cent-precision money formatting (utils' formatCurrency rounds to whole euros).
-function formatEur(cents: number, bcp47: string, currency = 'EUR'): string {
-  return (cents / 100).toLocaleString(bcp47, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-  });
-}
-
-function invoiceNumber(inv: InvoiceRow): string {
-  return inv.number ?? `#${inv.id}`;
-}
+/** Stretched row link (one real link per row); row actions sit above it (z-[1]), below the sticky header (z-10). */
+const ROW_LINK =
+  'rounded-sm after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring';
 
 export function InvoicesPage() {
   const t = useT();
   const { bcp47 } = useLocale();
   const { activeProject, isAllBrands } = useProject();
+  const canWrite = useCanWrite();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = useUrlSearch();
   usePageTitle(t('invoices.title'));
 
   const slug = activeProject.companySlug;
 
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
-  // The list scrolls inside its own box so a few hundred rows stay navigable
-  // without the page growing to many screens tall. The table header sticks to
-  // the top of that box.
+  const statusFilter = parseInvoiceFilter(searchParams.get('status'));
+  const overdueOnly = searchParams.get('overdue') === '1';
+  function setParam(key: string, value: string | null) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === null) next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+  const setStatusFilter = (next: InvoiceFilter) =>
+    setParam('status', next === 'open' ? null : next);
+  const setOverdueOnly = (on: boolean) => setParam('overdue', on ? '1' : null);
+
   const listScrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
-  const [overdueOnly, setOverdueOnly] = useState(false);
   const [confirmState, setConfirmState] = useState<{
-    action: 'send' | 'issuePrint' | 'void' | 'dunning';
-    id: number;
+    action: InvoiceConfirmAction;
+    invoice: InvoiceRow;
   } | null>(null);
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
 
@@ -134,16 +119,17 @@ export function InvoicesPage() {
   }, [notice]);
 
   const list = useInfiniteQuery({
-    queryKey: ['invoices', slug, statusFilter, overdueOnly] as const,
+    queryKey: ['invoices', slug, statusFilter, overdueOnly, search.query] as const,
     enabled: !isAllBrands,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       invoicesAdminApi.list(
         slug,
         {
+          ...invoiceFilterQuery(statusFilter),
+          q: search.query || undefined,
           limit: PAGE_SIZE,
           cursor: pageParam ?? undefined,
-          status: statusFilter === 'all' ? undefined : statusFilter,
           overdue: overdueOnly ? true : undefined,
         },
         signal,
@@ -151,20 +137,32 @@ export function InvoicesPage() {
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 
-  const invoices = useMemo(() => list.data?.pages.flatMap((p) => p.invoices) ?? [], [list.data]);
+  // Under the list prefix on purpose: every invalidation of the list refreshes the tab counts too.
+  const counts = useQuery({
+    queryKey: ['invoices', slug, 'counts', search.query, overdueOnly] as const,
+    enabled: !isAllBrands,
+    queryFn: ({ signal }) =>
+      invoicesAdminApi.counts(
+        slug,
+        { q: search.query || undefined, overdue: overdueOnly || undefined },
+        signal,
+      ),
+    placeholderData: (prev) => prev,
+  });
 
-  // Switching filter or brand shows a different list — start it at the top.
+  const invoices = useMemo(() => list.data?.pages.flatMap((p) => p.invoices) ?? [], [list.data]);
+  const navState: ListNavState = useMemo(
+    () => ({ from: location.search, ids: invoices.map((i) => i.id) }),
+    [location.search, invoices],
+  );
+
   useEffect(() => {
     listScrollRef.current?.scrollTo({ top: 0 });
-  }, [statusFilter, overdueOnly, slug]);
+  }, [statusFilter, overdueOnly, search.query, slug]);
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['invoices'], exact: false });
     void queryClient.invalidateQueries({ queryKey: ['invoice-log'], exact: false });
-  }
-
-  function openDetail(id: number) {
-    navigate(`/rechnungen/${id}`);
   }
 
   function surfaceError(err: unknown) {
@@ -174,64 +172,43 @@ export function InvoicesPage() {
     });
   }
 
+  function done(text?: string) {
+    invalidate();
+    setConfirmState(null);
+    if (text) setNotice({ tone: 'success', text });
+  }
+  function failed(err: unknown) {
+    setConfirmState(null);
+    surfaceError(err);
+  }
+
   const sendMutation = useMutation({
     mutationFn: (id: number) => invoicesAdminApi.send(slug, id),
-    onSuccess: (res) => {
-      invalidate();
-      setConfirmState(null);
-      setNotice({
-        tone: 'success',
-        text: res.emailSent ? t('invoices.emailSent') : t('invoices.emailSkipped'),
-      });
-    },
-    onError: (err) => {
-      setConfirmState(null);
-      surfaceError(err);
-    },
+    onSuccess: (res) => done(res.emailSent ? t('invoices.emailSent') : t('invoices.emailSkipped')),
+    onError: failed,
   });
-
-  // Issue without email, then jump to the detail page so the operator can print.
   const issueMutation = useMutation({
     mutationFn: (id: number) => invoicesAdminApi.issue(slug, id),
     onSuccess: (res) => {
-      invalidate();
-      setConfirmState(null);
-      openDetail(res.invoice.id);
+      done();
+      navigate(`/rechnungen/${res.invoice.id}`, { state: navState });
     },
-    onError: (err) => {
-      setConfirmState(null);
-      surfaceError(err);
-    },
+    onError: failed,
   });
-
   const markPaidMutation = useMutation({
     mutationFn: (id: number) => invoicesAdminApi.markPaid(slug, id),
-    onSuccess: () => invalidate(),
-    onError: surfaceError,
+    onSuccess: () => done(t('invoices.markedPaid')),
+    onError: failed,
   });
-
   const dunningMutation = useMutation({
     mutationFn: (id: number) => invoicesAdminApi.dunning(slug, id),
-    onSuccess: () => {
-      invalidate();
-      setConfirmState(null);
-    },
-    onError: (err) => {
-      setConfirmState(null);
-      surfaceError(err);
-    },
+    onSuccess: () => done(t('invoices.dunningDone')),
+    onError: failed,
   });
-
   const voidMutation = useMutation({
     mutationFn: (id: number) => invoicesAdminApi.update(slug, id, { status: 'void' }),
-    onSuccess: () => {
-      invalidate();
-      setConfirmState(null);
-    },
-    onError: (err) => {
-      setConfirmState(null);
-      surfaceError(err);
-    },
+    onSuccess: () => done(t('invoices.voided')),
+    onError: failed,
   });
 
   const actionPending =
@@ -242,425 +219,376 @@ export function InvoicesPage() {
     voidMutation.isPending;
 
   function runAction(action: InvoiceAction, inv: InvoiceRow) {
-    switch (action) {
-      case 'edit':
-        navigate(`/rechnungen/${inv.id}/bearbeiten`);
-        break;
-      case 'send':
-        setConfirmState({ action: 'send', id: inv.id });
-        break;
-      case 'issuePrint':
-        setConfirmState({ action: 'issuePrint', id: inv.id });
-        break;
-      case 'resend':
-        sendMutation.mutate(inv.id);
-        break;
-      case 'markPaid':
-        markPaidMutation.mutate(inv.id);
-        break;
-      case 'dunning':
-        setConfirmState({ action: 'dunning', id: inv.id });
-        break;
-      case 'void':
-        setConfirmState({ action: 'void', id: inv.id });
-        break;
-    }
+    if (action === 'edit') navigate(`/rechnungen/${inv.id}/bearbeiten`);
+    // Every other action mails the customer or freezes the invoice (GoBD): always confirm.
+    else setConfirmState({ action, invoice: inv });
   }
-
-  const statusLabel = (s: InvoiceStatus) => t(`invoices.status.${s}` as never);
 
   if (isAllBrands) {
     return (
-      <div className="mx-auto w-full max-w-6xl">
+      <PageContainer width="full">
         <PageHeading title={t('invoices.title')} subtitle={t('invoices.subtitle')} />
         <EmptyState
-          icon={<FileText className="size-6" aria-hidden="true" />}
+          variant="dashed"
+          icon={<FileText aria-hidden="true" />}
           message={t('invoices.selectBrandFirst')}
         />
-      </div>
+      </PageContainer>
     );
   }
 
-  const confirmMeta =
-    confirmState == null
-      ? null
-      : {
-          send: {
-            title: t('invoices.send'),
-            description: t('invoices.confirmSend'),
-            confirmLabel: t('invoices.send'),
-            isDangerous: false,
-            isPending: sendMutation.isPending,
-            run: () => sendMutation.mutate(confirmState.id),
-          },
-          issuePrint: {
-            title: t('invoices.issuePrint'),
-            description: t('invoices.confirmIssue'),
-            confirmLabel: t('invoices.issuePrint'),
-            isDangerous: false,
-            isPending: issueMutation.isPending,
-            run: () => issueMutation.mutate(confirmState.id),
-          },
-          void: {
-            title: t('invoices.voidAction'),
-            description: t('invoices.confirmVoid'),
-            confirmLabel: t('invoices.voidAction'),
-            isDangerous: true,
-            isPending: voidMutation.isPending,
-            run: () => voidMutation.mutate(confirmState.id),
-          },
-          dunning: {
-            title: t('invoices.dunning'),
-            description: t('invoices.confirmDunning'),
-            confirmLabel: t('invoices.dunning'),
-            isDangerous: false,
-            isPending: dunningMutation.isPending,
-            run: () => dunningMutation.mutate(confirmState.id),
-          },
-        }[confirmState.action];
+  const confirmMeta = confirmState
+    ? invoiceConfirmCopy(t, confirmState.action, confirmState.invoice)
+    : null;
+  const runConfirmed = () => {
+    if (!confirmState) return;
+    const id = confirmState.invoice.id;
+    ({
+      send: () => sendMutation.mutate(id),
+      resend: () => sendMutation.mutate(id),
+      issuePrint: () => issueMutation.mutate(id),
+      markPaid: () => markPaidMutation.mutate(id),
+      dunning: () => dunningMutation.mutate(id),
+      void: () => voidMutation.mutate(id),
+    })[confirmState.action]();
+  };
+
+  const sentinel = (
+    <InfiniteScrollSentinel
+      hasMore={!!list.hasNextPage}
+      isLoading={list.isFetchingNextPage}
+      onIntersect={() => {
+        void list.fetchNextPage();
+      }}
+      // Root only where the box scrolls (lg+); otherwise the sentinel is always visible and loads every page.
+      rootRef={isDesktop ? listScrollRef : undefined}
+    />
+  );
+
+  const newButton = canWrite ? (
+    <Button size="sm" asChild>
+      <Link to="/rechnungen/neu">
+        <Plus aria-hidden="true" />
+        {t('invoices.newInvoice')}
+      </Link>
+    </Button>
+  ) : null;
+
+  const filtered = statusFilter !== 'open' || overdueOnly;
+  const empty = search.query ? (
+    <EmptyState
+      variant="dashed"
+      icon={<SearchX aria-hidden="true" />}
+      title={t('invoices.emptySearch', { q: search.query })}
+      message={t('invoices.emptySearchHint')}
+      action={
+        statusFilter === 'all' && !overdueOnly ? undefined : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setStatusFilter('all');
+              setOverdueOnly(false);
+            }}
+          >
+            {t('invoices.searchAll')}
+          </Button>
+        )
+      }
+    />
+  ) : (
+    <EmptyState
+      variant="dashed"
+      icon={<FileText aria-hidden="true" />}
+      title={
+        statusFilter === 'open' && !overdueOnly
+          ? t('invoices.emptyOpen')
+          : filtered
+            ? t('invoices.emptyFilter')
+            : t('invoices.empty')
+      }
+      message={
+        statusFilter === 'open' && !overdueOnly
+          ? t('invoices.emptyOpenHint')
+          : t('invoices.emptyHint')
+      }
+      action={statusFilter === 'all' ? newButton : undefined}
+    />
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+    <PageContainer width="full">
       <PageHeading
         title={t('invoices.title')}
         subtitle={t('invoices.subtitle')}
-        breadcrumb={
-          <>
-            <span>{activeProject.name}</span>
-            <span aria-hidden="true"> / </span>
-            <span className="text-foreground">{t('invoices.title')}</span>
-          </>
-        }
+        breadcrumb={[{ label: activeProject.name }, { label: t('invoices.title') }]}
         actions={
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-11 md:min-h-8"
-              onClick={() => void list.refetch()}
-              disabled={list.isFetching}
-              aria-busy={list.isFetching || undefined}
-            >
-              <RefreshCcw
-                className={cn('size-3.5', list.isFetching && 'animate-spin')}
-                aria-hidden="true"
-              />
-              {t('common.refresh')}
-            </Button>
-            <Button
-              size="sm"
-              className="min-h-11 md:min-h-8"
-              onClick={() => navigate('/rechnungen/neu')}
-            >
-              <Plus className="size-3.5" aria-hidden="true" />
-              {t('invoices.newInvoice')}
-            </Button>
+            <RefreshButton
+              onClick={() => {
+                void list.refetch();
+                void counts.refetch();
+              }}
+              fetching={list.isFetching}
+            />
+            {newButton}
           </>
         }
       />
 
-      {notice ? (
-        <div
-          role={notice.tone === 'error' ? 'alert' : 'status'}
-          aria-live="polite"
-          className={cn(
-            'flex items-start justify-between gap-2 rounded-md border px-3 py-2 text-sm',
-            notice.tone === 'error'
-              ? 'border-destructive/40 bg-destructive/5 text-destructive'
-              : 'border-success/30 bg-success-soft text-success',
-          )}
-        >
-          <span className="flex items-start gap-2">
-            {notice.tone === 'error' ? (
-              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            ) : (
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            )}
-            <span>{notice.text}</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => setNotice(null)}
-            aria-label={t('common.close')}
-            className="rounded-md p-1 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      <div className="flex flex-col gap-4">
+        {notice ? (
+          <Alert
+            tone={notice.tone === 'error' ? 'destructive' : 'success'}
+            onDismiss={() => setNotice(null)}
           >
-            <X className="size-4" aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
+            {notice.text}
+          </Alert>
+        ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div
-          role="tablist"
-          aria-label={t('invoices.filterStatus')}
-          className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1"
-        >
-          {STATUS_FILTERS.map((s) => {
-            const active = statusFilter === s;
-            return (
-              <button
-                key={s}
-                role="tab"
-                type="button"
-                aria-selected={active}
-                onClick={() => setStatusFilter(s)}
-                className={cn(
-                  'inline-flex min-h-11 items-center rounded-md px-2.5 text-2xs font-medium uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-7',
-                  active
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                )}
-              >
-                {s === 'all' ? t('invoices.filterAll') : statusLabel(s)}
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          type="button"
-          aria-pressed={overdueOnly}
-          onClick={() => setOverdueOnly((v) => !v)}
-          className={cn(
-            'inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-9',
-            overdueOnly
-              ? 'border-warning/50 bg-warning-soft text-warning'
-              : 'border-border bg-card text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <BellRing className="size-3.5" aria-hidden="true" />
-          {t('invoices.onlyOverdue')}
-        </button>
-      </div>
-
-      {list.isLoading ? (
-        <ListSkeleton />
-      ) : list.error ? (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
-        >
-          <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1">
-            {list.error instanceof ApiError ? list.error.message : (list.error as Error).message}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-11 md:min-h-8"
-            onClick={() => void list.refetch()}
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+          <SegmentedControl
+            label={t('invoices.filterStatus')}
+            value={statusFilter}
+            onValueChange={setStatusFilter}
+            overflow="scroll"
+            className="w-fit min-w-0"
+            options={INVOICE_FILTERS.map((s) => ({
+              value: s,
+              label: s === 'open' || s === 'all' ? t(FILTER_LABEL[s]) : invoiceStatusLabel(t, s),
+              count: invoiceFilterCount(s, counts.data?.counts),
+            }))}
+          />
+          <FilterChip
+            pressed={overdueOnly}
+            onPressedChange={setOverdueOnly}
+            icon={<BellRing aria-hidden="true" />}
+            className="self-start lg:self-auto"
           >
-            <RefreshCcw className="size-3.5" aria-hidden="true" />
-            {t('common.refresh')}
-          </Button>
-        </div>
-      ) : invoices.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-card/40 py-6">
-          <EmptyState
-            icon={<FileText className="size-6" aria-hidden="true" />}
-            title={t('invoices.empty')}
-            message={t('invoices.emptyHint')}
-            action={
-              <Button size="sm" onClick={() => navigate('/rechnungen/neu')}>
-                <Plus className="size-3.5" aria-hidden="true" />
-                {t('invoices.newInvoice')}
-              </Button>
-            }
+            {t('invoices.onlyOverdue')}
+          </FilterChip>
+          <SearchInput
+            value={search.input}
+            onValueChange={search.setInput}
+            searching={search.searching || (list.isFetching && !!search.query)}
+            placeholder={t('invoices.searchPlaceholder')}
+            containerClassName="lg:ml-auto lg:w-72 lg:shrink-0"
           />
         </div>
-      ) : (
-        <div
-          ref={listScrollRef}
-          className="flex flex-col gap-5 lg:max-h-[calc(100svh-17rem)] lg:overflow-y-auto lg:overscroll-contain"
-        >
-          {/* Desktop: table */}
-          <div className="hidden rounded-xl border border-border bg-card md:block">
-            <Table containerClassName="w-full">
-              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
-                <TableRow className="border-b text-2xs uppercase tracking-wider hover:bg-transparent">
-                  <TableHead>{t('invoices.number')}</TableHead>
-                  <TableHead>{t('invoices.recipient')}</TableHead>
-                  <TableHead className="text-right">{t('invoices.amount')}</TableHead>
-                  <TableHead>{t('invoices.filterStatus')}</TableHead>
-                  <TableHead>{t('invoices.dueAt')}</TableHead>
-                  <TableHead>
-                    <span className="sr-only">{t('invoices.details')}</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell className="py-2.5">
-                      <button
-                        type="button"
-                        onClick={() => openDetail(inv.id)}
-                        className="rounded font-mono text-2sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+        {list.isLoading ? (
+          <div role="status">
+            <span className="sr-only">{t('common.loading')}</span>
+            <ListSkeleton rows={5} avatar={false} />
+          </div>
+        ) : list.error && invoices.length === 0 ? (
+          <ErrorState
+            error={list.error}
+            onRetry={() => void list.refetch()}
+            retrying={list.isFetching}
+          />
+        ) : invoices.length === 0 ? (
+          empty
+        ) : (
+          <>
+            <ul className="divide-y divide-border rounded-lg border border-border bg-card md:hidden">
+              {invoices.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="relative flex items-start gap-2 px-3 py-2.5 transition-colors hover:bg-accent/60"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Link
+                        to={`/rechnungen/${inv.id}`}
+                        state={navState}
+                        aria-label={t('invoices.openInvoice', { number: invoiceNumber(inv) })}
+                        className={cn(
+                          'text-2sm font-medium tabular-nums text-foreground',
+                          ROW_LINK,
+                        )}
                       >
                         {invoiceNumber(inv)}
-                      </button>
-                    </TableCell>
-                    <TableCell className="max-w-[18rem] truncate py-2.5">
-                      {inv.recipientName}
-                    </TableCell>
-                    <TableCell className="py-2.5 text-right tabular-nums">
-                      {formatEur(inv.totalCents, bcp47, inv.currency)}
-                    </TableCell>
-                    <TableCell className="py-2.5">
-                      <span className="inline-flex flex-wrap items-center gap-1">
-                        <StatusBadge
-                          tone={STATUS_TONE[inv.status]}
-                          label={statusLabel(inv.status)}
-                        />
-                        {inv.dunningLevel > 0 ? (
-                          <StatusBadge
-                            tone="warning"
-                            label={t('invoices.dunningLevel', { n: inv.dunningLevel })}
-                          />
-                        ) : null}
+                      </Link>
+                      <InvoiceBadges invoice={inv} />
+                      <span className="ml-auto text-2sm font-medium tabular-nums text-foreground">
+                        {formatAmount(inv, bcp47)}
                       </span>
-                    </TableCell>
-                    <TableCell className="py-2.5 tabular-nums text-muted-foreground">
-                      {inv.dueAt ? formatShortDate(inv.dueAt, bcp47) : '—'}
-                    </TableCell>
-                    <TableCell className="py-2.5 text-right">
-                      <RowMenu
-                        invoice={inv}
-                        disabled={actionPending}
-                        onDetails={() => openDetail(inv.id)}
-                        onAction={runAction}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Mobile: stacked cards */}
-          <ul className="flex flex-col gap-2 md:hidden">
-            {invoices.map((inv) => (
-              <li key={inv.id} className="rounded-xl border border-border bg-card p-3">
-                <div className="flex items-start gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openDetail(inv.id)}
-                    className="min-h-11 min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-2sm font-medium">{invoiceNumber(inv)}</span>
-                      <StatusBadge tone={STATUS_TONE[inv.status]} label={statusLabel(inv.status)} />
-                      {inv.dunningLevel > 0 ? (
-                        <StatusBadge
-                          tone="warning"
-                          label={t('invoices.dunningLevel', { n: inv.dunningLevel })}
-                        />
-                      ) : null}
                     </div>
-                    <p className="mt-1 truncate text-sm text-foreground">{inv.recipientName}</p>
-                    <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                      <span className="font-medium tabular-nums text-foreground">
-                        {formatEur(inv.totalCents, bcp47, inv.currency)}
-                      </span>
-                      <span className="tabular-nums">
+                    <div className="mt-0.5 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                      <span className="min-w-0 truncate">{invoiceRecipient(t, inv)}</span>
+                      <span className="shrink-0 tabular-nums">
                         {t('invoices.dueAt')}: {inv.dueAt ? formatShortDate(inv.dueAt, bcp47) : '—'}
                       </span>
                     </div>
-                  </button>
+                  </div>
                   <RowMenu
                     invoice={inv}
+                    canWrite={canWrite}
                     disabled={actionPending}
-                    onDetails={() => openDetail(inv.id)}
+                    onDetails={() => navigate(`/rechnungen/${inv.id}`, { state: navState })}
                     onAction={runAction}
                   />
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
 
-          <InfiniteScrollSentinel
-            hasMore={!!list.hasNextPage}
-            isLoading={list.isFetchingNextPage}
-            onIntersect={() => {
-              void list.fetchNextPage();
-            }}
-            // Only a root when that box actually scrolls (lg+); otherwise the
-            // sentinel sits inside it forever and pages in the whole list.
-            rootRef={isDesktop ? listScrollRef : undefined}
-          />
-        </div>
-      )}
+            {/* Card is the scroll container (sticky header anchors to it), so the Table's own wrapper must not scroll. */}
+            <div
+              ref={listScrollRef}
+              className="hidden overflow-x-auto rounded-lg border border-border bg-card md:block lg:max-h-[calc(100svh-17rem)] lg:overflow-auto lg:overscroll-contain"
+            >
+              <Table containerClassName="w-full">
+                <TableHeader sticky>
+                  <TableRow>
+                    <TableHead>{t('invoices.number')}</TableHead>
+                    <TableHead>{t('invoices.recipient')}</TableHead>
+                    <TableHead className="text-right">{t('invoices.amount')}</TableHead>
+                    <TableHead>{t('invoices.filterStatus')}</TableHead>
+                    <TableHead>{t('invoices.dueAt')}</TableHead>
+                    <TableHead className="w-12">
+                      <span className="sr-only">{t('invoices.moreActions')}</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map((inv) => (
+                    <TableRow key={inv.id} className="relative">
+                      <TableCell className="whitespace-nowrap py-2">
+                        <Link
+                          to={`/rechnungen/${inv.id}`}
+                          state={navState}
+                          aria-label={t('invoices.openInvoice', { number: invoiceNumber(inv) })}
+                          className={cn(
+                            'font-medium tabular-nums text-foreground underline-offset-2 hover:underline',
+                            ROW_LINK,
+                          )}
+                        >
+                          {invoiceNumber(inv)}
+                        </Link>
+                        <p className="text-xs tabular-nums text-muted-foreground">
+                          {formatShortDate(inv.sentAt ?? inv.createdAt, bcp47)}
+                        </p>
+                      </TableCell>
+                      <TableCell className="max-w-[18rem] py-2">
+                        <p className="truncate text-foreground">{invoiceRecipient(t, inv)}</p>
+                        {inv.recipientCompany && inv.recipientName ? (
+                          <p className="truncate text-xs text-muted-foreground">
+                            {inv.recipientCompany}
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap py-2 text-right font-medium tabular-nums">
+                        {formatAmount(inv, bcp47)}
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <span className="inline-flex flex-wrap items-center gap-1">
+                          <InvoiceBadges invoice={inv} />
+                        </span>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap py-2 tabular-nums text-muted-foreground">
+                        {inv.dueAt ? formatShortDate(inv.dueAt, bcp47) : '—'}
+                      </TableCell>
+                      <TableCell className="w-12 py-2 text-right">
+                        <RowMenu
+                          invoice={inv}
+                          canWrite={canWrite}
+                          disabled={actionPending}
+                          onDetails={() => navigate(`/rechnungen/${inv.id}`, { state: navState })}
+                          onAction={runAction}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {isDesktop ? sentinel : null}
+            </div>
+
+            {isDesktop ? null : sentinel}
+            {list.isFetchNextPageError && list.error ? (
+              <ErrorState
+                error={list.error}
+                onRetry={() => void list.fetchNextPage()}
+                retrying={list.isFetchingNextPage}
+              />
+            ) : null}
+          </>
+        )}
+      </div>
 
       {confirmState && confirmMeta ? (
         <ConfirmDialog
           open
           onOpenChange={(o) => {
-            if (!o) setConfirmState(null);
+            if (!o && !actionPending) setConfirmState(null);
           }}
           title={confirmMeta.title}
           description={confirmMeta.description}
           confirmLabel={confirmMeta.confirmLabel}
           cancelLabel={t('common.cancel')}
           isDangerous={confirmMeta.isDangerous}
-          isPending={confirmMeta.isPending}
-          onConfirm={confirmMeta.run}
+          isPending={actionPending}
+          onConfirm={runConfirmed}
         />
       ) : null}
-    </div>
+    </PageContainer>
   );
 }
 
-function ListSkeleton() {
+function InvoiceBadges({ invoice }: { invoice: InvoiceRow }) {
+  const t = useT();
   return (
-    <div className="flex flex-col gap-2" aria-hidden="true">
-      {[0, 1, 2, 3, 4].map((i) => (
-        <div
-          key={i}
-          className="flex items-center gap-3 rounded-xl border border-border bg-card p-3"
-        >
-          <div className="h-4 w-24 animate-pulse rounded bg-muted" />
-          <div className="h-4 flex-1 animate-pulse rounded bg-muted/60" />
-          <div className="h-5 w-16 animate-pulse rounded-full bg-muted" />
-          <div className="h-4 w-14 animate-pulse rounded bg-muted/60" />
-        </div>
-      ))}
-    </div>
+    <>
+      <StatusBadge
+        tone={invoiceStatusTone(invoice.status)}
+        label={invoiceStatusLabel(t, invoice.status)}
+      />
+      {invoice.dunningLevel > 0 ? (
+        <StatusBadge
+          tone="warning"
+          label={t('invoices.dunningLevel', { n: invoice.dunningLevel })}
+        />
+      ) : null}
+    </>
   );
 }
 
 function RowMenu({
   invoice,
+  canWrite,
   disabled,
   onDetails,
   onAction,
 }: {
   invoice: InvoiceRow;
+  canWrite: boolean;
   disabled: boolean;
   onDetails: () => void;
   onAction: (action: InvoiceAction, inv: InvoiceRow) => void;
 }) {
   const t = useT();
-  const actions = actionsFor(invoice.status);
+  const actions = canWrite ? invoiceActionsFor(invoice.status) : [];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
-          className="h-11 w-11 shrink-0 md:h-9 md:w-9"
-          aria-label={`${t('invoices.details')} ${invoiceNumber(invoice)}`}
+          size="icon-sm"
+          className="relative z-[1] shrink-0"
+          aria-label={`${t('invoices.moreActions')}: ${invoiceNumber(invoice)}`}
         >
-          <MoreHorizontal className="size-4" aria-hidden="true" />
+          <MoreHorizontal aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={onDetails}>
-          <FileText className="size-3.5" aria-hidden="true" />
+          <FileText aria-hidden="true" />
           {t('invoices.details')}
         </DropdownMenuItem>
         {actions.length > 0 ? <DropdownMenuSeparator /> : null}
         {actions.map((action) => {
-          const meta = ACTION_META[action];
+          const meta = INVOICE_ACTION_META[action];
           const Icon = meta.icon;
           return (
             <DropdownMenuItem
@@ -669,8 +597,8 @@ function RowMenu({
               onSelect={() => onAction(action, invoice)}
               className={cn(action === 'void' && 'text-destructive focus:text-destructive')}
             >
-              <Icon className="size-3.5" aria-hidden="true" />
-              {t(meta.labelKey as never)}
+              <Icon aria-hidden="true" />
+              {t(meta.labelKey)}
             </DropdownMenuItem>
           );
         })}

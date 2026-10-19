@@ -2,9 +2,9 @@ import { ArrowUp, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 
 import { PromptEditDialog } from '@/components/prompt-edit-dialog';
+import { Button } from '@/components/ui/button';
 import { useT } from '@/i18n';
-import { useSession } from '@/lib/auth-client';
-import { cn } from '@/lib/utils';
+import { useIsAdmin } from '@/lib/access';
 
 import { ClaudeIcon } from './claude-icon';
 
@@ -21,8 +21,6 @@ export interface QuickAction {
   run: () => void;
 }
 
-// Presentational "✦ Claude" strip — embeds inside a parent card (the editor it
-// assists). Parent owns history/busy and supplies onSend.
 export function ClaudeChatBox({
   busy,
   history,
@@ -37,23 +35,18 @@ export function ClaudeChatBox({
   busy: boolean;
   history: ChatEntry[];
   placeholder: string;
-  idleHint: string; // status text when idle
-  busyHint: string; // status text while busy
-  sendLabel: string; // send button aria-label / title
+  idleHint: string;
+  busyHint: string;
+  sendLabel: string;
   quickActions: QuickAction[];
   onSend: (instruction: string) => void;
-  /** Shows the "edit prompt" affordance for this brand + assist kind. */
   editablePrompt?: { kind: AiAssistKind; companySlug: CompanySlug };
 }) {
   const t = useT();
-  const { data: session } = useSession();
   const [text, setText] = useState('');
   const [promptOpen, setPromptOpen] = useState(false);
-
-  // Writing a prompt decides what customers receive — admins only, matching the
-  // backend gate. Everyone else can still open it read-only.
-  const accessLevel = (session?.user as { accessLevel?: string } | undefined)?.accessLevel;
-  const canEditPrompt = accessLevel === 'super_admin' || accessLevel === 'admin';
+  // Writing a prompt decides what customers receive: admins only, matching the backend gate.
+  const canEditPrompt = useIsAdmin();
 
   function submit() {
     const trimmed = text.trim();
@@ -70,28 +63,29 @@ export function ClaudeChatBox({
   }
 
   return (
-    // Borderless: a faint tinted band with a top divider, fused into the parent card.
-    <div className="border-t border-border/60 bg-muted/20">
+    <div className="border-t border-border bg-muted/40">
       <div className="flex items-center gap-1.5 px-3 pb-1 pt-2">
         <ClaudeIcon className={busy ? 'animate-pulse' : ''} />
         <span className="text-xs font-medium leading-none">Claude</span>
-        <span aria-hidden="true" className="text-2xs leading-none text-muted-foreground/50">
+        <span aria-hidden="true" className="text-2xs leading-none text-muted-foreground">
           ·
         </span>
-        <span className="truncate text-2xs leading-none text-muted-foreground">
+        <span aria-live="polite" className="truncate text-2xs leading-none text-muted-foreground">
           {busy ? busyHint : idleHint}
         </span>
         {editablePrompt ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={() => setPromptOpen(true)}
             aria-label={t('prompts.edit')}
             title={t('prompts.edit')}
-            className="ml-auto flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-2xs leading-none text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="-my-1 ml-auto text-muted-foreground hover:text-foreground"
           >
-            <SlidersHorizontal className="size-3" />
+            <SlidersHorizontal aria-hidden="true" />
             <span className="hidden sm:inline">{t('prompts.edit')}</span>
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -100,8 +94,7 @@ export function ClaudeChatBox({
           {history.slice(-6).map((entry, i) =>
             entry.role === 'user' ? (
               <div key={i} className="flex justify-end">
-                {/* Mirrors the app's outgoing thread bubble so it reads as a sent message. */}
-                <span className="max-w-[85%] rounded-2xl rounded-br-sm border border-rust/20 bg-rust/[0.05] px-2.5 py-1 text-2xs leading-snug text-foreground/90">
+                <span className="max-w-[85%] rounded-lg bg-primary-soft px-2.5 py-1 text-2xs leading-snug text-foreground">
                   {entry.text}
                 </span>
               </div>
@@ -124,39 +117,38 @@ export function ClaudeChatBox({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
+          aria-label={t('ai.inputLabel')}
           rows={Math.min(4, Math.max(1, text.split('\n').length))}
           disabled={busy}
-          className="flex-1 resize-none bg-transparent py-1 text-2sm leading-relaxed outline-none placeholder:text-muted-foreground disabled:opacity-60"
+          className="flex-1 resize-none bg-transparent py-1 text-base leading-relaxed outline-none placeholder:text-muted-foreground disabled:opacity-60 sm:text-2sm"
         />
-        <button
+        <Button
           type="button"
+          size="icon-sm"
           onClick={submit}
           disabled={busy || !text.trim()}
           aria-label={sendLabel}
           title={sendLabel}
-          className="mb-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+          className="mb-0.5"
         >
-          <ArrowUp className="size-3.5" />
-        </button>
+          <ArrowUp aria-hidden="true" />
+        </Button>
       </div>
 
       {quickActions.length > 0 ? (
-        <div className="flex flex-wrap gap-1 px-3 pb-2">
+        <div className="flex flex-wrap gap-1.5 px-3 pb-2">
           {quickActions.map((a) => (
-            <button
+            <Button
               key={a.label}
               type="button"
+              variant="outline"
+              size="xs"
               onClick={a.run}
               disabled={busy}
-              className={cn(
-                'rounded-full border border-border bg-background px-2.5 py-0.5 text-2xs text-muted-foreground transition-colors',
-                'hover:border-claude hover:text-foreground',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                'disabled:opacity-50',
-              )}
+              className="font-normal text-muted-foreground hover:border-claude hover:text-foreground"
             >
               {a.label}
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}

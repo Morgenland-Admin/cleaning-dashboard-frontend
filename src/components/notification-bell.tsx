@@ -1,33 +1,71 @@
 import { useQuery } from '@tanstack/react-query';
 import {
+  ArrowRight,
+  AtSign,
   Bell,
   ClipboardList,
+  Globe,
   Inbox,
-  Loader2,
   Mail,
   MessageSquare,
-  Send,
-  Sparkles,
+  Phone,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { BrandMark } from '@/components/brand-mark';
+import { BrandChip, BrandMark } from '@/components/brand-mark';
+import { CountPill } from '@/components/count-pill';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { ErrorState } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useProject, type Project } from '@/contexts/project-context';
+import { useProject, type BrandFilterId, type Project } from '@/contexts/project-context';
 import { useLocale } from '@/i18n';
 import {
   notificationsAdminApi,
+  type InquiryChannel,
+  type InquiryChannelCounts,
   type NotificationItem,
-  type NotificationKind,
-  type NotificationsUnreadResponse,
 } from '@/lib/api';
-import { cn, formatDateTime } from '@/lib/utils';
+import { badgeCount, useInboxCounts } from '@/lib/use-inbox-counts';
+import { useNow } from '@/lib/use-now';
+import { cn, formatDateTime, formatNumber } from '@/lib/utils';
 
+type T = ReturnType<typeof useLocale>['t'];
+
+/** Radio value for "all brands"; a slug can never contain `*`. */
+const ALL = '*';
+/** Newest items shown; the type rows above link to the full lists. */
+const LIST_CAP = 8;
+const SEEN_KEY = 'notifications-seen-latest';
+
+const CHANNEL_ICON: Record<InquiryChannel, React.ComponentType<{ className?: string }>> = {
+  phone: Phone,
+  email: AtSign,
+  web: Globe,
+};
+
+function readSeen(): string {
+  try {
+    return window.localStorage.getItem(SEEN_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/*
+ * Radix menus swallow Tab, so everything a keyboard user must reach (brand filter,
+ * type rows, notifications) has to be a menu item.
+ */
 export function NotificationBell() {
   const { t, bcp47 } = useLocale();
   const { projects } = useProject();
@@ -37,60 +75,92 @@ export function NotificationBell() {
     return m;
   }, [projects]);
 
-  const unreadQuery = useQuery({
-    queryKey: ['notifications-unread'],
-    queryFn: ({ signal }) => notificationsAdminApi.unreadCount(signal),
-    refetchInterval: 60_000,
-    placeholderData: (prev) => prev,
-  });
+  const unreadQuery = useInboxCounts();
+  const unread = unreadQuery.data;
+  const [open, setOpen] = useState(false);
+  const [pickedBrand, setBrandFilter] = useState<string | null>(null);
+  const [seen, setSeen] = useState(readSeen);
 
-  const count = unreadQuery.data?.count ?? 0;
-  const hasUnread = count > 0;
-  const badgeText = count > 99 ? '99+' : String(count);
+  const activeBrands = (unread?.byBrand ?? []).filter((b) => b.count > 0);
+  // A brand whose items were all handled meanwhile drops out of the filter.
+  const brandFilter =
+    pickedBrand && activeBrands.some((b) => b.slug === pickedBrand) ? pickedBrand : null;
 
   const listQuery = useQuery({
-    queryKey: ['notifications-list'],
-    queryFn: ({ signal }) => notificationsAdminApi.list(20, signal),
-    enabled: false,
+    queryKey: ['notifications-list', brandFilter ?? ALL],
+    queryFn: ({ signal }) => notificationsAdminApi.list(LIST_CAP, signal, brandFilter),
+    enabled: open,
   });
 
-  const [brandFilter, setBrandFilter] = useState<string | null>(null);
+  const count = unread?.count ?? 0;
+  const hasUnread = count > 0;
+  // Pulse only when something arrived since the menu was last opened, not for the standing backlog.
+  const hasFresh = hasUnread && !!unread?.latestAt && unread.latestAt > seen;
 
-  const filteredItems = useMemo(() => {
-    const items = listQuery.data?.items ?? [];
-    return brandFilter ? items.filter((it) => it.companySlug === brandFilter) : items;
-  }, [listQuery.data, brandFilter]);
+  const brandCounts = brandFilter ? unread?.byBrand.find((b) => b.slug === brandFilter) : undefined;
+  const scoped = brandFilter
+    ? {
+        inquiry: brandCounts?.inquiry ?? 0,
+        contact: brandCounts?.contact ?? 0,
+        channels: brandCounts?.channels,
+        count: brandCounts?.count ?? 0,
+      }
+    : {
+        inquiry: unread?.byKind?.inquiry ?? 0,
+        contact: unread?.byKind?.contact ?? 0,
+        channels: unread?.inquiryChannels,
+        count,
+      };
+
+  // "View all" opens the list in the brand the counts belong to.
+  const targetBrand: BrandFilterId =
+    brandFilter ?? (activeBrands.length === 1 ? activeBrands[0]!.slug : 'all');
+
+  function onOpenChange(next: boolean) {
+    setOpen(next);
+    if (next) {
+      void unreadQuery.refetch();
+      if (unread?.latestAt) {
+        setSeen(unread.latestAt);
+        try {
+          window.localStorage.setItem(SEEN_KEY, unread.latestAt);
+        } catch {
+          // Private mode: the pulse just shows again next session.
+        }
+      }
+    }
+  }
+
+  const items = listQuery.data?.items ?? [];
+  const hidden = Math.max(0, scoped.count - items.length);
 
   return (
-    <DropdownMenu
-      onOpenChange={(open) => {
-        if (open) void listQuery.refetch();
-      }}
-    >
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label={
-            hasUnread ? t('notifications.bellWithCount', { n: count }) : t('notifications.bell')
+            hasUnread
+              ? t('notifications.bellWithCount', { n: formatNumber(count, bcp47) })
+              : t('notifications.bell')
           }
-          className={cn(
-            'relative inline-flex size-9 items-center justify-center rounded-full text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            hasUnread && 'text-foreground',
-          )}
+          className="relative grid size-10 place-items-center rounded-md text-foreground transition-colors duration-fast hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9"
         >
-          <Bell className="size-4" aria-hidden="true" />
+          <Bell className="size-[1.125rem]" aria-hidden="true" />
           {hasUnread ? (
             <>
+              {hasFresh ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-0.5 top-0.5 flex size-4 animate-ping rounded-full bg-highlight/40 motion-reduce:animate-none"
+                />
+              ) : null}
               <span
                 aria-hidden="true"
-                className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-3xs font-semibold text-primary-foreground ring-2 ring-background"
+                className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-highlight px-1 text-3xs font-semibold tabular-nums text-highlight-foreground ring-2 ring-background"
               >
-                {badgeText}
+                {badgeCount(count)}
               </span>
-              <span
-                aria-hidden="true"
-                className="absolute -right-0.5 -top-0.5 flex size-4 animate-ping rounded-full bg-rust/40"
-              />
             </>
           ) : null}
         </button>
@@ -98,357 +168,315 @@ export function NotificationBell() {
 
       <DropdownMenuContent
         align="end"
-        sideOffset={10}
-        className="w-[22rem] overflow-hidden rounded-xl border-border bg-card p-0 shadow-lg sm:w-[26rem]"
+        sideOffset={8}
+        className="flex max-h-[min(36rem,calc(100svh-5rem))] w-[min(26rem,calc(100vw-1.5rem))] flex-col p-0"
       >
-        <NotificationsHeader
-          t={t}
-          count={count}
-          unread={unreadQuery.data ?? null}
-          brandsBySlug={brandsBySlug}
-          brandFilter={brandFilter}
-          onBrandFilterChange={setBrandFilter}
-        />
-
-        <div className="max-h-[28rem] overflow-y-auto bg-background/40">
-          {listQuery.isLoading ? (
-            <div
-              role="status"
-              aria-live="polite"
-              className="flex items-center justify-center gap-2 px-3 py-10 text-sm text-muted-foreground"
+        <div className="shrink-0 border-b px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-foreground">{t('notifications.title')}</h2>
+            {count > 0 ? (
+              <Badge variant="accent" className="tabular-nums">
+                {t('notifications.newCount', { n: formatNumber(count, bcp47) })}
+              </Badge>
+            ) : null}
+          </div>
+          {activeBrands.length > 1 ? (
+            <DropdownMenuRadioGroup
+              value={brandFilter ?? ALL}
+              // Selection is handled per item so clicking the active brand again clears the filter.
+              onValueChange={() => undefined}
+              aria-label={t('notifications.filterAria')}
+              className="mt-2.5 flex flex-wrap gap-1.5"
             >
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              <span>{t('notifications.loading')}</span>
-            </div>
-          ) : listQuery.error ? (
-            <p role="alert" className="px-4 py-10 text-center text-sm text-destructive">
-              {(listQuery.error as Error).message}
-            </p>
-          ) : !listQuery.data || listQuery.data.items.length === 0 ? (
-            <EmptyState label={t('notifications.empty')} />
-          ) : filteredItems.length === 0 ? (
-            <EmptyState
-              label={t('notifications.emptyForBrand', {
-                brand: brandsBySlug.get(brandFilter ?? '')?.shortName ?? '—',
+              <FilterItem
+                value={ALL}
+                label={t('notifications.filterAll')}
+                count={count}
+                brand={null}
+                onSelect={() => setBrandFilter(null)}
+              />
+              {activeBrands.map((b) => {
+                const brand = brandsBySlug.get(b.slug);
+                return (
+                  <FilterItem
+                    key={b.slug}
+                    value={b.slug}
+                    label={brand?.shortName ?? b.name}
+                    count={b.count}
+                    brand={brand ?? null}
+                    onSelect={() => setBrandFilter(brandFilter === b.slug ? null : b.slug)}
+                  />
+                );
               })}
-            />
-          ) : (
-            <GroupedList items={filteredItems} bcp47={bcp47} t={t} brandsBySlug={brandsBySlug} />
-          )}
+            </DropdownMenuRadioGroup>
+          ) : null}
         </div>
 
-        <NotificationsFooter t={t} />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {unreadQuery.isLoading ? (
+            <LoadingState label={t('notifications.loading')} />
+          ) : unreadQuery.error && !unread ? (
+            <div className="p-3">
+              <ErrorState
+                error={unreadQuery.error}
+                onRetry={() => void unreadQuery.refetch()}
+                retrying={unreadQuery.isFetching}
+              />
+            </div>
+          ) : scoped.count === 0 ? (
+            <EmptyState
+              size="sm"
+              icon={<Inbox aria-hidden="true" />}
+              message={t('notifications.empty')}
+            />
+          ) : (
+            <>
+              <MenuSection label={t('notifications.byType')}>
+                {scoped.inquiry > 0 ? (
+                  <TypeRow
+                    to="/inquiries?status=new"
+                    brand={targetBrand}
+                    icon={<ClipboardList aria-hidden="true" />}
+                    label={t('notifications.typeInquiries')}
+                    count={scoped.inquiry}
+                    detail={channelSummary(scoped.channels, t, bcp47)}
+                    bcp47={bcp47}
+                  />
+                ) : null}
+                {scoped.contact > 0 ? (
+                  <TypeRow
+                    to="/contacts?status=new"
+                    brand={targetBrand}
+                    icon={<Mail aria-hidden="true" />}
+                    label={t('notifications.typeContacts')}
+                    count={scoped.contact}
+                    bcp47={bcp47}
+                  />
+                ) : null}
+              </MenuSection>
+
+              <MenuSection label={t('notifications.newest')}>
+                {listQuery.isLoading ? (
+                  <LoadingState inline label={t('notifications.loading')} className="px-4" />
+                ) : listQuery.error ? (
+                  <div className="p-3">
+                    <ErrorState
+                      error={listQuery.error}
+                      onRetry={() => void listQuery.refetch()}
+                      retrying={listQuery.isFetching}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <NewestList items={items} t={t} brandsBySlug={brandsBySlug} />
+                    {hidden > 0 ? (
+                      <p className="px-4 py-2 text-xs text-muted-foreground">
+                        {t('notifications.more', { n: formatNumber(hidden, bcp47) })}
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </MenuSection>
+            </>
+          )}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function NotificationsHeader({
-  t,
-  count,
-  unread,
-  brandsBySlug,
-  brandFilter,
-  onBrandFilterChange,
-}: {
-  t: ReturnType<typeof useLocale>['t'];
-  count: number;
-  unread: NotificationsUnreadResponse | null;
-  brandsBySlug: Map<string, Project>;
-  brandFilter: string | null;
-  onBrandFilterChange: (slug: string | null) => void;
-}) {
-  const brandChips = (unread?.byBrand ?? []).filter((b) => b.count > 0);
-  const showFilter = brandChips.length > 1;
-  return (
-    <div className="border-b border-border bg-card px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex size-7 items-center justify-center rounded-lg bg-rust-soft/60 text-rust ring-1 ring-rust/15">
-            <Inbox className="size-3.5" aria-hidden="true" />
-          </span>
-          <h2 className="font-serif text-base leading-none text-foreground">
-            {t('notifications.title')}
-          </h2>
-        </div>
-        {count > 0 ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-rust/10 px-2 py-0.5 text-2xs font-medium text-rust">
-            <span aria-hidden="true" className="size-1.5 animate-pulse-dot rounded-full bg-rust" />
-            {t('notifications.openCount', { n: count })}
-          </span>
-        ) : null}
-      </div>
+function channelSummary(
+  channels: InquiryChannelCounts | undefined,
+  t: T,
+  bcp47: string,
+): string | null {
+  if (!channels) return null;
+  const parts = (['phone', 'email', 'web'] as const)
+    .filter((c) => channels[c] > 0)
+    .map((c) => `${formatNumber(channels[c], bcp47)} ${t(`notifications.channel.${c}`)}`);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
 
-      {showFilter ? (
-        <div
-          role="tablist"
-          aria-label={t('notifications.filterAria')}
-          className="-mx-1 mt-3 flex flex-wrap gap-1.5 px-1"
-        >
-          <FilterChip
-            active={brandFilter === null}
-            onClick={() => onBrandFilterChange(null)}
-            label={t('notifications.filterAll')}
-            count={count}
-            mark={null}
-          />
-          {brandChips.map((b) => {
-            const brand = brandsBySlug.get(b.slug);
-            const active = brandFilter === b.slug;
-            return (
-              <FilterChip
-                key={b.slug}
-                active={active}
-                onClick={() => onBrandFilterChange(active ? null : b.slug)}
-                label={brand?.shortName ?? b.name}
-                count={b.count}
-                mark={brand ?? null}
-              />
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
+function MenuSection({ label, children }: { label: string; children: React.ReactNode }) {
+  const id = useId();
+  return (
+    <DropdownMenuGroup aria-labelledby={id} className="border-b py-1 last:border-b-0">
+      <DropdownMenuLabel id={id} className="px-4 pb-1 pt-1.5">
+        {label}
+      </DropdownMenuLabel>
+      {children}
+    </DropdownMenuGroup>
   );
 }
 
-function FilterChip({
-  active,
-  onClick,
+function TypeRow({
+  to,
+  brand,
+  icon,
   label,
   count,
-  mark,
+  detail,
+  bcp47,
 }: {
-  active: boolean;
-  onClick: () => void;
+  to: string;
+  brand: BrandFilterId;
+  icon: React.ReactNode;
   label: string;
   count: number;
-  mark: Project | null;
+  detail?: string | null;
+  bcp47: string;
 }) {
+  const { setBrandView } = useProject();
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        'group/chip inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-2 text-2xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        active
-          ? 'border-rust/60 bg-rust text-primary-foreground shadow-sm'
-          : 'border-border bg-background/60 text-foreground hover:border-foreground/40 hover:bg-background',
-      )}
+    <DropdownMenuItem
+      asChild
+      className="cursor-pointer gap-3 rounded-none px-4 py-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:py-2"
     >
-      {mark ? (
-        <BrandMark brand={mark} size="xs" />
-      ) : (
-        <span
-          aria-hidden="true"
-          className={cn(
-            'inline-flex size-4 items-center justify-center rounded-full text-3xs font-bold',
-            active
-              ? 'bg-primary-foreground/15 text-primary-foreground'
-              : 'bg-rust-soft/60 text-rust',
-          )}
-        >
-          ∗
+      <Link to={to} onClick={() => setBrandView(brand)}>
+        <span className="text-muted-foreground">{icon}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-foreground">{label}</span>
+          {detail ? (
+            <span className="block truncate text-xs text-muted-foreground">{detail}</span>
+          ) : null}
         </span>
-      )}
-      <span className="truncate">{label}</span>
-      <span
-        className={cn(
-          'font-mono tabular-nums',
-          active ? 'text-primary-foreground/80' : 'text-muted-foreground',
-        )}
-      >
-        {count}
-      </span>
-    </button>
+        <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+          {formatNumber(count, bcp47)}
+        </span>
+        <ArrowRight className="text-muted-foreground" aria-hidden="true" />
+      </Link>
+    </DropdownMenuItem>
   );
 }
 
-type Bucket = 'today' | 'yesterday' | 'week' | 'older';
-
-function bucketFor(iso: string, now = new Date()): Bucket {
-  const d = new Date(iso);
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfYesterday = new Date(startOfToday.getTime() - 86400_000);
-  const startOfWeek = new Date(startOfToday.getTime() - 6 * 86400_000);
-  if (d >= startOfToday) return 'today';
-  if (d >= startOfYesterday) return 'yesterday';
-  if (d >= startOfWeek) return 'week';
-  return 'older';
+function FilterItem({
+  value,
+  label,
+  count,
+  brand,
+  onSelect,
+}: {
+  value: string;
+  label: string;
+  count: number;
+  brand: Project | null;
+  onSelect: () => void;
+}) {
+  return (
+    <DropdownMenuRadioItem
+      value={value}
+      onSelect={(event) => {
+        event.preventDefault();
+        onSelect();
+      }}
+      className={cn(
+        'inline-flex h-7 cursor-pointer gap-1.5 rounded-sm border border-border-strong bg-card py-0 pl-1.5 pr-1.5 text-xs font-medium text-foreground sm:py-0 [&>span:first-child]:hidden',
+        'focus-visible:ring-2 focus-visible:ring-ring data-[state=checked]:border-primary/40 data-[state=checked]:bg-primary-soft data-[state=checked]:text-primary',
+      )}
+    >
+      {brand ? <BrandMark brand={brand} size="xs" /> : null}
+      <span className="truncate">{label}</span>
+      <CountPill tone="muted">{badgeCount(count)}</CountPill>
+    </DropdownMenuRadioItem>
+  );
 }
 
-function GroupedList({
+function NewestList({
   items,
-  bcp47,
   t,
   brandsBySlug,
 }: {
   items: NotificationItem[];
-  bcp47: string;
-  t: ReturnType<typeof useLocale>['t'];
+  t: T;
   brandsBySlug: Map<string, Project>;
 }) {
-  const groups = useMemo(() => {
-    const map = new Map<Bucket, NotificationItem[]>();
-    const now = new Date();
-    for (const it of items) {
-      const b = bucketFor(it.createdAt, now);
-      const arr = map.get(b) ?? [];
-      arr.push(it);
-      map.set(b, arr);
-    }
-    return (['today', 'yesterday', 'week', 'older'] as Bucket[])
-      .map((b) => ({ bucket: b, items: map.get(b) ?? [] }))
-      .filter((g) => g.items.length > 0);
-  }, [items]);
-
+  const now = useNow(60_000);
   return (
-    <ul className="divide-y divide-border/60">
-      {groups.map(({ bucket, items: gItems }) => (
-        <li key={bucket}>
-          <div className="sticky top-0 z-10 bg-background/80 px-4 py-1.5 backdrop-blur-sm">
-            <h3 className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              {t(`notifications.bucket.${bucket}` as never)}
-            </h3>
-          </div>
-          <ul>
-            {gItems.map((n) => (
-              <NotificationRow
-                key={n.id}
-                item={n}
-                bcp47={bcp47}
-                t={t}
-                brand={brandsBySlug.get(n.companySlug)}
-              />
-            ))}
-          </ul>
-        </li>
+    <>
+      {items.map((n) => (
+        <NotificationRow
+          key={n.id}
+          item={n}
+          now={now}
+          t={t}
+          brand={brandsBySlug.get(n.companySlug)}
+        />
       ))}
-    </ul>
+    </>
   );
 }
 
-const KIND_ICON: Record<NotificationKind, React.ComponentType<{ className?: string }>> = {
-  contact: MessageSquare,
-  inquiry: Send,
-};
-
 function NotificationRow({
   item,
-  bcp47,
+  now,
   t,
   brand,
 }: {
   item: NotificationItem;
-  bcp47: string;
-  t: ReturnType<typeof useLocale>['t'];
+  now: number;
+  t: T;
   brand: Project | undefined;
 }) {
-  const href = item.kind === 'contact' ? '/contacts' : '/inquiries';
-  const KindIcon = KIND_ICON[item.kind];
-  const relative = formatRelativeTime(item.createdAt, bcp47);
-  const fullTime = formatDateTime(item.createdAt, bcp47);
+  const { bcp47 } = useLocale();
+  const { setBrandView } = useProject();
+  // Switch to the record's brand first: the page reads the active brand from context.
+  const href =
+    item.kind === 'contact'
+      ? `/contacts/${item.companySlug}/${item.rowId}`
+      : `/inquiries/${item.companySlug}/${item.rowId}`;
+  const Icon = item.kind === 'contact' ? MessageSquare : CHANNEL_ICON[item.channel ?? 'web'];
+  const kindLabel =
+    item.kind === 'contact'
+      ? t('dashboard.kind.contact')
+      : `${t('dashboard.kind.inquiry')} · ${t(`notifications.channel.${item.channel ?? 'web'}`)}`;
+  const title = item.title.trim() || t('notifications.noName');
   const message = item.message?.trim() ?? '';
   const showMessage = message.length >= 3 && message !== item.title;
 
   return (
-    <li>
-      <Link
-        to={href}
-        className="group relative flex items-start gap-3 px-4 py-3 transition-all hover:bg-rust-soft/40 focus-visible:bg-rust-soft/40 focus-visible:outline-none"
-      >
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-3 left-0 w-0.5 origin-center scale-y-0 rounded-r-sm bg-rust transition-transform group-hover:scale-y-100"
-        />
-
-        <span className="relative shrink-0">
-          {brand ? (
-            <BrandMark brand={brand} size="md" />
-          ) : (
-            <span
-              aria-hidden="true"
-              className="inline-flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"
-            >
-              <Mail className="size-3.5" />
-            </span>
-          )}
-          <span
-            aria-hidden="true"
-            className="absolute -bottom-1 -right-1 inline-flex size-4 items-center justify-center rounded-full bg-rust text-primary-foreground ring-2 ring-card"
-          >
-            <KindIcon className="size-2.5" />
-          </span>
-        </span>
-
+    <DropdownMenuItem
+      asChild
+      className="cursor-pointer items-start gap-3 rounded-none px-4 py-2.5 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:py-2.5"
+    >
+      <Link to={href} onClick={() => setBrandView(item.companySlug)}>
+        <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm font-medium text-foreground">{item.title}</p>
+          <div className="flex items-baseline justify-between gap-3">
+            <p
+              className={cn(
+                'truncate text-2sm font-medium',
+                item.title.trim() ? 'text-foreground' : 'italic text-muted-foreground',
+              )}
+            >
+              {title}
+            </p>
             <time
               dateTime={item.createdAt}
-              title={fullTime}
-              className="shrink-0 font-mono text-3xs uppercase tabular-nums tracking-wide text-muted-foreground"
+              title={formatDateTime(item.createdAt, bcp47)}
+              className="shrink-0 text-xs tabular-nums text-muted-foreground"
             >
-              {relative}
+              {formatRelativeTime(item.createdAt, now, bcp47)}
             </time>
           </div>
-          <p className="mt-0.5 truncate text-2xs text-muted-foreground">
-            <span className="font-medium text-foreground/80">
-              {brand?.shortName ?? item.companyName}
-            </span>
-            <span aria-hidden="true" className="mx-1.5 text-muted-foreground/50">
-              ·
-            </span>
-            <span>{t(`dashboard.kind.${item.kind}`)}</span>
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            {brand ? (
+              <BrandChip brand={brand} />
+            ) : (
+              <span className="shrink-0 font-medium text-foreground">{item.companyName}</span>
+            )}
+            <span className="truncate">{kindLabel}</span>
           </p>
           {showMessage ? (
-            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-              {message}
-            </p>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{message}</p>
           ) : null}
         </div>
       </Link>
-    </li>
+    </DropdownMenuItem>
   );
 }
 
-function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center">
-      <span className="inline-flex size-10 items-center justify-center rounded-full bg-rust-soft/40 text-rust">
-        <Sparkles className="size-5" aria-hidden="true" />
-      </span>
-      <p className="text-sm text-muted-foreground">{label}</p>
-    </div>
-  );
-}
-
-function NotificationsFooter({ t }: { t: ReturnType<typeof useLocale>['t'] }) {
-  return (
-    <div className="grid grid-cols-2 border-t border-border bg-card">
-      <Link
-        to="/contacts"
-        className="flex items-center justify-center gap-1.5 border-r border-border px-4 py-2.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
-      >
-        <Mail className="size-3.5" aria-hidden="true" />
-        {t('notifications.viewContacts')}
-      </Link>
-      <Link
-        to="/inquiries"
-        className="flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
-      >
-        <ClipboardList className="size-3.5" aria-hidden="true" />
-        {t('notifications.viewInquiries')}
-      </Link>
-    </div>
-  );
-}
-
-function formatRelativeTime(iso: string, bcp47: string): string {
+function formatRelativeTime(iso: string, now: number, bcp47: string): string {
   const target = new Date(iso).getTime();
-  const now = Date.now();
   const diffSec = Math.round((target - now) / 1000);
   const abs = Math.abs(diffSec);
 

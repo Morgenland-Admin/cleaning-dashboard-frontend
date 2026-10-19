@@ -1,47 +1,46 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, RefreshCcw } from 'lucide-react';
 import { isRouteErrorResponse, Link, useRouteError } from 'react-router-dom';
 
-import { NotFoundPage } from '@/pages/not-found';
+import { Button } from '@/components/ui/button';
+import { useT } from '@/i18n';
+import { usePageTitle } from '@/lib/use-page-title';
+import { ErrorScreen, NotFoundPage } from '@/pages/not-found';
 
-/** React Router errorElement — fallback for thrown loader/render errors and 404s. */
+/** Mounted twice in router.tsx: around the pages (inside the shell) and on the AppLayout route (shell crashes). */
 export function RouteError() {
   const error = useRouteError();
+  const t = useT();
+  const is404 = isRouteErrorResponse(error) && error.status === 404;
+  usePageTitle(is404 ? null : t('errors.routeTitle'));
 
-  if (isRouteErrorResponse(error) && error.status === 404) {
+  if (is404) {
     return <NotFoundPage />;
   }
 
   const message =
-    error instanceof Error
+    error instanceof Error && error.message
       ? error.message
-      : typeof error === 'string'
+      : typeof error === 'string' && error
         ? error
-        : 'Ein unerwarteter Fehler ist aufgetreten.';
+        : t('errors.unexpected');
 
   return (
-    <div className="mx-auto flex min-h-[60vh] w-full max-w-[640px] flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-destructive/15 text-destructive">
-        <AlertTriangle className="size-6" aria-hidden="true" />
-      </div>
-      <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-        Da ist etwas schiefgelaufen
-      </h1>
-      <p className="text-sm text-muted-foreground">{message}</p>
-      <div className="mt-2 flex gap-3">
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="inline-flex items-center rounded-full border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rust"
-        >
-          Neu laden
-        </button>
-        <Link
-          to="/"
-          className="inline-flex items-center rounded-full bg-rust px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-rust/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rust"
-        >
-          Zur Übersicht
-        </Link>
-      </div>
-    </div>
+    <ErrorScreen
+      tone="destructive"
+      icon={<AlertTriangle aria-hidden="true" />}
+      title={t('errors.routeTitle')}
+      body={message}
+      actions={
+        <>
+          <Button type="button" variant="outline" onClick={() => window.location.reload()}>
+            <RefreshCcw aria-hidden="true" />
+            {t('errors.reload')}
+          </Button>
+          <Button asChild>
+            <Link to="/">{t('errors.toOverview')}</Link>
+          </Button>
+        </>
+      }
+    />
   );
 }

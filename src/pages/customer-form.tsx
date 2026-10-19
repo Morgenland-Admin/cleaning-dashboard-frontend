@@ -1,21 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowLeft, Building2, Loader2, Save, User } from 'lucide-react';
-import { useState } from 'react';
+import { Building2, Save, User, Users } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { AddressAutocomplete } from '@/components/address-autocomplete';
-import { EmptyState } from '@/components/empty-state';
+import { BackLink } from '@/components/back-link';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { FormActionBar } from '@/components/form-action-bar';
 import { FormField } from '@/components/form-field';
-import { PageHeading } from '@/components/page-heading';
+import { LeaveGuardDialog } from '@/components/leave-guard-dialog';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { SectionCard } from '@/components/section';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject } from '@/contexts/project-context';
 import { toast } from '@/hooks/use-toast';
 import { useT } from '@/i18n';
+import { useCanWrite } from '@/lib/access';
 import {
+  ApiError,
   customersAdminApi,
   errMessage,
   type Customer,
@@ -27,13 +36,16 @@ import {
   type CustomerUpdateInput,
   type LoyaltyTier,
 } from '@/lib/api';
+import { customerTitle } from '@/lib/customer-display';
+import { useLeaveGuard } from '@/lib/use-leave-guard';
 import { usePageTitle } from '@/lib/use-page-title';
-import { cn } from '@/lib/utils';
+import { isNonContactableEmail } from '@/lib/utils';
 
 const TIERS: LoyaltyTier[] = ['neukunde', 'stammkunde', 'premium'];
 const SALUTATIONS: CustomerSalutation[] = ['herr', 'frau', 'divers', 'firma'];
 const LANGUAGES: CustomerLanguage[] = ['de', 'en'];
 const CHANNELS: CustomerChannel[] = ['email', 'phone', 'whatsapp', 'post'];
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface FormState {
   customerType: CustomerType;
@@ -91,11 +103,7 @@ const EMPTY_FORM: FormState = {
   marketingOptIn: false,
 };
 
-/**
- * Split a legacy single-name value into first + last so records created before
- * the split fields existed can be corrected in place. Everything after the first
- * space is the last name ("Denise Charaf Eddine" → "Denise" + "Charaf Eddine").
- */
+/** Legacy single-name values split at the first space; the rest is the last name. */
 function splitName(name: string): { firstName: string; lastName: string } {
   const trimmed = name.trim();
   const gap = trimmed.indexOf(' ');
@@ -114,7 +122,8 @@ function toForm(customer: Customer): FormState {
     salutation: customer.salutation ?? '',
     firstName: customer.firstName ?? fallback.firstName,
     lastName: customer.lastName ?? fallback.lastName,
-    email: customer.email,
+    // Imported placeholders are never shown; an empty field keeps the stored placeholder.
+    email: isNonContactableEmail(customer.email) ? '' : customer.email,
     phone: customer.phone ?? '',
     dateOfBirth: customer.dateOfBirth ?? '',
     language: customer.language ?? '',
@@ -130,7 +139,7 @@ function toForm(customer: Customer): FormState {
     postalCode: customer.postalCode ?? '',
     city: customer.city ?? '',
     country: customer.country ?? 'DE',
-    loyaltyTier: customer.loyaltyTier,
+    loyaltyTier: TIERS.includes(customer.loyaltyTier) ? customer.loyaltyTier : 'neukunde',
     defaultPaymentTermsDays:
       customer.defaultPaymentTermsDays != null ? String(customer.defaultPaymentTermsDays) : '',
     tags: (customer.tags ?? []).join(', '),
@@ -139,13 +148,14 @@ function toForm(customer: Customer): FormState {
   };
 }
 
-/** Map the form to the API payload. Empty strings clear the field server-side. */
+/** Maps the form to the API payload; empty strings clear the field server-side. */
 function toPayload(form: FormState): CustomerUpdateInput {
   const term = form.defaultPaymentTermsDays.trim();
   const termNumber = term === '' ? null : Number(term);
   const country = form.country.trim().toUpperCase();
+  const email = form.email.trim().toLowerCase();
   return {
-    email: form.email.trim().toLowerCase(),
+    email: email || undefined,
     customerType: form.customerType,
     salutation: (form.salutation || null) as CustomerSalutation | null,
     firstName: form.firstName,
@@ -177,14 +187,10 @@ function toPayload(form: FormState): CustomerUpdateInput {
   };
 }
 
-/**
- * Full-page create / edit form for a customer record (replaces the old side
- * sheet): person, company and billing details in one place, the way an ERP
- * contact mask works. Additional addresses are managed on the detail page.
- */
 export function CustomerFormPage() {
   const t = useT();
   const { activeProject, isAllBrands } = useProject();
+  const canWrite = useCanWrite();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const params = useParams<{ id?: string }>();
@@ -193,7 +199,11 @@ export function CustomerFormPage() {
   const isEdit = id != null;
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [baseline, setBaseline] = useState<FormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; companyName?: string }>({});
+  const emailRef = useRef<HTMLInputElement>(null);
+  const companyNameRef = useRef<HTMLInputElement>(null);
 
   usePageTitle(isEdit ? t('customers.form.editTitle') : t('customers.form.newTitle'));
 
@@ -203,16 +213,26 @@ export function CustomerFormPage() {
     queryFn: ({ signal }) => customersAdminApi.get(slug, id!, signal),
   });
 
-  // Fill the form from the loaded record once, during render (no effect needed).
   const loaded = query.data?.customer;
   const [hydratedFor, setHydratedFor] = useState<number | null>(null);
   if (loaded && hydratedFor !== loaded.id) {
+    const hydrated = toForm(loaded);
     setHydratedFor(loaded.id);
-    setForm(toForm(loaded));
+    setForm(hydrated);
+    setBaseline(hydrated);
   }
+  const hasPlaceholderEmail = !!loaded && isNonContactableEmail(loaded.email);
+  const { blocker, allowLeave } = useLeaveGuard(
+    canWrite && JSON.stringify(form) !== JSON.stringify(baseline),
+  );
 
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    if (key === 'email' && fieldErrors.email) setFieldErrors((p) => ({ ...p, email: undefined }));
+    if ((key === 'companyName' || key === 'customerType') && fieldErrors.companyName) {
+      setFieldErrors((p) => ({ ...p, companyName: undefined }));
+    }
+  };
 
   const save = useMutation({
     mutationFn: () => {
@@ -226,143 +246,154 @@ export function CustomerFormPage() {
         queryKey: ['customer-overview', slug, res.customer.id],
       });
       void queryClient.invalidateQueries({ queryKey: ['customer', slug, res.customer.id] });
-      toast.success(isEdit ? t('customers.form.save') : t('customers.form.create'));
+      toast.success(isEdit ? t('customers.form.saved') : t('customers.form.created'));
+      allowLeave();
       navigate(`/customers/${res.customer.id}`);
     },
-    onError: (err) => setFormError(errMessage(err)),
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409 && /email/i.test(err.message)) {
+        const message = t('customers.form.emailTaken');
+        setFormError(message);
+        setFieldErrors({ email: message });
+        emailRef.current?.focus();
+        return;
+      }
+      setFormError(errMessage(err));
+    },
   });
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
-    if (!form.email.trim()) {
-      setFormError(t('customers.form.emailRequired'));
+    setFieldErrors({});
+    const email = form.email.trim();
+    if (!email && !hasPlaceholderEmail) {
+      const message = t('customers.form.emailRequired');
+      setFormError(message);
+      setFieldErrors({ email: message });
+      emailRef.current?.focus();
+      return;
+    }
+    if (email && !EMAIL_SHAPE.test(email)) {
+      const message = t('customers.form.emailInvalid');
+      setFormError(message);
+      setFieldErrors({ email: message });
+      emailRef.current?.focus();
       return;
     }
     if (form.customerType === 'business' && !form.companyName.trim()) {
-      setFormError(t('customers.form.companyNameRequired'));
+      const message = t('customers.form.companyNameRequired');
+      setFormError(message);
+      setFieldErrors({ companyName: message });
+      companyNameRef.current?.focus();
       return;
     }
     save.mutate();
   }
 
+  const backLink = (
+    <BackLink to="/customers" className="mb-3 self-start">
+      {t('customers.backToList')}
+    </BackLink>
+  );
+  const pageTitle = isEdit ? t('customers.form.editTitle') : t('customers.form.newTitle');
+
   if (isAllBrands) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <BackLink label={t('customers.backToList')} />
-        <EmptyState message={t('customers.selectBrandFirst')} />
-      </div>
+      <PageContainer width="narrow">
+        {backLink}
+        <PageHeading title={pageTitle} />
+        <EmptyState
+          variant="dashed"
+          icon={<Users aria-hidden="true" />}
+          message={t('customers.selectBrandFirst')}
+        />
+      </PageContainer>
     );
   }
 
   if (isEdit && query.isLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <BackLink label={t('customers.backToList')} />
-        <div className="flex h-64 items-center justify-center text-muted-foreground">
-          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-        </div>
-      </div>
+      <PageContainer width="narrow">
+        {backLink}
+        <LoadingState className="min-h-64" />
+      </PageContainer>
+    );
+  }
+
+  if (!canWrite) {
+    return (
+      <PageContainer width="narrow">
+        {backLink}
+        <PageHeading title={pageTitle} />
+        <Alert tone="neutral">{t('customers.readOnly')}</Alert>
+      </PageContainer>
     );
   }
 
   if (isEdit && (query.error || !query.data)) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <BackLink label={t('customers.backToList')} />
-        <ErrorNote message={query.error ? errMessage(query.error) : t('customers.notFound')} />
-      </div>
+      <PageContainer width="narrow">
+        {backLink}
+        <PageHeading title={pageTitle} />
+        <ErrorState
+          error={query.error ?? new Error(t('customers.notFound'))}
+          onRetry={() => void query.refetch()}
+          retrying={query.isFetching}
+        />
+      </PageContainer>
     );
   }
 
   const isBusiness = form.customerType === 'business';
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col">
+    <PageContainer width="narrow">
       <PageHeading
-        title={isEdit ? t('customers.form.editTitle') : t('customers.form.newTitle')}
+        title={pageTitle}
         subtitle={isEdit ? t('customers.form.editSubtitle') : t('customers.form.newSubtitle')}
-        breadcrumb={
-          <>
-            <span>{activeProject.name}</span>
-            <span aria-hidden="true"> / </span>
-            <Link to="/customers" className="hover:underline">
-              {t('customers.title')}
-            </Link>
-            <span aria-hidden="true"> / </span>
-            <span className="text-foreground">
-              {isEdit ? (loaded?.name ?? loaded?.email) : t('customers.form.newTitle')}
-            </span>
-          </>
-        }
+        breadcrumb={[
+          { label: activeProject.name },
+          { label: t('customers.title'), to: '/customers' },
+          ...(loaded ? [{ label: customerTitle(loaded, t), to: `/customers/${loaded.id}` }] : []),
+          { label: pageTitle },
+        ]}
       />
 
       <form className="flex flex-col gap-5" onSubmit={submit} noValidate>
-        <Section title={t('customers.form.customerType')} hint={t('customers.section.contactHint')}>
-          <div
-            role="radiogroup"
-            aria-label={t('customers.form.customerType')}
-            className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-background p-1"
-          >
-            {(['private', 'business'] as CustomerType[]).map((value) => {
-              const active = form.customerType === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => set('customerType', value)}
-                  className={cn(
-                    'inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9',
-                    active
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                  )}
-                >
-                  {value === 'business' ? (
-                    <Building2 className="size-4" aria-hidden="true" />
-                  ) : (
-                    <User className="size-4" aria-hidden="true" />
-                  )}
-                  {t(`customers.type.${value}` as never)}
-                </button>
-              );
-            })}
-          </div>
-        </Section>
+        <SectionCard
+          as="fieldset"
+          title={t('customers.form.customerType')}
+          description={t('customers.section.typeHint')}
+        >
+          <SegmentedControl
+            label={t('customers.form.customerType')}
+            value={form.customerType}
+            onValueChange={(value) => set('customerType', value)}
+            options={(['private', 'business'] as CustomerType[]).map((value) => ({
+              value,
+              label: t(`customers.type.${value}` as never),
+              icon:
+                value === 'business' ? (
+                  <Building2 aria-hidden="true" />
+                ) : (
+                  <User aria-hidden="true" />
+                ),
+            }))}
+          />
+        </SectionCard>
 
-        <Section title={t('customers.section.contact')} hint={t('customers.section.contactHint')}>
+        <SectionCard
+          as="fieldset"
+          title={t('customers.section.contact')}
+          description={t('customers.section.contactHint')}
+        >
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label={t('customers.form.salutation')}>
-              <Select
-                value={form.salutation}
-                onChange={(e) => set('salutation', e.target.value)}
-                className="h-11 sm:h-9"
-              >
-                <option value="">{t('customers.notSet')}</option>
-                {SALUTATIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`customers.salutationOpt.${value}` as never)}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-            <FormField label={t('customers.form.phone')}>
-              <Input
-                type="tel"
-                value={form.phone}
-                onChange={(e) => set('phone', e.target.value)}
-                autoComplete="tel"
-                className="h-11 sm:h-9"
-              />
-            </FormField>
             <FormField label={t('customers.form.firstName')}>
               <Input
                 value={form.firstName}
                 onChange={(e) => set('firstName', e.target.value)}
                 autoComplete="given-name"
-                className="h-11 sm:h-9"
               />
             </FormField>
             <FormField label={t('customers.form.lastName')}>
@@ -370,65 +401,91 @@ export function CustomerFormPage() {
                 value={form.lastName}
                 onChange={(e) => set('lastName', e.target.value)}
                 autoComplete="family-name"
-                className="h-11 sm:h-9"
               />
             </FormField>
-            <FormField label={t('customers.form.email')} required>
+            <FormField
+              label={t('customers.form.email')}
+              required={!hasPlaceholderEmail}
+              error={fieldErrors.email}
+              hint={hasPlaceholderEmail ? t('customers.form.placeholderEmailHint') : undefined}
+            >
               <Input
+                ref={emailRef}
                 type="email"
                 value={form.email}
                 onChange={(e) => set('email', e.target.value)}
                 autoComplete="email"
-                className="h-11 sm:h-9"
+              />
+            </FormField>
+            <FormField label={t('customers.form.phone')}>
+              <Input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => set('phone', e.target.value)}
+                autoComplete="tel"
+              />
+            </FormField>
+            <FormField label={t('customers.form.salutation')}>
+              <Select
+                value={form.salutation}
+                onValueChange={(v) => set('salutation', v)}
+                options={[
+                  { value: '', label: t('customers.notSet') },
+                  ...SALUTATIONS.map((value) => ({
+                    value,
+                    label: t(`customers.salutationOpt.${value}` as never),
+                  })),
+                ]}
               />
             </FormField>
             <FormField label={t('customers.form.dateOfBirth')}>
-              <Input
-                type="date"
-                value={form.dateOfBirth}
-                onChange={(e) => set('dateOfBirth', e.target.value)}
-                className="h-11 sm:h-9"
-              />
+              <DatePicker value={form.dateOfBirth} onValueChange={(v) => set('dateOfBirth', v)} />
             </FormField>
             <FormField label={t('customers.form.language')}>
               <Select
                 value={form.language}
-                onChange={(e) => set('language', e.target.value)}
-                className="h-11 sm:h-9"
-              >
-                <option value="">{t('customers.notSet')}</option>
-                {LANGUAGES.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`customers.lang.${value}` as never)}
-                  </option>
-                ))}
-              </Select>
+                onValueChange={(v) => set('language', v)}
+                options={[
+                  { value: '', label: t('customers.notSet') },
+                  ...LANGUAGES.map((value) => ({
+                    value,
+                    label: t(`customers.lang.${value}` as never),
+                  })),
+                ]}
+              />
             </FormField>
             <FormField label={t('customers.form.preferredChannel')}>
               <Select
                 value={form.preferredChannel}
-                onChange={(e) => set('preferredChannel', e.target.value)}
-                className="h-11 sm:h-9"
-              >
-                <option value="">{t('customers.notSet')}</option>
-                {CHANNELS.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`customers.channel.${value}` as never)}
-                  </option>
-                ))}
-              </Select>
+                onValueChange={(v) => set('preferredChannel', v)}
+                options={[
+                  { value: '', label: t('customers.notSet') },
+                  ...CHANNELS.map((value) => ({
+                    value,
+                    label: t(`customers.channel.${value}` as never),
+                  })),
+                ]}
+              />
             </FormField>
           </div>
-        </Section>
+        </SectionCard>
 
-        <Section title={t('customers.section.company')} hint={t('customers.section.companyHint')}>
+        <SectionCard
+          as="fieldset"
+          title={t('customers.section.company')}
+          description={t('customers.section.companyHint')}
+        >
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label={t('customers.form.companyName')} required={isBusiness}>
+            <FormField
+              label={t('customers.form.companyName')}
+              required={isBusiness}
+              error={fieldErrors.companyName}
+            >
               <Input
+                ref={companyNameRef}
                 value={form.companyName}
                 onChange={(e) => set('companyName', e.target.value)}
                 autoComplete="organization"
-                className="h-11 sm:h-9"
               />
             </FormField>
             <FormField label={t('customers.form.website')}>
@@ -438,7 +495,6 @@ export function CustomerFormPage() {
                 value={form.website}
                 onChange={(e) => set('website', e.target.value)}
                 placeholder="https://"
-                className="h-11 sm:h-9"
               />
             </FormField>
             <FormField label={t('customers.form.jobPosition')}>
@@ -446,38 +502,33 @@ export function CustomerFormPage() {
                 value={form.jobPosition}
                 onChange={(e) => set('jobPosition', e.target.value)}
                 autoComplete="organization-title"
-                className="h-11 sm:h-9"
               />
             </FormField>
             <FormField label={t('customers.form.department')}>
-              <Input
-                value={form.department}
-                onChange={(e) => set('department', e.target.value)}
-                className="h-11 sm:h-9"
-              />
+              <Input value={form.department} onChange={(e) => set('department', e.target.value)} />
             </FormField>
             <FormField label={t('customers.form.vatId')} hint={t('customers.form.vatIdHint')}>
               <Input
                 value={form.vatId}
                 onChange={(e) => set('vatId', e.target.value)}
                 placeholder="DE123456789"
-                className="h-11 uppercase sm:h-9"
+                className="uppercase"
               />
             </FormField>
             <FormField
               label={t('customers.form.taxNumber')}
               hint={t('customers.form.taxNumberHint')}
             >
-              <Input
-                value={form.taxNumber}
-                onChange={(e) => set('taxNumber', e.target.value)}
-                className="h-11 sm:h-9"
-              />
+              <Input value={form.taxNumber} onChange={(e) => set('taxNumber', e.target.value)} />
             </FormField>
           </div>
-        </Section>
+        </SectionCard>
 
-        <Section title={t('customers.section.address')} hint={t('customers.section.addressHint')}>
+        <SectionCard
+          as="fieldset"
+          title={t('customers.section.address')}
+          description={t('customers.section.addressHint')}
+        >
           <div className="grid gap-4">
             <FormField label={t('customers.form.addressLine1')}>
               <AddressAutocomplete
@@ -491,7 +542,6 @@ export function CustomerFormPage() {
                     country: prev.country.trim() === '' ? 'DE' : prev.country,
                   }));
                 }}
-                className="h-11 sm:h-9"
               />
             </FormField>
             <FormField label={t('customers.form.addressLine2')}>
@@ -499,7 +549,6 @@ export function CustomerFormPage() {
                 value={form.addressLine2}
                 onChange={(e) => set('addressLine2', e.target.value)}
                 autoComplete="address-line2"
-                className="h-11 sm:h-9"
               />
             </FormField>
             <div className="grid grid-cols-[1fr_2fr_auto] gap-3">
@@ -508,7 +557,6 @@ export function CustomerFormPage() {
                   value={form.postalCode}
                   onChange={(e) => set('postalCode', e.target.value)}
                   autoComplete="postal-code"
-                  className="h-11 sm:h-9"
                 />
               </FormField>
               <FormField label={t('customers.form.city')}>
@@ -516,7 +564,6 @@ export function CustomerFormPage() {
                   value={form.city}
                   onChange={(e) => set('city', e.target.value)}
                   autoComplete="address-level2"
-                  className="h-11 sm:h-9"
                 />
               </FormField>
               <FormField label={t('customers.form.country')}>
@@ -524,27 +571,28 @@ export function CustomerFormPage() {
                   value={form.country}
                   onChange={(e) => set('country', e.target.value)}
                   maxLength={2}
-                  className="h-11 w-16 uppercase sm:h-9"
+                  className="w-16 uppercase"
                 />
               </FormField>
             </div>
           </div>
-        </Section>
+        </SectionCard>
 
-        <Section title={t('customers.section.admin')} hint={t('customers.section.adminHint')}>
+        <SectionCard
+          as="fieldset"
+          title={t('customers.section.admin')}
+          description={t('customers.section.adminHint')}
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label={t('customers.form.tier')}>
-              <Select
+              <Select<LoyaltyTier>
                 value={form.loyaltyTier}
-                onChange={(e) => set('loyaltyTier', e.target.value as LoyaltyTier)}
-                className="h-11 sm:h-9"
-              >
-                {TIERS.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`customers.tier.${value}` as never)}
-                  </option>
-                ))}
-              </Select>
+                onValueChange={(v) => set('loyaltyTier', v)}
+                options={TIERS.map((value) => ({
+                  value,
+                  label: t(`customers.tier.${value}` as never),
+                }))}
+              />
             </FormField>
             <FormField
               label={t('customers.form.defaultPaymentTerms')}
@@ -558,7 +606,6 @@ export function CustomerFormPage() {
                 value={form.defaultPaymentTermsDays}
                 onChange={(e) => set('defaultPaymentTermsDays', e.target.value)}
                 placeholder="7"
-                className="h-11 sm:h-9"
               />
             </FormField>
             <FormField
@@ -570,92 +617,45 @@ export function CustomerFormPage() {
                 value={form.tags}
                 onChange={(e) => set('tags', e.target.value)}
                 placeholder="VIP, B2B"
-                className="h-11 sm:h-9"
               />
             </FormField>
           </div>
-          <label className="mt-4 flex items-center gap-2 text-sm">
+          <label className="mt-4 flex items-center gap-2 text-2sm text-foreground">
             <Checkbox
               checked={form.marketingOptIn}
               onChange={(e) => set('marketingOptIn', e.target.checked)}
             />
             {t('customers.form.marketingOptIn')}
           </label>
-        </Section>
+        </SectionCard>
 
-        <Section title={t('customers.section.notes')} hint={t('customers.section.notesHint')}>
+        <SectionCard
+          as="fieldset"
+          title={t('customers.section.notes')}
+          description={t('customers.section.notesHint')}
+        >
           <Textarea
             value={form.internalNotes}
             onChange={(e) => set('internalNotes', e.target.value)}
             rows={4}
             aria-label={t('customers.form.internalNotes')}
           />
-        </Section>
+        </SectionCard>
 
-        {formError ? <ErrorNote message={formError} /> : null}
+        {formError ? <Alert tone="destructive">{formError}</Alert> : null}
 
-        <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:px-4">
-          <Button type="button" variant="ghost" className="h-11 sm:h-9" asChild>
+        <FormActionBar>
+          <Button type="button" variant="ghost" asChild>
             <Link to={isEdit ? `/customers/${id}` : '/customers'}>{t('common.cancel')}</Link>
           </Button>
-          <Button
-            type="submit"
-            className="h-11 flex-1 sm:h-9 sm:flex-none"
-            disabled={save.isPending}
-          >
-            {save.isPending ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Save className="size-4" aria-hidden="true" />
-            )}
+          <Button type="submit" className="flex-1 sm:flex-none" loading={save.isPending}>
+            <Save aria-hidden="true" />
             {isEdit ? t('customers.form.save') : t('customers.form.create')}
           </Button>
-        </div>
+        </FormActionBar>
       </form>
-    </div>
-  );
-}
 
-function Section({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
-      <div className="mb-4">
-        <h2 className="font-serif text-base font-semibold tracking-tight">{title}</h2>
-        {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function BackLink({ label }: { label: string }) {
-  return (
-    <Link
-      to="/customers"
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <ArrowLeft className="size-4" aria-hidden="true" />
-      {label}
-    </Link>
-  );
-}
-
-function ErrorNote({ message }: { message: string }) {
-  return (
-    <div
-      role="alert"
-      className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-    >
-      <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <span>{message}</span>
-    </div>
+      <LeaveGuardDialog blocker={blocker} />
+    </PageContainer>
   );
 }

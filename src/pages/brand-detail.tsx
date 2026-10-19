@@ -1,18 +1,34 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowLeft, Mail, MessageSquare, Send, Loader2 } from 'lucide-react';
-import { useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Building2, Mail, MessageSquare, Send } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 
-import { EmptyState } from '@/components/empty-state';
-import { PageHeading } from '@/components/page-heading';
-import { useT } from '@/i18n';
+import { BackLink } from '@/components/back-link';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { SectionHeading } from '@/components/section';
+import { StatGrid, StatTile } from '@/components/stat-tile';
+import { Alert, ErrorState } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { useLocale, type useT } from '@/i18n';
 import { useIsSeoOnly } from '@/lib/access';
-import { ApiError, companiesAdminApi, type CompanyListRow, type CompanyStats } from '@/lib/api';
+import { companiesAdminApi, type CompanyStats } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
+import { usePageTitle } from '@/lib/use-page-title';
+import { formatNumber } from '@/lib/utils';
 import { CompanyLogoOrMark, EditBrandingForm } from '@/pages/companies';
 
+type T = ReturnType<typeof useT>;
+
+const MEMBERSHIP_ROLES = ['owner', 'admin', 'manager', 'viewer', 'partner'] as const;
+
+function roleLabel(role: string, t: T): string {
+  return (MEMBERSHIP_ROLES as readonly string[]).includes(role)
+    ? t(`profile.role.${role as (typeof MEMBERSHIP_ROLES)[number]}`)
+    : role;
+}
+
 export function BrandDetailPage() {
-  const t = useT();
+  const { t, bcp47 } = useLocale();
   const { slug = '' } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -29,18 +45,12 @@ export function BrandDetailPage() {
   const statsQuery = useQuery({
     queryKey: ['company-stats', slug],
     queryFn: ({ signal }) => companiesAdminApi.stats(slug, signal),
-    // Order counts + revenue are outside the `seo` scope (backend 403s it).
+    // Order counts and revenue are outside the `seo` scope (backend 403s).
     enabled: !!slug && !seoOnly,
   });
 
   const company = listQuery.data?.companies.find((c) => c.slug === slug) ?? null;
-
-  useEffect(() => {
-    if (company) document.title = `${company.name} · Reinigungs-Portal`;
-    return () => {
-      document.title = 'Reinigungs-Portal · Operations Console';
-    };
-  }, [company]);
+  usePageTitle(company?.name ?? t('companies.title'));
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['companies-admin'] });
@@ -48,113 +58,106 @@ export function BrandDetailPage() {
     void queryClient.invalidateQueries({ queryKey: ['projects-companies'] });
   }
 
+  const backLink = (
+    <BackLink to="/companies" className="mb-2 self-start">
+      {t('companies.title')}
+    </BackLink>
+  );
+
   if (listQuery.isLoading) {
     return (
-      <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-4xl flex-col p-4 sm:p-6 lg:p-8">
-        <div
-          role="status"
-          aria-live="polite"
-          className="flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <Loader2 className="size-4 animate-spin" />
-          <span>{t('companies.detail.loading')}</span>
-        </div>
-      </div>
+      <PageContainer>
+        {backLink}
+        <LoadingState label={t('companies.detail.loading')} />
+      </PageContainer>
     );
   }
 
   if (listQuery.error) {
     return (
-      <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-4xl flex-col p-4 sm:p-6 lg:p-8">
-        <ErrorBanner message={(listQuery.error as Error).message} />
-      </div>
+      <PageContainer>
+        {backLink}
+        <ErrorState
+          error={listQuery.error}
+          onRetry={() => void listQuery.refetch()}
+          retrying={listQuery.isFetching}
+        />
+      </PageContainer>
     );
   }
 
   if (!company) {
     return (
-      <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-4xl flex-col p-4 sm:p-6 lg:p-8">
+      <PageContainer>
+        {backLink}
         <PageHeading
           title={t('companies.detail.notFound')}
           subtitle={t('companies.detail.notFoundSubtitle', { slug })}
-          breadcrumb={
-            <Link to="/companies" className="hover:underline">
-              {t('companies.title')}
-            </Link>
-          }
         />
         <EmptyState
+          variant="dashed"
+          icon={<Building2 aria-hidden="true" />}
           message={t('companies.detail.noAccessMessage')}
-          action={
-            <button
-              type="button"
-              onClick={() => navigate('/companies')}
-              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm hover:bg-muted"
-            >
-              <ArrowLeft className="size-4" /> {t('companies.detail.backToList')}
-            </button>
-          }
         />
-      </div>
+      </PageContainer>
     );
   }
 
   const canEdit = isSuperAdmin || company.role === 'owner' || company.role === 'admin';
 
   return (
-    <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-4xl flex-col p-4 sm:p-6 lg:p-8">
+    <PageContainer>
+      {backLink}
       <PageHeading
-        title={company.name}
-        subtitle={
+        title={
+          <span className="inline-flex min-w-0 items-center gap-3">
+            <CompanyLogoOrMark company={company} size="sm" />
+            <span className="min-w-0">{company.name}</span>
+          </span>
+        }
+        meta={
           <>
-            <span className="font-mono">{company.slug}</span> · {t('companies.schemaLabel')} „
-            {company.schemaName}“
+            <span className="text-2sm text-muted-foreground">
+              {company.slug} · {t('companies.schemaLabel')} „{company.schemaName}“
+            </span>
             {!company.isActive ? (
-              <>
-                {' · '}
-                <span className="font-medium text-warning">{t('companies.inactiveLabel')}</span>
-              </>
+              <Badge variant="warning">{t('companies.inactiveLabel')}</Badge>
             ) : null}
           </>
         }
-        breadcrumb={
-          <Link to="/companies" className="hover:underline">
-            {t('companies.title')}
-          </Link>
-        }
-        actions={<CompanyLogoOrMark company={company} size="lg" />}
       />
 
-      {seoOnly ? null : (
-        <StatsRow
-          stats={statsQuery.data?.stats}
-          isLoading={statsQuery.isLoading}
-          error={statsQuery.error as Error | null}
-          t={t}
-        />
-      )}
-
-      <section
-        aria-labelledby="brand-edit-heading"
-        className="mt-8 rounded-xl border border-border bg-card p-4 sm:p-6"
-      >
-        <h2 id="brand-edit-heading" className="font-serif text-xl font-semibold tracking-tight">
-          {t('companies.edit.title')}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">{t('companies.edit.subtitle')}</p>
-        {canEdit ? (
-          <EditBrandingForm
-            company={company}
-            onClose={() => navigate('/companies')}
-            onSaved={invalidate}
+      <div className="flex flex-col gap-8">
+        {seoOnly ? null : (
+          <StatsRow
+            stats={statsQuery.data?.stats}
+            isLoading={statsQuery.isLoading}
+            error={statsQuery.error}
+            onRetry={() => void statsQuery.refetch()}
+            retrying={statsQuery.isFetching}
+            bcp47={bcp47}
+            t={t}
           />
-        ) : (
-          <p className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-            {t('companies.edit.roleNotice', { role: company.role })}
-          </p>
         )}
-      </section>
-    </div>
+
+        <section aria-labelledby="brand-edit-heading" className="flex flex-col gap-4">
+          <SectionHeading id="brand-edit-heading" description={t('companies.edit.subtitle')}>
+            {t('companies.edit.title')}
+          </SectionHeading>
+          {canEdit ? (
+            <EditBrandingForm
+              company={company}
+              onClose={() => navigate('/companies')}
+              onSaved={invalidate}
+            />
+          ) : (
+            <Alert tone="neutral">
+              {t('companies.edit.roleNotice', { role: roleLabel(company.role, t) })}
+            </Alert>
+          )}
+        </section>
+      </div>
+    </PageContainer>
   );
 }
 
@@ -162,117 +165,66 @@ function StatsRow({
   stats,
   isLoading,
   error,
+  onRetry,
+  retrying,
+  bcp47,
   t,
 }: {
   stats: CompanyStats | undefined;
   isLoading: boolean;
   error: Error | null;
-  t: ReturnType<typeof useT>;
+  onRetry: () => void;
+  retrying: boolean;
+  bcp47: string;
+  t: T;
 }) {
-  if (error) return <ErrorBanner message={error.message} />;
+  if (error) return <ErrorState error={error} onRetry={onRetry} retrying={retrying} />;
+
+  const n = (value: number | undefined) => formatNumber(value ?? 0, bcp47);
+  const hint = (primaryLabel: string, rest: Array<{ label: string; value: number | undefined }>) =>
+    stats
+      ? [primaryLabel, ...rest.map((r) => `${n(r.value)} ${r.label}`)].join(' · ')
+      : primaryLabel;
 
   return (
-    <div
-      role="region"
-      aria-label={t('companies.detail.statsRegionLabel')}
-      className="grid grid-cols-1 gap-3 sm:grid-cols-3"
-    >
-      <StatCard
-        title={t('companies.detail.newsletter')}
-        icon={<Mail className="size-4" aria-hidden="true" />}
-        primary={stats?.newsletter.confirmed}
-        primaryLabel={t('companies.detail.newsletterPrimary')}
-        secondary={[
-          { label: t('companies.detail.newsletterPending'), value: stats?.newsletter.pending },
-          {
-            label: t('companies.detail.newsletterUnsubscribed'),
-            value: stats?.newsletter.unsubscribed,
-          },
-        ]}
-        isLoading={isLoading}
-      />
-      <StatCard
-        title={t('companies.detail.contacts')}
-        icon={<MessageSquare className="size-4" aria-hidden="true" />}
-        primary={stats?.contact.new}
-        primaryLabel={t('companies.detail.contactsPrimary')}
-        secondary={[
-          { label: t('companies.detail.contactsTotal'), value: stats?.contact.total },
-          { label: t('companies.detail.contactsLast7'), value: stats?.contact.last7Days },
-        ]}
-        isLoading={isLoading}
-      />
-      <StatCard
-        title={t('companies.detail.inquiries')}
-        icon={<Send className="size-4" aria-hidden="true" />}
-        primary={stats?.inquiry.openCount}
-        primaryLabel={t('companies.detail.inquiriesPrimary')}
-        secondary={[
-          { label: t('companies.detail.inquiriesTotal'), value: stats?.inquiry.total },
-          { label: t('companies.detail.inquiriesLast7'), value: stats?.inquiry.last7Days },
-        ]}
-        isLoading={isLoading}
-      />
-    </div>
+    <section aria-label={t('companies.detail.statsRegionLabel')}>
+      <StatGrid className="grid-cols-1 sm:grid-cols-3 xl:grid-cols-3">
+        <StatTile
+          label={t('companies.detail.newsletter')}
+          icon={<Mail aria-hidden="true" />}
+          value={n(stats?.newsletter.confirmed)}
+          loading={isLoading}
+          hint={hint(t('companies.detail.newsletterPrimary'), [
+            { label: t('companies.detail.newsletterPending'), value: stats?.newsletter.pending },
+            {
+              label: t('companies.detail.newsletterUnsubscribed'),
+              value: stats?.newsletter.unsubscribed,
+            },
+          ])}
+        />
+        <StatTile
+          label={t('companies.detail.contacts')}
+          icon={<MessageSquare aria-hidden="true" />}
+          value={n(stats?.contact.new)}
+          tone={(stats?.contact.new ?? 0) > 0 ? 'attention' : 'default'}
+          loading={isLoading}
+          hint={hint(t('companies.detail.contactsPrimary'), [
+            { label: t('companies.detail.contactsTotal'), value: stats?.contact.total },
+            { label: t('companies.detail.contactsLast7'), value: stats?.contact.last7Days },
+          ])}
+        />
+        <StatTile
+          label={t('companies.detail.inquiries')}
+          icon={<Send aria-hidden="true" />}
+          value={n(stats?.inquiry.openCount)}
+          tone={(stats?.inquiry.openCount ?? 0) > 0 ? 'attention' : 'default'}
+          loading={isLoading}
+          hint={hint(t('companies.detail.inquiriesPrimary'), [
+            { label: t('companies.detail.inquiriesTotal'), value: stats?.inquiry.total },
+            { label: t('companies.detail.inquiriesLast7'), value: stats?.inquiry.last7Days },
+          ])}
+        />
+      </StatGrid>
+    </section>
   );
 }
-
-function StatCard({
-  title,
-  icon,
-  primary,
-  primaryLabel,
-  secondary,
-  isLoading,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  primary: number | undefined;
-  primaryLabel: string;
-  secondary: Array<{ label: string; value: number | undefined }>;
-  isLoading: boolean;
-}) {
-  return (
-    <article className="rounded-xl border border-border bg-card p-4">
-      <header className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {icon}
-        <span>{title}</span>
-      </header>
-      <div className="flex items-baseline gap-2">
-        <span className="text-3xl font-semibold tabular-nums" aria-busy={isLoading || undefined}>
-          {isLoading ? (
-            <Loader2 className="inline size-5 animate-spin" aria-hidden="true" />
-          ) : (
-            (primary ?? 0).toLocaleString()
-          )}
-        </span>
-        <span className="text-xs text-muted-foreground">{primaryLabel}</span>
-      </div>
-      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-        {secondary.map((s) => (
-          <div key={s.label} className="flex flex-col">
-            <dt>{s.label}</dt>
-            <dd className="font-medium tabular-nums text-foreground">
-              {isLoading ? '—' : (s.value ?? 0).toLocaleString()}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </article>
-  );
-}
-
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div
-      role="alert"
-      className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-    >
-      <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <span>{message}</span>
-    </div>
-  );
-}
-
-export type { CompanyListRow };
-export { ApiError };

@@ -1,16 +1,20 @@
-import { AlertCircle, ArrowRight, CheckCircle2, Eye, EyeOff, Loader2, Lock } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
+import { BackLink } from '@/components/back-link';
 import { BrandBlock } from '@/components/brand-logo';
+import { FormField } from '@/components/form-field';
+import { PasswordInput } from '@/components/password-input';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { useT } from '@/i18n';
 import { authClient } from '@/lib/auth-client';
-import { cn } from '@/lib/utils';
+import { usePageTitle } from '@/lib/use-page-title';
 
 export function ResetPasswordPage() {
   const t = useT();
+  usePageTitle(t('resetPassword.title'));
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
 
@@ -23,42 +27,28 @@ export function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <CenteredFrame>
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <span>{t('resetPassword.tokenMissing')}</span>
-        </div>
-        <Link
-          to="/login"
-          className="mt-6 inline-flex items-center justify-center text-2sm font-medium text-foreground hover:underline"
-        >
-          ← {t('login.forgotPasswordBack')}
-        </Link>
-      </CenteredFrame>
+      <AuthFrame>
+        <AuthHeading title={t('resetPassword.title')} />
+        <Alert tone="destructive">{t('resetPassword.tokenMissing')}</Alert>
+        <BackLink to="/login" className="mt-6 self-start">
+          {t('login.forgotPasswordBack')}
+        </BackLink>
+      </AuthFrame>
     );
   }
 
   if (done) {
     return (
-      <CenteredFrame>
-        <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-success-soft text-success">
-            <CheckCircle2 className="size-6" />
-          </div>
-          <div className="space-y-1">
-            <h2 className="font-serif text-xl font-semibold tracking-tight">
-              {t('resetPassword.successTitle')}
-            </h2>
-            <p className="text-sm text-muted-foreground">{t('resetPassword.successBody')}</p>
-          </div>
+      <AuthFrame>
+        <AuthSuccess title={t('resetPassword.successTitle')} body={t('resetPassword.successBody')}>
           <Button asChild>
             <Link to="/login">
               {t('resetPassword.successGoToLogin')}
-              <ArrowRight className="size-4" />
+              <ArrowRight aria-hidden="true" />
             </Link>
           </Button>
-        </div>
-      </CenteredFrame>
+        </AuthSuccess>
+      </AuthFrame>
     );
   }
 
@@ -102,137 +92,100 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <CenteredFrame>
-      <div className="mb-7">
-        <h1 className="font-serif text-display-sm font-semibold sm:text-display-md">
-          {t('resetPassword.title')}
-        </h1>
-        <p className="mt-2 text-2sm text-muted-foreground sm:text-sm">
-          {t('resetPassword.subtitle')}
-        </p>
-      </div>
+    <AuthFrame>
+      <AuthHeading title={t('resetPassword.title')} subtitle={t('resetPassword.subtitle')} />
 
       <form onSubmit={onSubmit} className="grid gap-4">
-        <div className="grid gap-1.5">
-          <Label htmlFor="new-password">{t('resetPassword.newPassword')}</Label>
-          <PasswordField
-            id="new-password"
-            value={newPassword}
-            onChange={setNewPassword}
-            visible={showPassword}
-            onToggleVisible={() => setShowPassword((v) => !v)}
-            disabled={submitting}
-            t={t}
-          />
-        </div>
-
-        <div className="grid gap-1.5">
-          <Label htmlFor="confirm-password">{t('resetPassword.confirmPassword')}</Label>
-          <PasswordField
-            id="confirm-password"
-            value={confirmPassword}
-            onChange={setConfirmPassword}
-            visible={showPassword}
-            disabled={submitting}
-            t={t}
-          />
-        </div>
-
-        {error ? (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
-
-        <Button
-          type="submit"
-          disabled={submitting}
-          className="h-11 rounded-lg text-sm font-semibold shadow-sm"
+        <FormField
+          label={t('resetPassword.newPassword')}
+          hint={t('resetPassword.tooShort')}
+          required
         >
-          {submitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              {t('resetPassword.submitting')}
-            </>
-          ) : (
-            t('resetPassword.submit')
-          )}
+          <PasswordInput
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            visible={showPassword}
+            onVisibleChange={setShowPassword}
+            disabled={submitting}
+            placeholder="••••••••"
+          />
+        </FormField>
+
+        <FormField label={t('resetPassword.confirmPassword')} required>
+          <PasswordInput
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            visible={showPassword}
+            onVisibleChange={setShowPassword}
+            disabled={submitting}
+            placeholder="••••••••"
+          />
+        </FormField>
+
+        {error ? <Alert tone="destructive">{error}</Alert> : null}
+
+        <Button type="submit" loading={submitting} className="w-full">
+          {submitting ? t('resetPassword.submitting') : t('resetPassword.submit')}
         </Button>
 
-        <Link
-          to="/login"
-          className="text-center text-xs font-medium text-muted-foreground hover:text-foreground"
-        >
-          ← {t('login.forgotPasswordBack')}
-        </Link>
+        <BackLink to="/login" className="justify-self-center">
+          {t('login.forgotPasswordBack')}
+        </BackLink>
       </form>
-    </CenteredFrame>
+    </AuthFrame>
   );
 }
 
-function CenteredFrame({ children }: { children: React.ReactNode }) {
+export function AuthFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-svh flex-col items-center bg-background px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))] sm:px-10 sm:pt-[max(4rem,env(safe-area-inset-top))] lg:justify-center">
-      <div className="w-full max-w-md">
-        <div className="mb-7 flex">
-          <BrandBlock size={40} />
+    <main className="flex min-h-svh flex-col items-center bg-background px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))] sm:px-10 sm:pt-[max(4rem,env(safe-area-inset-top))] lg:justify-center">
+      <div className="flex w-full max-w-sm flex-col">
+        <div className="mb-8 flex">
+          <BrandBlock size={36} />
         </div>
         {children}
       </div>
+    </main>
+  );
+}
+
+export function AuthHeading({ title, subtitle }: { title: ReactNode; subtitle?: ReactNode }) {
+  return (
+    <div className="mb-6 space-y-1.5">
+      <h1 className="text-title font-semibold text-foreground">{title}</h1>
+      {subtitle ? <p className="text-2sm text-muted-foreground">{subtitle}</p> : null}
     </div>
   );
 }
 
-function PasswordField({
-  id,
-  value,
-  onChange,
-  visible,
-  onToggleVisible,
-  disabled,
-  t,
+export function AuthSuccess({
+  title,
+  body,
+  children,
 }: {
-  id: string;
-  value: string;
-  onChange: (next: string) => void;
-  visible: boolean;
-  onToggleVisible?: () => void;
-  disabled?: boolean;
-  t: ReturnType<typeof useT>;
+  title: ReactNode;
+  body: ReactNode;
+  children?: ReactNode;
 }) {
   return (
-    <div className="relative">
-      <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <input
-        id={id}
-        type={visible ? 'text' : 'password'}
-        autoComplete="new-password"
-        required
-        minLength={8}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        placeholder="••••••••"
-        className={cn(
-          'h-11 w-full rounded-lg border border-input bg-card px-3 pl-10 pr-10 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm',
-        )}
-      />
-      {onToggleVisible ? (
-        <button
-          type="button"
-          onClick={onToggleVisible}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={visible ? t('login.hidePassword') : t('login.showPassword')}
-          aria-pressed={visible}
-        >
-          {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-        </button>
-      ) : null}
+    <div role="status" className="flex flex-col items-start gap-4">
+      <span
+        aria-hidden="true"
+        className="flex size-10 items-center justify-center rounded-full bg-success-soft text-success"
+      >
+        <CheckCircle2 className="size-5" />
+      </span>
+      <div className="space-y-1.5">
+        <h1 className="text-title font-semibold text-foreground">{title}</h1>
+        <p className="text-2sm text-muted-foreground">{body}</p>
+      </div>
+      {children}
     </div>
   );
 }

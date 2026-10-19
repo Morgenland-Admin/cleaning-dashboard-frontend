@@ -8,8 +8,10 @@ import {
 } from 'react';
 
 import { Label } from '@/components/ui/label';
+import { useT } from '@/i18n';
+import { cn } from '@/lib/utils';
 
-/** Form control wrapper that injects id + aria-invalid/describedby into its single child. */
+/** Injects id and aria-invalid/describedby into its single child control. */
 export function FormField({
   label,
   hint,
@@ -27,6 +29,7 @@ export function FormField({
   children: ReactNode;
   className?: string;
 }) {
+  const t = useT();
   const autoId = useId();
   const id = htmlFor ?? `field-${autoId}`;
   const hintId = hint ? `${id}-hint` : undefined;
@@ -54,27 +57,24 @@ export function FormField({
   })();
 
   return (
-    <div className={'space-y-1.5' + (className ? ` ${className}` : '')}>
-      <Label
-        htmlFor={id}
-        className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
-      >
+    <div className={cn('space-y-1.5', className)}>
+      <Label htmlFor={id}>
         {label}
         {required ? (
-          <span aria-hidden="true" className="ml-1 text-primary">
+          <span aria-hidden="true" className="ml-0.5 text-destructive">
             *
           </span>
         ) : null}
-        {required ? <span className="sr-only"> (erforderlich)</span> : null}
+        {required ? <span className="sr-only"> ({t('common.required')})</span> : null}
       </Label>
       {enhancedChild}
       {hint ? (
-        <p id={hintId} className="text-2xs text-muted-foreground">
+        <p id={hintId} className="text-xs text-muted-foreground">
           {hint}
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} role="alert" className="text-2xs text-destructive">
+        <p id={errorId} role="alert" className="text-xs font-medium text-destructive">
           {error}
         </p>
       ) : null}

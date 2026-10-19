@@ -1,21 +1,25 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, RefreshCcw, Tag } from 'lucide-react';
-import { useState } from 'react';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, Tag } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
 import { EmptyState } from '@/components/empty-state';
-import { PageHeading } from '@/components/page-heading';
+import { FilterChip } from '@/components/filter-chip';
+import { FormField } from '@/components/form-field';
+import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
 import { StatusBadge } from '@/components/status-badge';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -30,6 +34,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useProject } from '@/contexts/project-context';
 import { toast } from '@/hooks/use-toast';
 import { useLocale, useT, type DictKey } from '@/i18n';
+import { useCanWrite } from '@/lib/access';
 import {
   errMessage,
   priceAdjustmentsAdminApi,
@@ -39,6 +44,8 @@ import {
 import { usePageTitle } from '@/lib/use-page-title';
 import { formatShortDate } from '@/lib/utils';
 
+import type { CompanySlug } from '@/contexts/project-context';
+
 const SCOPES: PriceAdjustmentScope[] = ['global', 'service', 'zone'];
 
 const SCOPE_LABEL: Record<PriceAdjustmentScope, DictKey> = {
@@ -47,21 +54,65 @@ const SCOPE_LABEL: Record<PriceAdjustmentScope, DictKey> = {
   zone: 'priceAdjustments.scope.zone',
 };
 
+type Translate = ReturnType<typeof useT>;
+
+function scopeText(t: Translate, row: PriceAdjustment): string {
+  const key = SCOPE_LABEL[row.scope];
+  return key ? t(key) : row.scope;
+}
+
+/** "+2,5 %" in the UI locale; the API stores a decimal string. */
+function percentText(value: string, bcp47: string): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return `${value} %`;
+  const formatted = new Intl.NumberFormat(bcp47, {
+    maximumFractionDigits: 2,
+    signDisplay: 'exceptZero',
+  }).format(n);
+  return `${formatted} %`;
+}
+
+function validityText(row: PriceAdjustment, bcp47: string): string {
+  const from = row.validFrom ? formatShortDate(row.validFrom, bcp47) : null;
+  const to = row.validTo ? formatShortDate(row.validTo, bcp47) : null;
+  return from || to ? `${from ?? '…'} – ${to ?? '…'}` : '—';
+}
+
+/** "2,5", "-3" or "1.5" → number; null when it is not one. */
+function parsePercent(raw: string): number | null {
+  const v = raw.trim().replace(',', '.');
+  if (!/^[+-]?\d+(\.\d+)?$/.test(v)) return null;
+  return Number(v);
+}
+
 export function PriceAdjustmentsPage() {
   const { activeProject, isAllBrands } = useProject();
   const queryClient = useQueryClient();
   const t = useT();
   const { bcp47 } = useLocale();
+  const canWrite = useCanWrite();
   usePageTitle(t('priceAdjustments.title'));
 
   const slug = activeProject.companySlug;
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [activeOnly, setActiveOnly] = useState(false);
 
-  const listQuery = useQuery({
-    queryKey: ['price-adjustments', slug] as const,
+  const listQuery = useInfiniteQuery({
+    queryKey: ['price-adjustments', slug, activeOnly] as const,
     enabled: !isAllBrands,
-    queryFn: ({ signal }) => priceAdjustmentsAdminApi.list(slug, undefined, signal),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      priceAdjustmentsAdminApi.list(
+        slug,
+        { active: activeOnly ? true : undefined, limit: 50, cursor: pageParam ?? undefined },
+        signal,
+      ),
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
+  const rows = useMemo(
+    () => listQuery.data?.pages.flatMap((p) => p.adjustments) ?? [],
+    [listQuery.data],
+  );
 
   const invalidate = () =>
     void queryClient.invalidateQueries({ queryKey: ['price-adjustments', slug] });
@@ -69,41 +120,39 @@ export function PriceAdjustmentsPage() {
   const toggleMutation = useMutation({
     mutationFn: (vars: { id: number; active: boolean }) =>
       priceAdjustmentsAdminApi.setActive(slug, vars.id, vars.active),
-    onSuccess: invalidate,
+    onSuccess: (_data, vars) => {
+      invalidate();
+      toast.success(
+        vars.active ? t('priceAdjustments.activatedToast') : t('priceAdjustments.deactivatedToast'),
+      );
+    },
     onError: (err) => toast.error(errMessage(err)),
   });
 
+  const newButton = canWrite ? (
+    <Button size="sm" onClick={() => setDialogOpen(true)}>
+      <Plus aria-hidden="true" />
+      {t('priceAdjustments.new')}
+    </Button>
+  ) : null;
+
   const heading = (
     <PageHeading
-      breadcrumb={
-        <span className="flex items-center gap-2">
-          <span>{isAllBrands ? t('brandFilter.allBrands') : activeProject.name}</span>
-          <span aria-hidden="true">/</span>
-          <span className="text-foreground">{t('priceAdjustments.title')}</span>
-        </span>
-      }
+      breadcrumb={[
+        { label: isAllBrands ? t('brandFilter.allBrands') : activeProject.name },
+        { label: t('priceAdjustments.title') },
+      ]}
       title={t('priceAdjustments.title')}
       subtitle={t('priceAdjustments.subtitle')}
       actions={
         isAllBrands ? undefined : (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="h-11"
+          <>
+            <RefreshButton
               onClick={() => void listQuery.refetch()}
-              disabled={listQuery.isFetching}
-            >
-              <RefreshCcw
-                className={listQuery.isFetching ? 'size-4 animate-spin' : 'size-4'}
-                aria-hidden="true"
-              />
-              {t('common.refresh')}
-            </Button>
-            <Button className="h-11" onClick={() => setDialogOpen(true)}>
-              <Plus className="size-4" aria-hidden="true" />
-              {t('priceAdjustments.new')}
-            </Button>
-          </div>
+              fetching={listQuery.isFetching}
+            />
+            {newButton}
+          </>
         )
       }
     />
@@ -111,135 +160,197 @@ export function PriceAdjustmentsPage() {
 
   if (isAllBrands) {
     return (
-      <div className="mx-auto w-full max-w-4xl">
+      <PageContainer width="full">
         {heading}
-        <Card>
-          <CardContent className="p-0">
-            <EmptyState
-              icon={<Tag className="size-8" aria-hidden="true" />}
-              message={t('priceAdjustments.selectBrandFirst')}
-            />
-          </CardContent>
-        </Card>
-      </div>
+        <EmptyState
+          variant="dashed"
+          icon={<Tag aria-hidden="true" />}
+          message={t('priceAdjustments.selectBrandFirst')}
+        />
+      </PageContainer>
     );
   }
 
-  const rows = listQuery.data?.adjustments ?? [];
+  const toggleFor = (row: PriceAdjustment) =>
+    canWrite
+      ? {
+          busy: toggleMutation.isPending && toggleMutation.variables?.id === row.id,
+          onToggle: () => toggleMutation.mutate({ id: row.id, active: !row.active }),
+        }
+      : null;
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    <PageContainer width="full">
       {heading}
 
-      <p className="mb-4 text-sm text-muted-foreground">{t('priceAdjustments.recordOnly')}</p>
+      <div className="flex flex-col gap-4">
+        <Alert tone="info">{t('priceAdjustments.recordOnly')}</Alert>
 
-      {listQuery.isLoading ? (
-        <div className="space-y-2" aria-hidden="true">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : rows.length === 0 ? (
-        <Card>
-          <CardContent className="p-0">
-            <EmptyState
-              icon={<Tag className="size-8" aria-hidden="true" />}
-              title={t('priceAdjustments.empty')}
-              message={t('priceAdjustments.emptyHint')}
+        <FilterChip pressed={activeOnly} onPressedChange={setActiveOnly} className="self-start">
+          {t('priceAdjustments.onlyActive')}
+        </FilterChip>
+
+        {listQuery.isLoading ? (
+          <div className="space-y-2" role="status" aria-label={t('common.loading')}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : listQuery.error && rows.length === 0 ? (
+          <ErrorState
+            error={listQuery.error}
+            onRetry={() => void listQuery.refetch()}
+            retrying={listQuery.isFetching}
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            variant="dashed"
+            icon={<Tag aria-hidden="true" />}
+            title={activeOnly ? t('priceAdjustments.emptyActive') : t('priceAdjustments.empty')}
+            message={t('priceAdjustments.emptyHint')}
+            action={activeOnly ? undefined : newButton}
+          />
+        ) : (
+          <>
+            <ul className="divide-y divide-border rounded-lg border border-border bg-card md:hidden">
+              {rows.map((row) => {
+                const toggle = toggleFor(row);
+                return (
+                  <li key={row.id} className="flex items-start gap-3 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-2sm font-semibold tabular-nums">
+                          {percentText(row.adjustmentPercent, bcp47)}
+                        </span>
+                        <span className="text-2sm text-foreground">
+                          {scopeText(t, row)}
+                          {row.scopeKey ? (
+                            <span className="text-muted-foreground"> · {row.scopeKey}</span>
+                          ) : null}
+                        </span>
+                        <ActiveBadge active={row.active} t={t} />
+                      </div>
+                      {row.reason ? (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                          {row.reason}
+                        </p>
+                      ) : null}
+                      <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                        {validityText(row, bcp47)}
+                      </p>
+                    </div>
+                    {toggle ? <ToggleButton row={row} t={t} {...toggle} /> : null}
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="hidden overflow-hidden rounded-lg border border-border bg-card md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('priceAdjustments.colScope')}</TableHead>
+                    <TableHead className="text-right">{t('priceAdjustments.colPercent')}</TableHead>
+                    <TableHead>{t('priceAdjustments.colReason')}</TableHead>
+                    <TableHead>{t('priceAdjustments.colValidity')}</TableHead>
+                    <TableHead>{t('priceAdjustments.colStatus')}</TableHead>
+                    {canWrite ? (
+                      <TableHead className="text-right">
+                        <span className="sr-only">{t('priceAdjustments.colActions')}</span>
+                      </TableHead>
+                    ) : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => {
+                    const toggle = toggleFor(row);
+                    return (
+                      <TableRow key={row.id}>
+                        <TableCell>
+                          {scopeText(t, row)}
+                          {row.scopeKey ? (
+                            <span className="text-muted-foreground"> · {row.scopeKey}</span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
+                          {percentText(row.adjustmentPercent, bcp47)}
+                        </TableCell>
+                        <TableCell
+                          className="max-w-xs truncate text-muted-foreground"
+                          title={row.reason ?? undefined}
+                        >
+                          {row.reason ?? '—'}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
+                          {validityText(row, bcp47)}
+                        </TableCell>
+                        <TableCell>
+                          <ActiveBadge active={row.active} t={t} />
+                        </TableCell>
+                        {toggle ? (
+                          <TableCell className="py-2 text-right">
+                            <ToggleButton row={row} t={t} {...toggle} />
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            <InfiniteScrollSentinel
+              hasMore={!!listQuery.hasNextPage}
+              isLoading={listQuery.isFetchingNextPage}
+              onIntersect={() => {
+                void listQuery.fetchNextPage();
+              }}
             />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="overflow-x-auto p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('priceAdjustments.colScope')}</TableHead>
-                  <TableHead>{t('priceAdjustments.colPercent')}</TableHead>
-                  <TableHead>{t('priceAdjustments.colReason')}</TableHead>
-                  <TableHead>{t('priceAdjustments.colValidity')}</TableHead>
-                  <TableHead>{t('priceAdjustments.colStatus')}</TableHead>
-                  <TableHead className="text-right">{t('priceAdjustments.colActions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <AdjustmentRow
-                    key={row.id}
-                    row={row}
-                    bcp47={bcp47}
-                    t={t}
-                    busy={toggleMutation.isPending && toggleMutation.variables?.id === row.id}
-                    onToggle={() => toggleMutation.mutate({ id: row.id, active: !row.active })}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+          </>
+        )}
+      </div>
 
-      <CreateDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        slug={slug}
-        onCreated={() => {
-          invalidate();
-          setDialogOpen(false);
-        }}
-        t={t}
-      />
-    </div>
+      {canWrite ? (
+        <CreateDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          slug={slug}
+          onCreated={() => {
+            invalidate();
+            setDialogOpen(false);
+            toast.success(t('priceAdjustments.createdToast'));
+          }}
+          t={t}
+        />
+      ) : null}
+    </PageContainer>
   );
 }
 
-function AdjustmentRow({
+function ActiveBadge({ active, t }: { active: boolean; t: Translate }) {
+  return (
+    <StatusBadge
+      label={active ? t('priceAdjustments.statusActive') : t('priceAdjustments.statusInactive')}
+      tone={active ? 'success' : 'neutral'}
+    />
+  );
+}
+
+function ToggleButton({
   row,
-  bcp47,
   t,
   busy,
   onToggle,
 }: {
   row: PriceAdjustment;
-  bcp47: string;
-  t: ReturnType<typeof useT>;
+  t: Translate;
   busy: boolean;
   onToggle: () => void;
 }) {
-  const validity = [
-    row.validFrom ? formatShortDate(row.validFrom, bcp47) : null,
-    row.validTo ? formatShortDate(row.validTo, bcp47) : null,
-  ];
   return (
-    <TableRow>
-      <TableCell>
-        {t(SCOPE_LABEL[row.scope])}
-        {row.scopeKey ? <span className="text-muted-foreground"> · {row.scopeKey}</span> : null}
-      </TableCell>
-      <TableCell className="tabular-nums">
-        {Number(row.adjustmentPercent) > 0 ? '+' : ''}
-        {row.adjustmentPercent}%
-      </TableCell>
-      <TableCell className="max-w-xs truncate text-muted-foreground">{row.reason ?? '—'}</TableCell>
-      <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
-        {validity[0] || validity[1] ? `${validity[0] ?? '…'} – ${validity[1] ?? '…'}` : '—'}
-      </TableCell>
-      <TableCell>
-        <StatusBadge
-          label={
-            row.active ? t('priceAdjustments.statusActive') : t('priceAdjustments.statusInactive')
-          }
-          tone={row.active ? 'success' : 'neutral'}
-        />
-      </TableCell>
-      <TableCell className="text-right">
-        <Button variant="outline" size="sm" onClick={onToggle} disabled={busy}>
-          {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-          {row.active ? t('priceAdjustments.deactivate') : t('priceAdjustments.activate')}
-        </Button>
-      </TableCell>
-    </TableRow>
+    <Button variant="outline" size="sm" onClick={onToggle} loading={busy} className="shrink-0">
+      {row.active ? t('priceAdjustments.deactivate') : t('priceAdjustments.activate')}
+    </Button>
   );
 }
 
@@ -252,21 +363,25 @@ function CreateDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  slug: ReturnType<typeof useProject>['activeProject']['companySlug'];
+  slug: CompanySlug;
   onCreated: () => void;
-  t: ReturnType<typeof useT>;
+  t: Translate;
 }) {
   const [scope, setScope] = useState<PriceAdjustmentScope>('global');
   const [scopeKey, setScopeKey] = useState('');
   const [percent, setPercent] = useState('');
   const [reason, setReason] = useState('');
 
+  const percentValue = parsePercent(percent);
+  const valid = percentValue !== null && percentValue >= -100 && percentValue <= 100;
+  const showPercentError = percent.trim() !== '' && !valid;
+
   const mutation = useMutation({
     mutationFn: () =>
       priceAdjustmentsAdminApi.create(slug, {
         scope,
         scopeKey: scope === 'global' ? undefined : scopeKey.trim() || undefined,
-        adjustmentPercent: Number(percent),
+        adjustmentPercent: percentValue ?? 0,
         reason: reason.trim() || undefined,
       }),
     onSuccess: () => {
@@ -279,69 +394,59 @@ function CreateDialog({
     onError: (err) => toast.error(errMessage(err)),
   });
 
-  const percentValue = Number(percent);
-  const valid =
-    percent.trim() !== '' &&
-    !Number.isNaN(percentValue) &&
-    percentValue >= -100 &&
-    percentValue <= 100;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[94vw] sm:max-w-md">
-        <DialogTitle>{t('priceAdjustments.new')}</DialogTitle>
-        <DialogDescription>{t('priceAdjustments.recordOnly')}</DialogDescription>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('priceAdjustments.new')}</DialogTitle>
+          <DialogDescription>{t('priceAdjustments.recordOnly')}</DialogDescription>
+        </DialogHeader>
         <form
           className="flex flex-col gap-4"
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             if (valid) mutation.mutate();
           }}
         >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pa-scope">{t('priceAdjustments.scopeLabel')}</Label>
-            <Select
+          <FormField label={t('priceAdjustments.scopeLabel')} htmlFor="pa-scope">
+            <Select<PriceAdjustmentScope>
               id="pa-scope"
               value={scope}
-              onChange={(e) => setScope(e.target.value as PriceAdjustmentScope)}
-            >
-              {SCOPES.map((s) => (
-                <option key={s} value={s}>
-                  {t(SCOPE_LABEL[s])}
-                </option>
-              ))}
-            </Select>
-          </div>
+              onValueChange={setScope}
+              options={SCOPES.map((s) => ({ value: s, label: t(SCOPE_LABEL[s]) }))}
+            />
+          </FormField>
 
           {scope !== 'global' ? (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pa-key">{t('priceAdjustments.scopeKeyLabel')}</Label>
+            <FormField label={t('priceAdjustments.scopeKeyLabel')} htmlFor="pa-key">
               <Input
                 id="pa-key"
                 value={scopeKey}
                 onChange={(e) => setScopeKey(e.target.value)}
                 maxLength={64}
               />
-            </div>
+            </FormField>
           ) : null}
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pa-percent">{t('priceAdjustments.percentLabel')}</Label>
+          <FormField
+            label={t('priceAdjustments.percentLabel')}
+            htmlFor="pa-percent"
+            required
+            hint={t('priceAdjustments.percentHint')}
+            error={showPercentError ? t('priceAdjustments.percentInvalid') : undefined}
+          >
             <Input
               id="pa-percent"
-              type="number"
               inputMode="decimal"
-              min={-100}
-              max={100}
-              step={0.5}
               value={percent}
               onChange={(e) => setPercent(e.target.value)}
-              required
+              placeholder="2,5"
+              className="tabular-nums"
             />
-          </div>
+          </FormField>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pa-reason">{t('priceAdjustments.reasonLabel')}</Label>
+          <FormField label={t('priceAdjustments.reasonLabel')} htmlFor="pa-reason">
             <Textarea
               id="pa-reason"
               rows={3}
@@ -349,9 +454,9 @@ function CreateDialog({
               onChange={(e) => setReason(e.target.value)}
               maxLength={2000}
             />
-          </div>
+          </FormField>
 
-          <DialogFooter className="mt-1">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -360,10 +465,7 @@ function CreateDialog({
             >
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={!valid || mutation.isPending}>
-              {mutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : null}
+            <Button type="submit" disabled={!valid} loading={mutation.isPending}>
               {mutation.isPending ? t('priceAdjustments.creating') : t('priceAdjustments.create')}
             </Button>
           </DialogFooter>

@@ -1,23 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, MapPin, Plus, RefreshCcw, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { MapPin, Plus, RefreshCcw, Trash2 } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { PageHeading } from '@/components/page-heading';
-import { StatusBadge } from '@/components/status-badge';
+import { FormField } from '@/components/form-field';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
+import { ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -29,11 +33,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useProject } from '@/contexts/project-context';
 import { toast } from '@/hooks/use-toast';
 import { useT, type DictKey } from '@/i18n';
+import { useCanWrite } from '@/lib/access';
 import { cityStatusAdminApi, errMessage, type CityStatus, type CityStatusValue } from '@/lib/api';
 import { usePageTitle } from '@/lib/use-page-title';
+import { cn } from '@/lib/utils';
 
 const STATUSES: CityStatusValue[] = ['locked', 'soft_launch', 'active', 'scaling'];
 
@@ -44,11 +51,11 @@ const STATUS_LABEL: Record<CityStatusValue, DictKey> = {
   scaling: 'cityStatus.status.scaling',
 };
 
-const STATUS_TONE: Record<CityStatusValue, 'neutral' | 'info' | 'success' | 'warning'> = {
-  locked: 'neutral',
-  soft_launch: 'info',
-  active: 'success',
-  scaling: 'warning',
+const STATUS_DOT: Record<CityStatusValue, string> = {
+  locked: 'bg-muted-foreground',
+  soft_launch: 'bg-info',
+  active: 'bg-success',
+  scaling: 'bg-warning',
 };
 
 export function CityStatusPage() {
@@ -56,6 +63,7 @@ export function CityStatusPage() {
   const queryClient = useQueryClient();
   const t = useT();
   usePageTitle(t('cityStatus.title'));
+  const canWrite = useCanWrite();
 
   const slug = activeProject.companySlug;
   const [statusFilter, setStatusFilter] = useState<CityStatusValue | 'all'>('all');
@@ -98,35 +106,26 @@ export function CityStatusPage() {
 
   const heading = (
     <PageHeading
-      breadcrumb={
-        <span className="flex items-center gap-2">
-          <span>{isAllBrands ? t('brandFilter.allBrands') : activeProject.name}</span>
-          <span aria-hidden="true">/</span>
-          <span className="text-foreground">{t('cityStatus.title')}</span>
-        </span>
-      }
+      breadcrumb={[
+        { label: isAllBrands ? t('brandFilter.allBrands') : activeProject.name },
+        { label: t('cityStatus.title') },
+      ]}
       title={t('cityStatus.title')}
       subtitle={t('cityStatus.subtitle')}
       actions={
         isAllBrands ? undefined : (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="h-11"
+          <>
+            <RefreshButton
               onClick={() => void listQuery.refetch()}
-              disabled={listQuery.isFetching}
-            >
-              <RefreshCcw
-                className={listQuery.isFetching ? 'size-4 animate-spin' : 'size-4'}
-                aria-hidden="true"
-              />
-              {t('common.refresh')}
-            </Button>
-            <Button className="h-11" onClick={() => setDialogOpen(true)}>
-              <Plus className="size-4" aria-hidden="true" />
-              {t('cityStatus.new')}
-            </Button>
-          </div>
+              fetching={listQuery.isFetching}
+            />
+            {canWrite ? (
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus aria-hidden="true" />
+                {t('cityStatus.new')}
+              </Button>
+            ) : null}
+          </>
         )
       }
     />
@@ -134,77 +133,76 @@ export function CityStatusPage() {
 
   if (isAllBrands) {
     return (
-      <div className="mx-auto w-full max-w-5xl">
+      <PageContainer width="full">
         {heading}
-        <Card>
-          <CardContent className="p-0">
-            <EmptyState
-              icon={<MapPin className="size-8" aria-hidden="true" />}
-              message={t('cityStatus.selectBrandFirst')}
-            />
-          </CardContent>
-        </Card>
-      </div>
+        <EmptyState
+          variant="dashed"
+          icon={<MapPin aria-hidden="true" />}
+          message={t('cityStatus.selectBrandFirst')}
+        />
+      </PageContainer>
     );
   }
 
   const rows = listQuery.data?.cities ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <PageContainer width="full">
       {heading}
 
-      <div
-        className="mb-4 flex flex-wrap items-center gap-2"
-        role="group"
-        aria-label={t('cityStatus.filterStatus')}
-      >
-        {(['all', ...STATUSES] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={statusFilter === value}
-            onClick={() => setStatusFilter(value)}
-            className={
-              'inline-flex h-11 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ' +
-              (statusFilter === value
-                ? 'border-transparent bg-primary text-primary-foreground'
-                : 'border-border bg-card text-foreground/80 hover:bg-muted')
-            }
-          >
-            {value === 'all' ? t('cityStatus.filterAll') : t(STATUS_LABEL[value])}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        label={t('cityStatus.filterStatus')}
+        value={statusFilter}
+        onValueChange={setStatusFilter}
+        overflow="scroll"
+        className="mb-4 self-start"
+        options={(['all', ...STATUSES] as const).map((value) => ({
+          value,
+          label: value === 'all' ? t('cityStatus.filterAll') : t(STATUS_LABEL[value]),
+        }))}
+      />
 
       {listQuery.isLoading ? (
-        <div className="space-y-2" aria-hidden="true">
+        <div className="space-y-2" role="status" aria-label={t('common.loading')}>
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-12 w-full" />
+            <Skeleton key={i} className="h-11 w-full rounded-lg" />
           ))}
         </div>
+      ) : listQuery.error && !listQuery.data ? (
+        <ErrorState
+          error={listQuery.error}
+          onRetry={() => void listQuery.refetch()}
+          retrying={listQuery.isFetching}
+        />
       ) : rows.length === 0 ? (
-        <Card>
-          <CardContent className="p-0">
-            <EmptyState
-              icon={<MapPin className="size-8" aria-hidden="true" />}
-              title={t('cityStatus.empty')}
-              message={t('cityStatus.emptyHint')}
-            />
-          </CardContent>
-        </Card>
+        <EmptyState
+          variant="dashed"
+          icon={<MapPin aria-hidden="true" />}
+          title={t('cityStatus.empty')}
+          message={t('cityStatus.emptyHint')}
+          action={
+            canWrite ? (
+              <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
+                <Plus aria-hidden="true" />
+                {t('cityStatus.new')}
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <Card>
-          <CardContent className="overflow-x-auto p-0">
-            <Table>
-              <TableHeader>
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto lg:max-h-[calc(100svh-17rem)] lg:overflow-y-auto lg:overscroll-contain">
+            <Table containerClassName="w-full">
+              <TableHeader sticky>
                 <TableRow>
                   <TableHead>{t('cityStatus.colCity')}</TableHead>
                   <TableHead>{t('cityStatus.colStatus')}</TableHead>
-                  <TableHead>{t('cityStatus.colPartners')}</TableHead>
-                  <TableHead>{t('cityStatus.colOrders')}</TableHead>
-                  <TableHead>{t('cityStatus.colPerPartner')}</TableHead>
-                  <TableHead className="text-right">{t('cityStatus.colActions')}</TableHead>
+                  <TableHead className="text-right">{t('cityStatus.colPartners')}</TableHead>
+                  <TableHead className="text-right">{t('cityStatus.colOrders')}</TableHead>
+                  <TableHead className="text-right">{t('cityStatus.colPerPartner')}</TableHead>
+                  {canWrite ? (
+                    <TableHead className="w-24 text-right">{t('cityStatus.colActions')}</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -213,6 +211,7 @@ export function CityStatusPage() {
                     key={row.id}
                     row={row}
                     t={t}
+                    canWrite={canWrite}
                     statusBusy={statusMutation.isPending && statusMutation.variables?.id === row.id}
                     recomputeBusy={
                       recomputeMutation.isPending && recomputeMutation.variables === row.id
@@ -224,7 +223,7 @@ export function CityStatusPage() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
+          </div>
         </Card>
       )}
 
@@ -254,13 +253,14 @@ export function CityStatusPage() {
           if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
         }}
       />
-    </div>
+    </PageContainer>
   );
 }
 
 function CityRow({
   row,
   t,
+  canWrite,
   statusBusy,
   recomputeBusy,
   onStatusChange,
@@ -269,6 +269,7 @@ function CityRow({
 }: {
   row: CityStatus;
   t: ReturnType<typeof useT>;
+  canWrite: boolean;
   statusBusy: boolean;
   recomputeBusy: boolean;
   onStatusChange: (status: CityStatusValue) => void;
@@ -277,63 +278,114 @@ function CityRow({
 }) {
   return (
     <TableRow>
-      <TableCell>
+      <TableCell className="py-1.5">
         <span className="font-medium">{row.city}</span>
-        <span className="block text-xs tabular-nums text-muted-foreground">{row.plzPrefix}</span>
+        <span className="ml-2 font-mono text-xs tabular-nums text-muted-foreground">
+          {row.plzPrefix}
+        </span>
       </TableCell>
-      <TableCell>
+      <TableCell className="py-1.5">
         <div className="flex items-center gap-2">
-          <StatusBadge label={t(STATUS_LABEL[row.status])} tone={STATUS_TONE[row.status]} />
-          <label className="sr-only" htmlFor={`city-status-${row.id}`}>
-            {t('cityStatus.statusLabel')}
-          </label>
-          <Select
-            id={`city-status-${row.id}`}
-            className="h-9 w-auto"
-            value={row.status}
-            disabled={statusBusy}
-            onChange={(e) => onStatusChange(e.target.value as CityStatusValue)}
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {t(STATUS_LABEL[s])}
-              </option>
-            ))}
-          </Select>
+          <span
+            aria-hidden="true"
+            className={cn(
+              'size-2 shrink-0 rounded-full',
+              STATUS_DOT[row.status] ?? 'bg-muted-foreground',
+            )}
+          />
+          {canWrite ? (
+            <>
+              <Label className="sr-only" htmlFor={`city-status-${row.id}`}>
+                {t('cityStatus.statusLabel')}
+              </Label>
+              <Select<CityStatusValue>
+                id={`city-status-${row.id}`}
+                size="sm"
+                className="w-auto min-w-36"
+                value={row.status}
+                disabled={statusBusy}
+                onValueChange={onStatusChange}
+                options={STATUSES.map((s) => ({ value: s, label: t(STATUS_LABEL[s]) }))}
+              />
+            </>
+          ) : (
+            <span className="text-2sm">
+              {(STATUS_LABEL[row.status] && t(STATUS_LABEL[row.status])) || row.status}
+            </span>
+          )}
         </div>
       </TableCell>
-      <TableCell className="tabular-nums text-muted-foreground">
+      <TableCell className="whitespace-nowrap text-right tabular-nums">
         {t('cityStatus.metricPartners', {
           active: row.activePartnerCount,
           total: row.partnerCount,
         })}
       </TableCell>
-      <TableCell className="tabular-nums text-muted-foreground">{row.orderCount30d}</TableCell>
-      <TableCell className="tabular-nums text-muted-foreground">
-        {row.ordersPerPartner ?? '—'}
-      </TableCell>
-      <TableCell className="text-right">
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onRecompute} disabled={recomputeBusy}>
-            {recomputeBusy ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <RefreshCcw className="size-4" aria-hidden="true" />
-            )}
-            {recomputeBusy ? t('cityStatus.recomputing') : t('cityStatus.recompute')}
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={onDelete}
-            aria-label={t('cityStatus.deleteAction')}
-          >
-            <Trash2 className="size-4" aria-hidden="true" />
-          </Button>
-        </div>
-      </TableCell>
+      <TableCell className="text-right tabular-nums">{row.orderCount30d}</TableCell>
+      <TableCell className="text-right tabular-nums">{row.ordersPerPartner ?? '—'}</TableCell>
+      {canWrite ? (
+        <TableCell className="py-1.5 text-right">
+          <div className="flex justify-end gap-1">
+            <RowAction
+              label={recomputeBusy ? t('cityStatus.recomputing') : t('cityStatus.recompute')}
+              subject={row.city}
+              onClick={onRecompute}
+              loading={recomputeBusy}
+            >
+              <RefreshCcw aria-hidden="true" />
+            </RowAction>
+            <RowAction
+              label={t('cityStatus.deleteAction')}
+              subject={row.city}
+              onClick={onDelete}
+              danger
+            >
+              <Trash2 aria-hidden="true" />
+            </RowAction>
+          </div>
+        </TableCell>
+      ) : null}
     </TableRow>
+  );
+}
+
+// The accessible name carries the row's city, so the button list isn't ten identical "Löschen" entries.
+function RowAction({
+  label,
+  subject,
+  onClick,
+  loading,
+  danger,
+  children,
+}: {
+  label: string;
+  subject: string;
+  onClick: () => void;
+  loading?: boolean;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`${label}: ${subject}`}
+          onClick={onClick}
+          loading={loading}
+          className={cn(
+            danger
+              ? 'text-destructive hover:bg-destructive-soft hover:text-destructive'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -383,9 +435,11 @@ function CreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[94vw] sm:max-w-md">
-        <DialogTitle>{t('cityStatus.new')}</DialogTitle>
-        <DialogDescription>{t('cityStatus.subtitle')}</DialogDescription>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('cityStatus.new')}</DialogTitle>
+          <DialogDescription>{t('cityStatus.subtitle')}</DialogDescription>
+        </DialogHeader>
         <form
           className="flex flex-col gap-4"
           onSubmit={(e) => {
@@ -393,8 +447,7 @@ function CreateDialog({
             if (valid) mutation.mutate();
           }}
         >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cs-city">{t('cityStatus.cityLabel')}</Label>
+          <FormField label={t('cityStatus.cityLabel')} htmlFor="cs-city" required>
             <Input
               id="cs-city"
               value={city}
@@ -402,45 +455,54 @@ function CreateDialog({
               maxLength={120}
               required
             />
-          </div>
+          </FormField>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cs-plz">{t('cityStatus.plzPrefixLabel')}</Label>
+          <FormField
+            label={t('cityStatus.plzPrefixLabel')}
+            htmlFor="cs-plz"
+            hint={t('cityStatus.plzPrefixHint')}
+            required
+          >
             <Input
               id="cs-plz"
               value={plzPrefix}
               onChange={(e) => setPlzPrefix(e.target.value.replace(/\D/g, '').slice(0, 5))}
               inputMode="numeric"
+              className="font-mono tabular-nums"
               required
             />
-          </div>
+          </FormField>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cs-status">{t('cityStatus.statusLabel')}</Label>
-            <Select
+          <FormField label={t('cityStatus.statusLabel')} htmlFor="cs-status">
+            <Select<CityStatusValue>
               id="cs-status"
               value={status}
-              onChange={(e) => setStatus(e.target.value as CityStatusValue)}
-            >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {t(STATUS_LABEL[s])}
-                </option>
-              ))}
-            </Select>
+              onValueChange={setStatus}
+              options={STATUSES.map((s) => ({ value: s, label: t(STATUS_LABEL[s]) }))}
+            />
+          </FormField>
+
+          {/* The backend only accepts these two flags on create. */}
+          <div className="flex flex-col gap-2.5">
+            <label htmlFor="cs-seo" className="flex cursor-pointer items-center gap-2 text-2sm">
+              <Checkbox
+                id="cs-seo"
+                checked={seoPageGenerated}
+                onChange={(e) => setSeo(e.target.checked)}
+              />
+              {t('cityStatus.seoLabel')}
+            </label>
+            <label htmlFor="cs-ads" className="flex cursor-pointer items-center gap-2 text-2sm">
+              <Checkbox
+                id="cs-ads"
+                checked={googleAdsActive}
+                onChange={(e) => setAds(e.target.checked)}
+              />
+              {t('cityStatus.adsLabel')}
+            </label>
           </div>
 
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={seoPageGenerated} onChange={(e) => setSeo(e.target.checked)} />
-            {t('cityStatus.seoLabel')}
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={googleAdsActive} onChange={(e) => setAds(e.target.checked)} />
-            {t('cityStatus.adsLabel')}
-          </label>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cs-notes">{t('cityStatus.notesLabel')}</Label>
+          <FormField label={t('cityStatus.notesLabel')} htmlFor="cs-notes">
             <Textarea
               id="cs-notes"
               rows={3}
@@ -448,9 +510,9 @@ function CreateDialog({
               onChange={(e) => setNotes(e.target.value)}
               maxLength={2000}
             />
-          </div>
+          </FormField>
 
-          <DialogFooter className="mt-1">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -459,10 +521,7 @@ function CreateDialog({
             >
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={!valid || mutation.isPending}>
-              {mutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : null}
+            <Button type="submit" disabled={!valid} loading={mutation.isPending}>
               {mutation.isPending ? t('cityStatus.creating') : t('cityStatus.create')}
             </Button>
           </DialogFooter>

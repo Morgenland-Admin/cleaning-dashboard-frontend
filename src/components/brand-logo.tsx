@@ -2,44 +2,36 @@ import { Brush } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
-/**
- * `tone` names the SURFACE the logo is placed on, not the colour of the mark.
- *
- * It used to name the mark, which is why the login showcase panel asked for
- * `cream` (it wanted the pale mark) and got a `text-ink` wordmark painted onto
- * an ink panel — measured 1.00:1, i.e. the product name was invisible.
- *
- * - `auto`  — follows the theme. Every in-app placement.
- * - `dark`  — a permanently dark surface: pale mark, pale wordmark.
- * - `cream` — a permanently pale surface: ink mark, ink wordmark.
- */
+// The surface the logo sits on, not the mark's colour: `auto` follows the
+// theme; `dark` and `cream` are permanently dark / pale panels.
 type BrandTone = 'auto' | 'dark' | 'cream';
 
-interface BrandLogoProps {
+interface AppMarkProps {
   size?: number;
   tone?: BrandTone;
   className?: string;
 }
 
-export function BrandMark({ size = 36, tone = 'auto', className }: BrandLogoProps) {
+/** The console's own mark, not a tenant brand's avatar (see brand-mark.tsx). */
+export function AppMark({ size = 32, tone = 'auto', className }: AppMarkProps) {
   const toneClass =
     tone === 'dark'
       ? 'bg-parchment text-ink'
       : tone === 'cream'
         ? 'bg-ink text-parchment'
-        : 'bg-foreground text-background';
+        : 'bg-primary text-primary-foreground';
 
   return (
     <span
       className={cn(
-        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[22%] shadow-sm',
+        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[24%]',
         toneClass,
         className,
       )}
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      <Brush className="size-[58%]" strokeWidth={2.2} />
+      <Brush className="size-[56%]" strokeWidth={2.2} />
     </span>
   );
 }
@@ -49,30 +41,39 @@ interface BrandBlockProps {
   subtitle?: string;
   className?: string;
   size?: number;
+  compact?: boolean;
 }
 
-export function BrandBlock({ tone = 'auto', subtitle, className, size = 36 }: BrandBlockProps) {
+export function BrandBlock({
+  tone = 'auto',
+  subtitle,
+  className,
+  size = 32,
+  compact,
+}: BrandBlockProps) {
   const wordmarkColor =
     tone === 'cream' ? 'text-ink' : tone === 'dark' ? 'text-parchment' : 'text-foreground';
 
   const subtitleColor =
     tone === 'cream'
-      ? 'text-ink/60'
+      ? 'text-ink/70'
       : tone === 'dark'
-        ? 'text-parchment/60'
+        ? 'text-parchment/70'
         : 'text-muted-foreground';
 
   return (
-    <div className={cn('flex items-center gap-2.5', className)}>
-      <BrandMark size={size} tone={tone} />
-      <div className="flex min-w-0 flex-col leading-tight">
-        <span className={cn('truncate text-base font-semibold tracking-[-0.01em]', wordmarkColor)}>
-          Reinigungs-Portal
-        </span>
-        {subtitle ? (
-          <span className={cn('truncate text-2xs', subtitleColor)}>{subtitle}</span>
-        ) : null}
-      </div>
+    <div className={cn('flex min-w-0 items-center gap-2.5', className)}>
+      <AppMark size={size} tone={tone} />
+      {compact ? (
+        <span className="sr-only">{BRAND_NAME}</span>
+      ) : (
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className={cn('truncate text-sm font-semibold', wordmarkColor)}>{BRAND_NAME}</span>
+          {subtitle ? (
+            <span className={cn('truncate text-2xs', subtitleColor)}>{subtitle}</span>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
