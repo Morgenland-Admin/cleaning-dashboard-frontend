@@ -2,6 +2,8 @@ import { Loader2, MapPin } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
+import { useT } from '@/i18n';
+import { cn } from '@/lib/utils';
 
 const PHOTON_URL = 'https://photon.komoot.io/api/';
 const PHOTON_LAT = 53.5443;
@@ -59,24 +61,27 @@ interface Props {
   id?: string;
   value: string;
   onChange: (v: string) => void;
-  /** Fired when a suggestion is chosen — fill postal code / city from it. */
   onPick: (a: AddressPick) => void;
   placeholder?: string;
   className?: string;
+  required?: boolean;
+  'aria-required'?: boolean;
   'aria-describedby'?: string;
   'aria-invalid'?: boolean;
 }
 
-/** Type-ahead street search (Photon/OSM); selecting a result yields a structured address. */
+/** Street type-ahead (Photon/OSM) returning a structured address. */
 export function AddressAutocomplete({
   id,
   value,
   onChange,
   onPick,
-  placeholder = 'z. B. Brook 9',
+  placeholder,
   className,
+  required,
   ...aria
 }: Props) {
+  const t = useT();
   const reactId = useId();
   const inputId = id ?? `addr-${reactId}`;
   const listboxId = `${inputId}-listbox`;
@@ -84,21 +89,28 @@ export function AddressAutocomplete({
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<Suggestion[]>([]);
   const [activeIdx, setActiveIdx] = useState(-1);
+  const [notice, setNotice] = useState<'empty' | 'failed' | null>(null);
   const ignoreNextFetchRef = useRef(false);
+  // A prefilled value (edit forms) is not a search: no Photon lookup or popup until it changes.
+  const initialValueRef = useRef<string | null>(value);
   const abortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (initialValueRef.current !== null) {
+      if (value === initialValueRef.current) return;
+      initialValueRef.current = null;
+    }
     if (ignoreNextFetchRef.current) {
       ignoreNextFetchRef.current = false;
       return;
     }
     const q = value.trim();
     if (q.length < 3) {
-      // Immediate reset when the query is too short — keeps the dropdown in sync
-      // with the input, no debounce needed (and nothing to fetch).
+      // Nothing to fetch: reset at once, no debounce.
       /* eslint-disable-next-line react-hooks/set-state-in-effect */
       setResults([]);
+      setNotice(null);
       setLoading(false);
       return;
     }
@@ -123,9 +135,14 @@ export function AddressAutocomplete({
           .filter((s): s is Suggestion => s !== null);
         setResults(mapped);
         setActiveIdx(mapped.length > 0 ? 0 : -1);
+        setNotice(mapped.length > 0 ? null : 'empty');
         setOpen(true);
       } catch (err) {
-        if ((err as Error)?.name !== 'AbortError') setResults([]);
+        if ((err as Error)?.name !== 'AbortError') {
+          setResults([]);
+          setNotice('failed');
+          setOpen(true);
+        }
       } finally {
         setLoading(false);
       }
@@ -148,6 +165,7 @@ export function AddressAutocomplete({
       onPick(s);
       setOpen(false);
       setResults([]);
+      setNotice(null);
     },
     [onChange, onPick],
   );
@@ -184,14 +202,16 @@ export function AddressAutocomplete({
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => results.length > 0 && setOpen(true)}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('customers.addressSearch.placeholder')}
         autoComplete="address-line1"
         role="combobox"
         aria-expanded={open}
         aria-autocomplete="list"
         aria-controls={listboxId}
         aria-activedescendant={open && activeIdx >= 0 ? `${listboxId}-opt-${activeIdx}` : undefined}
-        className={className}
+        className={cn(loading && 'pr-9', className)}
+        required={required}
+        aria-required={aria['aria-required']}
         aria-describedby={aria['aria-describedby']}
         aria-invalid={aria['aria-invalid']}
       />
@@ -205,7 +225,7 @@ export function AddressAutocomplete({
         <ul
           id={listboxId}
           role="listbox"
-          className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-card shadow-lg"
+          className="absolute z-overlay mt-1 max-h-72 w-full overflow-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {results.map((s, i) => {
             const active = i === activeIdx;
@@ -220,15 +240,16 @@ export function AddressAutocomplete({
                   choose(s);
                 }}
                 onMouseEnter={() => setActiveIdx(i)}
-                className={
-                  'flex cursor-pointer items-start gap-2.5 px-3 py-2.5 text-sm transition-colors ' +
-                  (active ? 'bg-primary/10 text-foreground' : 'hover:bg-secondary/60')
-                }
+                className={cn(
+                  'flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 text-2sm transition-colors',
+                  active ? 'bg-primary-soft text-foreground' : 'hover:bg-accent/60',
+                )}
               >
                 <MapPin
-                  className={
-                    'mt-0.5 size-4 shrink-0 ' + (active ? 'text-primary' : 'text-muted-foreground')
-                  }
+                  className={cn(
+                    'mt-0.5 size-4 shrink-0',
+                    active ? 'text-primary' : 'text-muted-foreground',
+                  )}
                   aria-hidden="true"
                 />
                 <div className="min-w-0">
@@ -242,6 +263,13 @@ export function AddressAutocomplete({
           })}
         </ul>
       ) : null}
+      <p role="status" className="mt-1 text-xs text-muted-foreground empty:mt-0">
+        {open && results.length === 0 && notice
+          ? notice === 'failed'
+            ? t('customers.addressSearch.failed')
+            : t('customers.addressSearch.noResults')
+          : null}
+      </p>
     </div>
   );
 }

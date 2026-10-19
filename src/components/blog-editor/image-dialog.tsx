@@ -1,7 +1,10 @@
-import { AlertCircle, ImagePlus, Link2, Loader2, UploadCloud } from 'lucide-react';
+import { ImagePlus, Link2, UploadCloud } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { FormField } from '@/components/form-field';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useT } from '@/i18n';
 import { errMessage, uploadPublicImage } from '@/lib/api';
 import { ACCEPTED_IMAGE_LABEL, formatBytes, MAX_IMAGE_BYTES } from '@/lib/blog-utils';
@@ -24,10 +28,7 @@ import type { Editor } from '@tiptap/react';
 
 type Source = 'upload' | 'url';
 
-/**
- * Insert an image into the article, or edit the selected one's alt text. Alt
- * text is required: it is what Google and screen readers see of the image.
- */
+/** Inserts or edits an in-article image; a caption turns it into <figure>, "decorative" writes alt="". */
 export function ImageDialog({
   editor,
   companySlug,
@@ -40,21 +41,31 @@ export function ImageDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const t = useT();
-  // Seeded on mount; the caller remounts per open via `key`.
-  const editing = editor.isActive('image');
-  const current = editor.getAttributes('image') as { src?: string; alt?: string; title?: string };
+  // Seeded on mount; the caller mounts it per open.
+  const editingType = editor.isActive('figure')
+    ? 'figure'
+    : editor.isActive('image')
+      ? 'image'
+      : null;
+  const current = (editingType ? editor.getAttributes(editingType) : {}) as {
+    src?: string;
+    alt?: string | null;
+    caption?: string;
+  };
 
   const inputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const [source, setSource] = useState<Source>('upload');
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(editing ? (current.src ?? null) : null);
+  const [preview, setPreview] = useState<string | null>(current.src ?? null);
   const [url, setUrl] = useState('');
-  const [alt, setAlt] = useState(editing ? (current.alt ?? '') : '');
-  const [title, setTitle] = useState(editing ? (current.title ?? '') : '');
+  const [alt, setAlt] = useState(current.alt ?? '');
+  const [decorative, setDecorative] = useState(editingType !== null && current.alt === '');
+  const [caption, setCaption] = useState(current.caption ?? '');
   const [dragging, setDragging] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const busy = progress !== null;
 
   useEffect(
     () => () => {
@@ -81,32 +92,35 @@ export function ImageDialog({
   }
 
   const urlValid = /^https:\/\/\S+$/i.test(url.trim());
-  const hasImage = editing || (source === 'upload' ? !!file : urlValid);
-  const canSubmit = hasImage && alt.trim().length > 0 && !busy;
+  const hasImage = editingType !== null || (source === 'upload' ? !!file : urlValid);
+  const altOk = decorative || alt.trim().length > 0;
+  const canSubmit = hasImage && altOk && !busy;
 
   async function submit() {
     if (!canSubmit) return;
-    const attrs = { alt: alt.trim(), title: title.trim() || null };
-    if (editing) {
-      editor.chain().focus().updateAttributes('image', attrs).run();
-      onOpenChange(false);
-      return;
-    }
-    setBusy(true);
     setError(null);
-    try {
-      const src = source === 'upload' ? await uploadPublicImage(companySlug, file!) : url.trim();
-      editor
-        .chain()
-        .focus()
-        .setImage({ src, alt: attrs.alt, title: attrs.title ?? undefined })
-        .run();
-      onOpenChange(false);
-    } catch (err) {
-      setError(errMessage(err));
-    } finally {
-      setBusy(false);
+    let src = current.src ?? '';
+    if (!editingType) {
+      try {
+        setProgress(0);
+        src =
+          source === 'upload'
+            ? await uploadPublicImage(companySlug, file!, setProgress)
+            : url.trim();
+      } catch (err) {
+        setError(errMessage(err));
+        setProgress(null);
+        return;
+      }
     }
+    const attrs = { src, alt: decorative ? '' : alt.trim() };
+    const node = caption.trim()
+      ? { type: 'figure', attrs: { ...attrs, caption: caption.trim() } }
+      : { type: 'image', attrs };
+    const chain = editor.chain().focus();
+    if (editingType) chain.deleteSelection();
+    chain.insertContent(node).run();
+    onOpenChange(false);
   }
 
   return (
@@ -114,10 +128,10 @@ export function ImageDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {editing ? t('blogEditor.imageEditTitle') : t('blogEditor.imageInsertTitle')}
+            {editingType ? t('blogEditor.imageEditTitle') : t('blogEditor.imageInsertTitle')}
           </DialogTitle>
           <DialogDescription>
-            {editing
+            {editingType
               ? t('blogEditor.imageEditHint')
               : t('blogEditor.imageInsertHint', {
                   types: ACCEPTED_IMAGE_LABEL,
@@ -133,42 +147,31 @@ export function ImageDialog({
             void submit();
           }}
         >
-          {!editing ? (
-            <div
-              role="tablist"
-              aria-label={t('blogEditor.imageSource')}
-              className="inline-flex self-start rounded-lg border border-border bg-muted/60 p-0.5"
-            >
-              {(['upload', 'url'] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  role="tab"
-                  aria-selected={source === s}
-                  onClick={() => {
-                    setSource(s);
-                    setError(null);
-                  }}
-                  className={cn(
-                    'inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-2sm font-medium transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    source === s
-                      ? 'bg-card text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {s === 'upload' ? (
-                    <UploadCloud className="size-4" aria-hidden="true" />
-                  ) : (
-                    <Link2 className="size-4" aria-hidden="true" />
-                  )}
-                  {s === 'upload' ? t('blogEditor.imageFromUpload') : t('blogEditor.imageFromUrl')}
-                </button>
-              ))}
-            </div>
+          {!editingType ? (
+            <SegmentedControl<Source>
+              label={t('blogEditor.imageSource')}
+              value={source}
+              onValueChange={(next) => {
+                setSource(next);
+                setError(null);
+              }}
+              className="self-start"
+              options={[
+                {
+                  value: 'upload',
+                  icon: <UploadCloud aria-hidden="true" />,
+                  label: t('blogEditor.imageFromUpload'),
+                },
+                {
+                  value: 'url',
+                  icon: <Link2 aria-hidden="true" />,
+                  label: t('blogEditor.imageFromUrl'),
+                },
+              ]}
+            />
           ) : null}
 
-          {!editing && source === 'upload' ? (
+          {!editingType && source === 'upload' ? (
             <>
               <input
                 ref={inputRef}
@@ -198,14 +201,14 @@ export function ImageDialog({
                   'relative flex aspect-video w-full flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                   dragging
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border bg-muted hover:bg-muted/70',
+                    ? 'border-primary bg-primary-soft'
+                    : 'border-border-strong bg-muted hover:bg-accent/60',
                 )}
               >
                 {preview ? (
                   <img src={preview} alt="" className="size-full object-contain" />
                 ) : (
-                  <span className="flex flex-col items-center gap-2 px-4 text-center text-sm text-muted-foreground">
+                  <span className="flex flex-col items-center gap-2 px-4 text-center text-2sm text-muted-foreground">
                     <UploadCloud className="size-7" aria-hidden="true" />
                     {t('blog.dropHint')}
                   </span>
@@ -219,9 +222,12 @@ export function ImageDialog({
             </>
           ) : null}
 
-          {!editing && source === 'url' ? (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="img-url">{t('blogEditor.imageUrl')}</Label>
+          {!editingType && source === 'url' ? (
+            <FormField
+              label={t('blogEditor.imageUrl')}
+              htmlFor="img-url"
+              error={url && !urlValid ? t('blogEditor.imageUrlInvalid') : null}
+            >
               <Input
                 id="img-url"
                 value={url}
@@ -229,49 +235,70 @@ export function ImageDialog({
                 placeholder="https://…"
                 autoComplete="off"
               />
-              {url && !urlValid ? (
-                <p className="text-xs text-destructive">{t('blogEditor.imageUrlInvalid')}</p>
-              ) : null}
-            </div>
+            </FormField>
           ) : null}
 
-          {editing && preview ? (
+          {editingType && preview ? (
             <img
               src={preview}
               alt=""
-              className="max-h-56 w-full rounded-lg border border-border bg-muted object-contain"
+              className="max-h-56 w-full rounded-md border border-border bg-muted object-contain"
             />
           ) : null}
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="img-alt">
-              {t('blogEditor.imageAlt')}
-              <span className="text-destructive"> *</span>
-            </Label>
+          <FormField
+            label={t('blogEditor.imageAlt')}
+            htmlFor="img-alt"
+            hint={decorative ? t('blogEditor.imageDecorativeHint') : t('blogEditor.imageAltHint')}
+            required={!decorative}
+          >
             <Input
               id="img-alt"
-              value={alt}
+              value={decorative ? '' : alt}
               onChange={(e) => setAlt(e.target.value)}
               placeholder={t('blogEditor.imageAltPlaceholder')}
               maxLength={300}
+              disabled={decorative}
             />
-            <p className="text-xs text-muted-foreground">{t('blogEditor.imageAltHint')}</p>
+          </FormField>
+          <div className="-mt-2 flex items-center gap-2">
+            <Checkbox
+              id="img-decorative"
+              checked={decorative}
+              onChange={(e) => setDecorative(e.target.checked)}
+            />
+            <Label htmlFor="img-decorative" className="font-normal">
+              {t('blogEditor.imageDecorative')}
+            </Label>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="img-title">{t('blogEditor.imageTitle')}</Label>
+          <FormField
+            label={t('blogEditor.imageCaption')}
+            htmlFor="img-caption"
+            hint={t('blogEditor.imageCaptionHint')}
+          >
             <Input
-              id="img-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              id="img-caption"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
               maxLength={300}
             />
-          </div>
+          </FormField>
 
-          {error ? (
-            <p role="alert" className="flex items-start gap-1.5 text-sm text-destructive">
-              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              {error}
-            </p>
+          {error ? <Alert tone="destructive">{error}</Alert> : null}
+          {progress !== null && source === 'upload' && !editingType ? (
+            <div
+              role="progressbar"
+              aria-label={t('blog.uploading')}
+              aria-valuenow={Math.round(progress * 100)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="h-1.5 overflow-hidden rounded-full bg-muted"
+            >
+              <div
+                className="h-full bg-primary transition-[width] duration-fast"
+                style={{ width: `${Math.round(progress * 100)}%` }}
+              />
+            </div>
           ) : null}
 
           <DialogFooter>
@@ -283,15 +310,11 @@ export function ImageDialog({
             >
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={!canSubmit}>
-              {busy ? (
-                <Loader2 className="animate-spin" aria-hidden="true" />
-              ) : (
-                <ImagePlus aria-hidden="true" />
-              )}
+            <Button type="submit" disabled={!canSubmit} loading={busy}>
+              <ImagePlus aria-hidden="true" />
               {busy
                 ? t('blog.uploading')
-                : editing
+                : editingType
                   ? t('common.save')
                   : t('blogEditor.imageInsert')}
             </Button>

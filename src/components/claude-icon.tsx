@@ -1,4 +1,3 @@
-// Claude starburst — 12 rays in the brand coral (--claude). Inline SVG, no asset.
 export function ClaudeIcon({ size = 15, className = '' }: { size?: number; className?: string }) {
   const rays = Array.from({ length: 12 }, (_, i) => {
     const angle = (i * 30 * Math.PI) / 180;

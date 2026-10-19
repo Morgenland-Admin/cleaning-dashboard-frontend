@@ -1,18 +1,15 @@
 /// <reference lib="webworker" />
 
-import { CacheableResponsePlugin } from 'workbox-cacheable-response';
-import { ExpirationPlugin } from 'workbox-expiration';
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
-import { CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
 
 declare const self: ServiceWorkerGlobalScope;
 
-// Activate new SW immediately so users aren't stuck on stale builds.
+// Activate immediately so users aren't stuck on stale builds.
 self.skipWaiting();
 self.addEventListener('activate', () => self.clients.claim());
 
-// __WB_MANIFEST is injected at build time by vite-plugin-pwa (injectManifest mode).
+// __WB_MANIFEST is injected at build time by vite-plugin-pwa.
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
@@ -22,30 +19,13 @@ registerRoute(
     const skip =
       url.pathname.startsWith('/api/') ||
       url.pathname.startsWith('/auth/') ||
+      url.pathname.startsWith('/brand-materials/') ||
       url.pathname.startsWith('/login') ||
       url.pathname.startsWith('/reset-password') ||
       url.pathname.startsWith('/accept-invite');
     if (skip) return fetch((event as FetchEvent).request);
     const cache = await caches.match('/index.html');
     return cache ?? fetch((event as FetchEvent).request);
-  }),
-);
-
-registerRoute(
-  ({ url }) => url.origin === 'https://fonts.googleapis.com',
-  new StaleWhileRevalidate({ cacheName: 'google-fonts-stylesheets' }),
-);
-registerRoute(
-  ({ url }) => url.origin === 'https://fonts.gstatic.com',
-  new CacheFirst({
-    cacheName: 'google-fonts-webfonts',
-    plugins: [
-      new CacheableResponsePlugin({ statuses: [0, 200] }),
-      new ExpirationPlugin({
-        maxEntries: 30,
-        maxAgeSeconds: 60 * 60 * 24 * 365,
-      }),
-    ],
   }),
 );
 

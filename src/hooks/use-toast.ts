@@ -2,14 +2,10 @@ import * as React from 'react';
 
 import type { ToastProps } from '@/components/ui/toast';
 
-// Lightweight module-level toast store (shadcn pattern): a reducer + listeners
-// so any component can call `toast(...)` without prop-drilling a provider.
-
 const TOAST_LIMIT = 3;
 const TOAST_REMOVE_DELAY = 6000;
 
-// Omit the HTML global `title` attribute (string) inherited from the Radix
-// Toast.Root element props — it collides with our richer ReactNode `title`.
+// Radix's inherited string `title` collides with our ReactNode `title`.
 type ToasterToast = Omit<ToastProps, 'title'> & {
   id: string;
   title?: React.ReactNode;
@@ -93,7 +89,6 @@ export function toast(opts: ToastOptions) {
   return id;
 }
 
-/** Convenience helpers for the two most common cases. */
 toast.error = (description: React.ReactNode, title: React.ReactNode = 'Fehler') =>
   toast({ title, description, variant: 'destructive' });
 toast.success = (description: React.ReactNode, title?: React.ReactNode) =>

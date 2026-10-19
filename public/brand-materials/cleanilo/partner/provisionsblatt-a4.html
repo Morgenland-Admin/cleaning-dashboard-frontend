@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+
+
+<meta charset="utf-8">
+<title>Provisionsblatt A4 · CLEANILO</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../../runtime/support.js?v=c6d7d32685"></script>
+<script src="../../runtime/sheet.js?v=c6d7d32685"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../../fonts/fonts.css?v=c6d7d32685">
+<style>* { box-sizing: border-box; } body { margin: 0; } @media print { @page { size: A4; margin: 0; } .__bg{background:#fff!important;padding:0!important;} .__pg{box-shadow:none!important;} }</style>
+</helmet>
+
+<div class="__bg" style="background:#ECEEEF; padding:40px 0; font-family:'Cabin',sans-serif; color:#374151; display:flex; justify-content:center;">
+  <div class="__pg" style="width:794px; height:1123px; background:#FFFFFF; box-shadow:0 4px 28px rgba(10,24,45,0.10); position:relative; overflow:hidden; display:flex; flex-direction:column;">
+
+    <div style="padding:46px 60px 0; display:flex; align-items:flex-start; justify-content:space-between;">
+      <div>
+        <img src="../../assets/cleanilo-logo.svg" alt="CLEANILO" style="height:34px; margin-bottom:18px;">
+        <div style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:#039B52; margin-bottom:8px;">Partner-Konditionen · Reinigungspartner</div>
+        <div style="font-family:'Urbanist',sans-serif; font-weight:800; font-size:32px; letter-spacing:-0.02em; color:#0A182D;">Provision &amp; Auszahlung</div>
+      </div>
+      <div style="text-align:right; font-size:11px; color:#6B7280; line-height:1.7;"><div style="font-family:'Urbanist',sans-serif; font-weight:700; color:#0A182D;">Gültig ab</div><div>[PLATZHALTER]</div></div>
+    </div>
+    <div style="margin:22px 60px 0; height:3px; background:#039B52; border-radius:2px;"></div>
+
+    <div style="padding:28px 60px 0; flex:1; display:flex; flex-direction:column; gap:22px;">
+
+      <!-- Split hero -->
+      <div style="display:flex; gap:18px;">
+        <div style="flex:1; background:#E6F5EC; border-radius:12px; padding:24px 26px;">
+          <div style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:#02703B;">Ihr Anteil als Partner</div>
+          <div style="font-family:'Urbanist',sans-serif; font-weight:800; font-size:58px; line-height:1; color:#039B52; margin-top:6px;">88<span style="font-size:30px;">%</span></div>
+          <div style="font-size:13px; color:#374151; margin-top:6px;">des Auftragswerts bleiben bei Ihnen.</div>
+        </div>
+        <div style="flex:1; background:#0A182D; border-radius:12px; padding:24px 26px;">
+          <div style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:#9DB0C9;">Plattform-Provision</div>
+          <div style="font-family:'Urbanist',sans-serif; font-weight:800; font-size:58px; line-height:1; color:#FFBF00; margin-top:6px;">12<span style="font-size:30px;">%</span></div>
+          <div style="font-size:13px; color:#9DB0C9; margin-top:6px;">einheitlich für Vermittlung, Abwicklung &amp; Marketing.</div>
+        </div>
+      </div>
+
+      <!-- proportion bar -->
+      <div>
+        <div style="display:flex; height:34px; border-radius:8px; overflow:hidden;">
+          <div style="width:88%; background:#039B52; display:flex; align-items:center; padding-left:16px;"><span style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:13px; color:#fff;">Partner 88 %</span></div>
+          <div style="width:12%; background:#FFBF00; display:flex; align-items:center; justify-content:center;"><span style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:12px; color:#0A182D;">12 %</span></div>
+        </div>
+        <div style="font-size:12px; color:#6B7280; margin-top:8px;">Einheitlich für alle Leistungen — Teppichwäsche, Orient &amp; Spezial, Polster &amp; Reparatur.</div>
+      </div>
+
+      <!-- Rechenbeispiele -->
+      <div>
+        <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:16px; color:#0A182D; margin-bottom:12px;">Rechenbeispiele</div>
+        <div style="border:1px solid #EDEFF1; border-radius:10px; overflow:hidden;">
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; background:#0A182D;">
+            <div style="padding:12px 20px; font-family:'Urbanist',sans-serif; font-weight:600; font-size:11px; color:#fff; text-transform:uppercase; letter-spacing:0.04em;">Auftragswert</div>
+            <div style="padding:12px 20px; font-family:'Urbanist',sans-serif; font-weight:600; font-size:11px; color:#3DB876; text-transform:uppercase; letter-spacing:0.04em; text-align:right;">Sie erhalten · 88 %</div>
+            <div style="padding:12px 20px; font-family:'Urbanist',sans-serif; font-weight:600; font-size:11px; color:#9DB0C9; text-transform:uppercase; letter-spacing:0.04em; text-align:right;">Plattform · 12 %</div>
+          </div>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; border-top:1px solid #EDEFF1; background:{{ r.bg }};">
+              <div style="padding:13px 20px; font-size:14px; color:#0A182D; font-weight:600;">{{ r.gross }}</div>
+              <div style="padding:13px 20px; font-size:14px; color:#02703B; font-weight:700; text-align:right; background:#E6F5EC;">{{ r.partner }}</div>
+              <div style="padding:13px 20px; font-size:14px; color:#374151; text-align:right;">{{ r.platform }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size:11.5px; color:#9CA3AF; margin-top:8px;">Beispielwerte zur Veranschaulichung. Maßgeblich ist der tatsächliche Auftragswert (inkl. MwSt., sofern zutreffend).</div>
+      </div>
+
+      <!-- two cards: Auszahlung + Annahmestellen -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
+        <div style="border:1px solid #EDEFF1; border-radius:10px; padding:20px 22px;">
+          <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:15px; color:#0A182D; margin-bottom:8px;">Auszahlungsrhythmus</div>
+          <div style="font-size:13px; color:#374151; line-height:1.6;">Abrechnung &amp; Auszahlung <span style="font-weight:700; color:#0A182D;">[PLATZHALTER]</span> · transparente Aufstellung je Auftrag.</div>
+        </div>
+        <div style="background:#0852B9; border-radius:10px; padding:20px 22px;">
+          <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:15px; color:#fff; margin-bottom:8px;">Annahmestellen-Vergütung</div>
+          <div style="font-size:13px; color:#D6E4F8; line-height:1.6;">Für reine Annahmestellen gilt ein abweichendes Verhältnis: <span style="font-weight:700; color:#fff;">[PLATZHALTER]</span>.</div>
+        </div>
+      </div>
+
+      <div style="background:#FFF4D1; border-radius:10px; padding:16px 22px; font-size:12.5px; color:#0A182D; line-height:1.55;">Verbindlich sind ausschließlich die im Partnervertrag eingesetzten Werte und Klauseln: <span style="font-weight:700;">[PLATZHALTER]</span> (Laufzeit, Kündigung, Haftung, Datenschutz).</div>
+    </div>
+
+    <div style="margin-top:auto; padding:14px 60px; background:#F5F5F5; border-top:1px solid #EDEFF1; display:flex; justify-content:space-between;">
+      <span style="font-size:10px; color:#9CA3AF;">Madjidian-Amiri GbR · Holsteiner Chaussee 5A, 22523 Hamburg · USt-IdNr. [PLATZHALTER] · Handwerkskammer Hamburg</span>
+      <span style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:10px; color:#6B7280;">Provisionsblatt · A4</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:794,&quot;height&quot;:1123}}">
+class Component extends DCLogic {
+  renderVals() {
+    const eur = (n) => n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+    const vals = [100, 250, 500, 1000];
+    return {
+      rows: vals.map((g, i) => ({
+        gross: eur(g),
+        partner: eur(g * 0.88),
+        platform: eur(g * 0.12),
+        bg: i % 2 ? "#FAFBFB" : "#FFFFFF",
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

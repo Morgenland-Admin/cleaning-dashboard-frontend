@@ -1,439 +1,644 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  CheckCheck,
-  Check as CheckIcon,
-  Loader2,
-  Paperclip,
-  Send,
-  X,
-} from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { ArrowDown, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { AttachmentGallery } from '@/components/attachment-gallery';
+import { ChatAvatar } from '@/components/chat-avatar';
+import { ChatComposer } from '@/components/chat-composer';
+import { ChatDetailsColumn, ChatDetailsSheet } from '@/components/chat-details';
+import { ChatThreadHeader, type SocketStatus } from '@/components/chat-header';
+import { ChatMessageItem } from '@/components/chat-message';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { toast } from '@/hooks/use-toast';
 import { useLocale } from '@/i18n';
-import { chatAdminApi, uploadsAdminApi, type ChatAttachment, type ChatMessage } from '@/lib/api';
+import { useCanWrite } from '@/lib/access';
+import {
+  chatAdminApi,
+  type ChatAttachment,
+  type ChatConversation,
+  type ChatMessage,
+  type ChatThreadPage,
+} from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
+import {
+  dayGroups,
+  daysAgo,
+  LEGACY_ADMIN_SENDER,
+  mergePages,
+  threadRows,
+  type FileProblem,
+  type ThreadMessage,
+} from '@/lib/chat';
+import { chatContactOf } from '@/lib/partners';
+import { useChatDrafts } from '@/lib/use-chat-drafts';
 import { useChatSocket } from '@/lib/use-chat-socket';
+import { useMediaQuery } from '@/lib/use-is-desktop';
 import { formatDateTime } from '@/lib/utils';
 
-import type { CompanySlug } from '@/contexts/project-context';
+import type { CompanySlug, Project } from '@/contexts/project-context';
+
+type Thread = InfiniteData<ChatThreadPage, number | undefined>;
+type Payload = { body?: string; attachments?: ChatAttachment[] };
+
+// Tailwind `xl`: the details panel is a third column from here, a sheet below.
+const WIDE_QUERY = '(min-width: 1280px)';
+
+const DETAILS_PREF = 'chat-details-open';
+function readDetailsPref(): boolean {
+  try {
+    return window.localStorage.getItem(DETAILS_PREF) !== 'closed';
+  } catch {
+    return true;
+  }
+}
+
+function writeDetailsPref(open: boolean) {
+  try {
+    window.localStorage.setItem(DETAILS_PREF, open ? 'open' : 'closed');
+  } catch {
+    // Private mode: the toggle still works, it just isn't remembered.
+  }
+}
+
+const PROBLEM_KEY = {
+  type: 'chat.problemType',
+  size: 'chat.problemSize',
+  count: 'chat.problemCount',
+} as const satisfies Record<FileProblem, string>;
 
 export function ChatPanel({
   companySlug,
-  partnerUserId,
+  conversation,
   partnerName,
+  brand,
 }: {
   companySlug: CompanySlug;
-  partnerUserId: string;
+  conversation: ChatConversation;
   partnerName: string;
+  /** Set when the list mixes brands. */
+  brand?: Project | null;
 }) {
+  const { partnerUserId, partnerStatus } = conversation;
+  const contact = chatContactOf(conversation);
   const { t, bcp47 } = useLocale();
   const { data: session } = useSession();
+  const canWrite = useCanWrite();
   const queryClient = useQueryClient();
   const adminId = session?.user?.id ?? '';
+  const threadKey = useMemo(
+    () => ['chat-thread', companySlug, partnerUserId] as const,
+    [companySlug, partnerUserId],
+  );
 
-  const [draft, setDraft] = useState('');
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
-  const [uploading, setUploading] = useState<File[]>([]);
+  const [wsStatus, setWsStatus] = useState<SocketStatus>('connecting');
+  const [pending, setPending] = useState<ThreadMessage[]>([]);
   const [partnerTyping, setPartnerTyping] = useState(false);
-  const [wsStatus, setWsStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
-  // Nested dragenter/dragleave counter to prevent overlay flicker.
+  const [announcement, setAnnouncement] = useState('');
   const [dragDepth, setDragDepth] = useState(0);
+  const typingReset = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Next appended message scrolls into view even if the reader had scrolled up.
+  const forceBottom = useRef(false);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const threadQuery = useQuery({
-    queryKey: ['chat-thread', companySlug, partnerUserId],
-    queryFn: ({ signal }) => chatAdminApi.messages(companySlug, partnerUserId, signal),
+  const thread = useInfiniteQuery({
+    queryKey: threadKey,
+    queryFn: ({ pageParam, signal }) =>
+      chatAdminApi.messages(companySlug, partnerUserId, { before: pageParam, signal }),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => (last.hasMore ? last.messages[0]?.id : undefined),
+    // Without a live socket the thread still updates.
+    refetchInterval: wsStatus === 'open' ? false : 15_000,
   });
 
-  const messages = threadQuery.data?.messages ?? [];
+  const serverMessages = useMemo(() => mergePages(thread.data?.pages ?? []), [thread.data]);
+  const messages = useMemo<ThreadMessage[]>(
+    () => [...serverMessages, ...pending],
+    [serverMessages, pending],
+  );
+
+  // Captured once per thread: where the "new messages" divider goes.
+  const [unreadMark, setUnreadMark] = useState<{ ready: boolean; id: number | null }>({
+    ready: false,
+    id: null,
+  });
+  if (!unreadMark.ready && thread.isSuccess) {
+    const first = serverMessages.find((m) => m.senderRole === 'partner' && !m.readAt);
+    setUnreadMark({ ready: true, id: first?.id ?? null });
+  }
+  const rows = useMemo(() => threadRows(messages, unreadMark.id), [messages, unreadMark.id]);
+
+  const refreshList = useCallback(
+    () => void queryClient.invalidateQueries({ queryKey: ['chat-conversations', companySlug] }),
+    [queryClient, companySlug],
+  );
+
+  const updateMessages = useCallback(
+    (fn: (m: ChatMessage) => ChatMessage) => {
+      queryClient.setQueryData<Thread>(threadKey, (prev) =>
+        prev
+          ? { ...prev, pages: prev.pages.map((p) => ({ ...p, messages: p.messages.map(fn) })) }
+          : prev,
+      );
+    },
+    [queryClient, threadKey],
+  );
+
+  const appendMessage = useCallback(
+    (message: ChatMessage) => {
+      queryClient.setQueryData<Thread>(threadKey, (prev) => {
+        if (!prev || prev.pages.length === 0) return prev;
+        const [latest, ...older] = prev.pages;
+        const rest = latest!.messages.filter((m) => m.id !== message.id);
+        return { ...prev, pages: [{ ...latest!, messages: [...rest, message] }, ...older] };
+      });
+    },
+    [queryClient, threadKey],
+  );
 
   const baseUrl =
     (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_AUTH_URL ??
     'http://localhost:8000';
 
+  const wasClosed = useRef(false);
   const { sendTyping } = useChatSocket({
     baseUrl,
     slug: companySlug,
     partnerUserId,
-    onStatusChange: setWsStatus,
+    onStatusChange: (status) => {
+      setWsStatus(status);
+      // Catch up on whatever arrived while the socket was down.
+      if (status === 'open' && wasClosed.current) {
+        void queryClient.invalidateQueries({ queryKey: threadKey });
+      }
+      if (status === 'closed') wasClosed.current = true;
+    },
     onEvent: (evt) => {
-      if (evt.type === 'message' && evt.message.senderRole === 'partner') {
-        queryClient.setQueryData<typeof threadQuery.data>(
-          ['chat-thread', companySlug, partnerUserId],
-          (prev) => (prev ? { ...prev, messages: [...prev.messages, evt.message] } : prev),
-        );
-        void queryClient.invalidateQueries({
-          queryKey: ['chat-conversations', companySlug],
-        });
+      if (evt.type === 'message') {
+        appendMessage(evt.message);
+        refreshList();
+        if (evt.message.senderRole === 'partner') {
+          setPartnerTyping(false);
+          const text = evt.message.body?.slice(0, 140) || t('chat.attachmentOnly');
+          setAnnouncement(t('chat.announceIncoming', { partner: partnerName, text }));
+        }
       } else if (evt.type === 'typing' && evt.from === 'partner') {
         setPartnerTyping(evt.isTyping);
-      } else if (evt.type === 'read' && evt.by === 'partner') {
-        queryClient.setQueryData<typeof threadQuery.data>(
-          ['chat-thread', companySlug, partnerUserId],
-          (prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              messages: prev.messages.map((m) =>
-                m.senderRole === 'admin' && !m.readAt ? { ...m, readAt: evt.readAt } : m,
-              ),
-            };
-          },
+        if (typingReset.current) clearTimeout(typingReset.current);
+        if (evt.isTyping) typingReset.current = setTimeout(() => setPartnerTyping(false), 6000);
+      } else if (evt.type === 'delivered' && evt.by === 'partner') {
+        updateMessages((m) =>
+          m.senderRole === 'admin' && !m.deliveredAt ? { ...m, deliveredAt: evt.deliveredAt } : m,
         );
-      } else if (evt.type === 'hello') {
-        // No-op — wsStatus already tracks this via onStatusChange.
+      } else if (evt.type === 'read' && evt.by === 'partner') {
+        updateMessages((m) =>
+          m.senderRole === 'admin' && !m.readAt
+            ? { ...m, readAt: evt.readAt, deliveredAt: m.deliveredAt ?? evt.readAt }
+            : m,
+        );
       }
     },
   });
 
   useEffect(() => {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages.length]);
+    const timer = typingReset;
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
 
-  const markReadMutation = useMutation({
-    mutationFn: () => chatAdminApi.markRead(companySlug, partnerUserId),
-  });
-
+  // Read only while the tab is actually visible.
+  const hasUnread = serverMessages.some((m) => m.senderRole === 'partner' && !m.readAt);
+  const marking = useRef(false);
   useEffect(() => {
-    const lastIncomingUnread = messages
-      .filter((m) => m.senderRole === 'partner' && !m.readAt)
-      .at(-1);
-    if (lastIncomingUnread) {
-      markReadMutation.mutate();
-      void queryClient.invalidateQueries({
-        queryKey: ['chat-conversations', companySlug],
-      });
+    if (!hasUnread) return;
+    function mark() {
+      if (marking.current || document.visibilityState !== 'visible') return;
+      marking.current = true;
+      const now = new Date().toISOString();
+      chatAdminApi
+        .markRead(companySlug, partnerUserId)
+        .then(() => {
+          updateMessages((m) =>
+            m.senderRole === 'partner' && !m.readAt ? { ...m, readAt: now } : m,
+          );
+          refreshList();
+        })
+        .catch(() => null)
+        .finally(() => {
+          marking.current = false;
+        });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, companySlug, partnerUserId, queryClient]);
+    mark();
+    document.addEventListener('visibilitychange', mark);
+    return () => document.removeEventListener('visibilitychange', mark);
+  }, [hasUnread, companySlug, partnerUserId, updateMessages, refreshList]);
 
-  const sendMutation = useMutation({
-    mutationFn: (payload: { body?: string; attachments?: ChatAttachment[] }) =>
-      chatAdminApi.send(companySlug, partnerUserId, payload),
-    onSuccess: ({ message }) => {
-      queryClient.setQueryData<typeof threadQuery.data>(
-        ['chat-thread', companySlug, partnerUserId],
-        (prev) => (prev ? { ...prev, messages: [...prev.messages, message] } : prev),
-      );
-      setDraft('');
-      setAttachments([]);
-      void queryClient.invalidateQueries({
-        queryKey: ['chat-conversations', companySlug],
+  const deliver = useCallback(
+    (localId: string, payload: Payload) => {
+      chatAdminApi
+        .send(companySlug, partnerUserId, payload)
+        .then(({ message }) => {
+          appendMessage(message);
+          setPending((p) => p.filter((m) => m.local?.id !== localId));
+          refreshList();
+        })
+        .catch(() => {
+          setPending((p) =>
+            p.map((m) =>
+              m.local?.id === localId ? { ...m, local: { id: localId, status: 'failed' } } : m,
+            ),
+          );
+          setAnnouncement(t('chat.notSent'));
+        });
+    },
+    [companySlug, partnerUserId, appendMessage, refreshList, t],
+  );
+
+  function send(payload: Payload) {
+    const localId = crypto.randomUUID();
+    setPending((p) => [
+      ...p,
+      {
+        id: -Date.now(),
+        conversationId: 0,
+        senderUserId: adminId,
+        senderRole: 'admin',
+        senderName: session?.user?.name ?? null,
+        body: payload.body ?? null,
+        attachments: payload.attachments ?? [],
+        deliveredAt: null,
+        readAt: null,
+        createdAt: new Date().toISOString(),
+        local: { id: localId, status: 'sending' },
+      },
+    ]);
+    setUnreadMark({ ready: true, id: null });
+    forceBottom.current = true;
+    deliver(localId, payload);
+  }
+
+  function retry(m: ThreadMessage) {
+    const localId = m.local!.id;
+    setPending((p) =>
+      p.map((x) =>
+        x.local?.id === localId ? { ...x, local: { id: localId, status: 'sending' } } : x,
+      ),
+    );
+    deliver(localId, {
+      body: m.body ?? undefined,
+      attachments: m.attachments.length ? m.attachments : undefined,
+    });
+  }
+
+  const onRejected = useCallback(
+    (rejected: Array<{ name: string; problem: FileProblem }>) => {
+      toast({
+        variant: 'destructive',
+        title: t('chat.filesRejected'),
+        description: rejected.map((r) => `${r.name}: ${t(PROBLEM_KEY[r.problem])}`).join(' · '),
       });
     },
+    [t],
+  );
+  const drafts = useChatDrafts(companySlug, onRejected);
+
+  // --- details: a remembered column from `xl`, a sheet below
+  const isWide = useMediaQuery(WIDE_QUERY);
+  const [columnOpen, setColumnOpen] = useState(readDetailsPref);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const detailsOpen = isWide ? columnOpen : sheetOpen;
+  const detailsId = useId();
+  const infoRef = useRef<HTMLButtonElement>(null);
+  const detailsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusDetails = useRef(false);
+
+  function setColumn(open: boolean) {
+    setColumnOpen(open);
+    writeDetailsPref(open);
+  }
+  function toggleDetails() {
+    if (!isWide) return setSheetOpen((o) => !o);
+    focusDetails.current = !columnOpen;
+    setColumn(!columnOpen);
+  }
+  useEffect(() => {
+    if (columnOpen && focusDetails.current) detailsHeadingRef.current?.focus();
+    focusDetails.current = false;
+  }, [columnOpen]);
+
+  // --- scrolling: stay pinned to the newest message unless the reader scrolled up
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const atBottom = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+  const [newBelow, setNewBelow] = useState(0);
+  const snapshot = useRef<{ first?: string; last?: string; height: number; top: number }>({
+    height: 0,
+    top: 0,
   });
+  const firstKey = rows.find((r) => r.kind === 'message')?.key;
+  const lastRow = rows.at(-1);
+  const lastKey = lastRow?.kind === 'message' ? lastRow.key : undefined;
 
-  const canSend = !sendMutation.isPending && (draft.trim().length > 0 || attachments.length > 0);
+  const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const scrollToBottom = useCallback((smooth: boolean) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth && !reduceMotion() ? 'smooth' : 'auto' });
+  }, []);
 
-  function handleSend() {
-    if (!canSend) return;
-    sendMutation.mutate({
-      body: draft.trim() || undefined,
-      attachments: attachments.length > 0 ? attachments : undefined,
-    });
-    sendTyping(false);
-  }
-
-  const typingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function handleDraftChange(value: string) {
-    setDraft(value);
-    sendTyping(true);
-    if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
-    typingDebounceRef.current = setTimeout(() => sendTyping(false), 2000);
-  }
-
-  async function handleFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const arr = Array.from(files);
-    setUploading((u) => [...u, ...arr]);
-    const results = await Promise.allSettled(
-      arr.map((f) => uploadsAdminApi.uploadDirect(companySlug, f)),
-    );
-    setUploading((u) => u.filter((f) => !arr.includes(f)));
-    const ok: ChatAttachment[] = [];
-    for (const r of results) {
-      if (r.status === 'fulfilled') ok.push(r.value);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !lastKey) return;
+    const prev = snapshot.current;
+    if (!prev.last) {
+      const divider = el.querySelector<HTMLElement>('[data-unread-divider]');
+      if (divider) el.scrollTop = Math.max(0, divider.offsetTop - el.clientHeight / 3);
+      else el.scrollTop = el.scrollHeight;
+    } else if (prev.first !== firstKey && prev.last === lastKey) {
+      // Older page prepended: keep the reader's place.
+      el.scrollTop = prev.top + (el.scrollHeight - prev.height);
+    } else if (prev.last !== lastKey) {
+      const last = lastRow?.kind === 'message' ? lastRow.message : null;
+      if (forceBottom.current || atBottom.current || last?.senderUserId === adminId) {
+        scrollToBottom(true);
+      } else if (last?.senderRole === 'partner') {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- counts messages that arrived out of view
+        setNewBelow((n) => n + 1);
+      }
+      forceBottom.current = false;
     }
-    if (ok.length > 0) setAttachments((curr) => [...curr, ...ok]);
+    snapshot.current = {
+      first: firstKey,
+      last: lastKey,
+      height: el.scrollHeight,
+      top: el.scrollTop,
+    };
+  }, [firstKey, lastKey, lastRow, adminId, scrollToBottom]);
+
+  useEffect(() => {
+    if (partnerTyping && atBottom.current) scrollToBottom(true);
+  }, [partnerTyping, scrollToBottom]);
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    snapshot.current.top = el.scrollTop;
+    snapshot.current.height = el.scrollHeight;
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    atBottom.current = bottom;
+    if (bottom && newBelow) setNewBelow(0);
+    if (showJump === bottom) setShowJump(!bottom);
+    if (el.scrollTop < 120 && thread.hasNextPage && !thread.isFetchingNextPage) {
+      void thread.fetchNextPage();
+    }
   }
 
-  function handleDragEnter(e: React.DragEvent) {
-    if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
-    e.preventDefault();
-    setDragDepth((d) => d + 1);
+  // --- drag & drop anywhere on the thread
+  const hasFiles = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer?.types ?? []).includes('Files');
+  const dropHandlers = canWrite
+    ? {
+        onDragEnter: (e: React.DragEvent) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          setDragDepth((d) => d + 1);
+        },
+        onDragLeave: (e: React.DragEvent) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          setDragDepth((d) => Math.max(0, d - 1));
+        },
+        onDragOver: (e: React.DragEvent) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        },
+        onDrop: (e: React.DragEvent) => {
+          if (!e.dataTransfer?.files?.length) return;
+          e.preventDefault();
+          setDragDepth(0);
+          drafts.add(e.dataTransfer.files);
+        },
+      }
+    : {};
+
+  function senderLabel(m: ThreadMessage): { visible: boolean; text: string } {
+    if (m.senderRole === 'partner') return { visible: true, text: partnerName };
+    if (m.senderUserId === adminId) return { visible: false, text: t('chat.you') };
+    if (m.senderUserId === LEGACY_ADMIN_SENDER)
+      return { visible: true, text: t('chat.legacySender') };
+    return { visible: true, text: m.senderName || t('chat.colleague') };
   }
-  function handleDragLeave(e: React.DragEvent) {
-    if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
-    e.preventDefault();
-    setDragDepth((d) => Math.max(0, d - 1));
+
+  function dayLabel(iso: string): string {
+    const ago = daysAgo(iso);
+    if (ago === 0) return t('chat.today');
+    if (ago === 1) return t('chat.yesterday');
+    const sameYear = new Date(iso).getFullYear() === new Date().getFullYear();
+    return formatDateTime(iso, bcp47, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      ...(sameYear ? {} : { year: 'numeric' }),
+    });
   }
-  function handleDragOver(e: React.DragEvent) {
-    if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  }
-  function handleDrop(e: React.DragEvent) {
-    if (!e.dataTransfer?.files?.length) return;
-    e.preventDefault();
-    setDragDepth(0);
-    handleFiles(e.dataTransfer.files);
-  }
+
+  const detailsProps = {
+    companySlug,
+    conversation,
+    partnerName,
+    contact,
+    brand,
+    messages: serverMessages,
+    hasMore: !!thread.hasNextPage,
+    loadingMore: thread.isFetchingNextPage,
+    onLoadMore: () => void thread.fetchNextPage(),
+  };
 
   return (
-    <section
-      aria-label={t('chat.regionLabel', { partner: partnerName })}
-      className="relative flex h-full min-h-0 flex-col bg-card"
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      {dragDepth > 0 ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-rust/10 backdrop-blur-sm"
-        >
-          <div className="rounded-xl border-2 border-dashed border-rust/60 bg-card px-6 py-4 text-sm font-medium text-rust shadow-lg">
-            {t('chat.dropHere')}
-          </div>
-        </div>
-      ) : null}
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background/40 px-4 py-3 sm:px-5">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">
-            {t('chat.threadWith', { partner: partnerName })}
-          </p>
-          <p className="text-2xs text-muted-foreground">
-            {wsStatus === 'open'
-              ? t('chat.statusLive')
-              : wsStatus === 'connecting'
-                ? t('chat.statusConnecting')
-                : t('chat.statusOffline')}
-          </p>
-        </div>
-        <span
-          aria-hidden="true"
-          className={
-            'size-2 rounded-full ' +
-            (wsStatus === 'open'
-              ? 'bg-success'
-              : wsStatus === 'connecting'
-                ? 'bg-warning'
-                : 'bg-muted-foreground/40')
-          }
-        />
-      </header>
-
-      <div
-        ref={scrollRef}
-        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 sm:px-5"
+    <div className="flex h-full min-h-0">
+      <section
+        aria-label={t('chat.regionLabel', { partner: partnerName })}
+        className="relative flex min-w-0 flex-1 flex-col bg-card"
+        {...dropHandlers}
       >
-        {threadQuery.isLoading ? (
+        {dragDepth > 0 ? (
           <div
-            role="status"
-            aria-live="polite"
-            className="flex items-center gap-2 text-sm text-muted-foreground"
-          >
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            <span>{t('chat.loadingThread')}</span>
-          </div>
-        ) : threadQuery.error ? (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <span>{(threadQuery.error as Error).message}</span>
-          </div>
-        ) : messages.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{t('chat.emptyThread')}</p>
-        ) : (
-          messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              isMine={m.senderUserId === adminId || m.senderRole === 'admin'}
-              companySlug={companySlug}
-              bcp47={bcp47}
-              t={t}
-            />
-          ))
-        )}
-        {partnerTyping ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span aria-hidden="true" className="inline-flex gap-1">
-              <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
-              <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:120ms]" />
-              <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:240ms]" />
-            </span>
-            <span>{t('chat.partnerTyping', { partner: partnerName })}</span>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="shrink-0 border-t border-border bg-background/40 p-3 sm:p-4">
-        {attachments.length > 0 || uploading.length > 0 ? (
-          <ul className="mb-2 flex flex-wrap gap-2">
-            {attachments.map((a) => (
-              <li
-                key={a.key}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
-              >
-                <Paperclip className="size-3" aria-hidden="true" />
-                <span className="max-w-[140px] truncate">{a.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setAttachments((curr) => curr.filter((x) => x.key !== a.key))}
-                  aria-label={t('chat.removeAttachment', { name: a.name })}
-                  className="-m-1 rounded-md p-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <X className="size-3" aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-            {uploading.map((f, i) => (
-              <li
-                key={`${f.name}-${i}`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
-              >
-                <Loader2 className="size-3 animate-spin" aria-hidden="true" />
-                <span className="max-w-[140px] truncate">{f.name}</span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        <div className="flex items-end gap-2">
-          {/*
-            A proxy for the paperclip button, which carries the label and the
-            focus ring. Hidden from the a11y tree and taken out of the tab order
-            so it is not a second, nameless stop — `aria-hidden` on its own would
-            be invalid here, since `sr-only` leaves an input focusable.
-          */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            tabIndex={-1}
             aria-hidden="true"
-            className="sr-only"
-            onChange={(e) => {
-              handleFiles(e.currentTarget.files);
-              e.currentTarget.value = '';
-            }}
-          />
-          <Textarea
-            value={draft}
-            onChange={(e) => handleDraftChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder={t('chat.composerPlaceholder')}
-            aria-label={t('chat.composerPlaceholder')}
-            rows={2}
-            className="min-h-[40px] flex-1 resize-none"
-          />
-          <div className="flex shrink-0 items-end gap-1.5">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={sendMutation.isPending}
-              aria-label={t('chat.attachFile')}
-              className="inline-flex size-9 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
-            >
-              <Paperclip className="size-4" aria-hidden="true" />
-            </button>
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-highlight/10 p-4 backdrop-blur-sm"
+          >
+            <div className="flex size-full items-center justify-center rounded-xl border-2 border-dashed border-primary/60 bg-card/90 text-sm font-medium text-primary">
+              {t('chat.dropHere')}
+            </div>
+          </div>
+        ) : null}
+
+        <ChatThreadHeader
+          partnerName={partnerName}
+          partnerStatus={partnerStatus}
+          contact={contact}
+          wsStatus={wsStatus}
+          partnerTyping={partnerTyping}
+          detailsOpen={detailsOpen}
+          detailsId={isWide && columnOpen ? detailsId : undefined}
+          infoRef={infoRef}
+          onToggleDetails={toggleDetails}
+        />
+
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            ref={scrollRef}
+            onScroll={onScroll}
+            className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 sm:px-5"
+          >
+            {thread.isLoading ? (
+              <LoadingState inline label={t('chat.loadingThread')} className="pt-4" />
+            ) : thread.error ? (
+              <div className="pt-4">
+                <ErrorState
+                  error={thread.error}
+                  onRetry={() => void thread.refetch()}
+                  retrying={thread.isFetching}
+                />
+              </div>
+            ) : messages.length === 0 ? (
+              <EmptyState
+                size="sm"
+                message={canWrite ? t('chat.emptyThread') : t('chat.emptyThreadReadOnly')}
+              />
+            ) : (
+              <>
+                <div className="flex justify-center pt-3">
+                  {thread.hasNextPage ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => void thread.fetchNextPage()}
+                      loading={thread.isFetchingNextPage}
+                    >
+                      {thread.isFetchingNextPage ? t('chat.loadingOlder') : t('chat.loadOlder')}
+                    </Button>
+                  ) : (
+                    <p className="text-2xs text-muted-foreground">{t('chat.historyStart')}</p>
+                  )}
+                </div>
+                <ol aria-label={t('chat.messagesLabel')}>
+                  {dayGroups(rows).map((group) => (
+                    <li key={group.key}>
+                      <h3 className="sticky top-0 z-10 flex justify-center pt-4">
+                        <span className="rounded-full border border-border bg-card px-2.5 py-0.5 text-2xs font-medium text-muted-foreground shadow-xs">
+                          {dayLabel(group.date)}
+                        </span>
+                      </h3>
+                      <ol className="flex flex-col">
+                        {group.rows.map((row) =>
+                          row.kind === 'unread' ? (
+                            <li
+                              key={row.key}
+                              data-unread-divider
+                              className="flex items-center gap-2 pt-3 text-2xs font-medium text-primary"
+                            >
+                              <span aria-hidden="true" className="h-px flex-1 bg-primary/40" />
+                              {t('chat.newMessages')}
+                              <span aria-hidden="true" className="h-px flex-1 bg-primary/40" />
+                            </li>
+                          ) : (
+                            <ChatMessageItem
+                              key={row.key}
+                              message={row.message}
+                              mine={row.message.senderRole === 'admin'}
+                              startsGroup={row.startsGroup}
+                              endsGroup={row.endsGroup}
+                              senderLabel={senderLabel(row.message)}
+                              avatarName={
+                                row.message.senderRole === 'partner' ? partnerName : undefined
+                              }
+                              companySlug={companySlug}
+                              onRetry={() => retry(row.message)}
+                              onDiscard={() =>
+                                setPending((p) =>
+                                  p.filter((x) => x.local?.id !== row.message.local?.id),
+                                )
+                              }
+                            />
+                          ),
+                        )}
+                      </ol>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+            {partnerTyping ? (
+              <div className="flex items-center gap-2 pt-3 text-xs text-muted-foreground">
+                <ChatAvatar name={partnerName} size="sm" />
+                <span
+                  aria-hidden="true"
+                  className="inline-flex items-center gap-1 rounded-2xl bg-muted px-3 py-2.5"
+                >
+                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:120ms]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:240ms]" />
+                </span>
+                <span>{t('chat.partnerTyping', { partner: partnerName })}</span>
+              </div>
+            ) : null}
+          </div>
+
+          {showJump || newBelow > 0 ? (
             <Button
               type="button"
-              size="icon"
-              onClick={handleSend}
-              disabled={!canSend}
-              aria-label={t('chat.send')}
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                setNewBelow(0);
+                scrollToBottom(true);
+              }}
+              className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full shadow-md"
             >
-              {sendMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              {thread.isFetching && !thread.isFetchingNextPage ? (
+                <Loader2 aria-hidden="true" className="animate-spin" />
               ) : (
-                <Send className="size-4" aria-hidden="true" />
+                <ArrowDown aria-hidden="true" />
               )}
+              {newBelow > 0 ? t('chat.newBelow', { n: newBelow }) : t('chat.jumpToLatest')}
             </Button>
-          </div>
-        </div>
-        <p className="mt-1.5 text-2xs text-muted-foreground">{t('chat.sendHint')}</p>
-        {sendMutation.error ? (
-          <p role="alert" className="mt-1.5 text-2xs text-destructive">
-            {(sendMutation.error as Error).message}
-          </p>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function MessageBubble({
-  message,
-  isMine,
-  companySlug,
-  bcp47,
-  t,
-}: {
-  message: ChatMessage;
-  isMine: boolean;
-  companySlug: CompanySlug;
-  bcp47: string;
-  t: ReturnType<typeof useLocale>['t'];
-}) {
-  return (
-    <div className={'flex gap-2 ' + (isMine ? 'flex-row-reverse' : '')}>
-      <div
-        className={'flex max-w-[78%] flex-col gap-1.5 ' + (isMine ? 'items-end' : 'items-start')}
-      >
-        {message.attachments.length > 0 ? (
-          <AttachmentGallery
-            companySlug={companySlug}
-            attachments={message.attachments}
-            className={
-              'grid gap-1.5 ' +
-              (message.attachments.length === 1 ? 'w-48 grid-cols-1' : 'w-64 grid-cols-2')
-            }
-          />
-        ) : null}
-        {message.body ? (
-          <div
-            className={
-              'rounded-2xl px-3 py-2 text-sm ' +
-              (isMine ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground')
-            }
-          >
-            <p className="whitespace-pre-wrap break-words">{message.body}</p>
-          </div>
-        ) : null}
-        <div className="flex items-center gap-1 px-1 text-3xs text-muted-foreground">
-          <time dateTime={message.createdAt} className="tabular-nums">
-            {formatDateTime(message.createdAt, bcp47)}
-          </time>
-          {isMine ? (
-            message.readAt ? (
-              <span aria-label={t('chat.read')} title={t('chat.read')}>
-                <CheckCheck className="size-3" aria-hidden="true" />
-              </span>
-            ) : message.deliveredAt ? (
-              <span aria-label={t('chat.delivered')} title={t('chat.delivered')}>
-                <CheckIcon className="size-3" aria-hidden="true" />
-              </span>
-            ) : null
           ) : null}
         </div>
-      </div>
+
+        <div role="status" aria-live="polite" className="sr-only">
+          {announcement}
+        </div>
+
+        {canWrite ? (
+          <ChatComposer
+            draftKey={`chat-draft:${companySlug}:${partnerUserId}`}
+            drafts={drafts}
+            onSend={send}
+            onTyping={sendTyping}
+          />
+        ) : (
+          <p className="shrink-0 border-t border-border bg-muted px-4 py-3 text-xs text-muted-foreground sm:px-5">
+            {t('chat.readOnly')}
+          </p>
+        )}
+      </section>
+
+      {isWide && columnOpen ? (
+        <ChatDetailsColumn
+          {...detailsProps}
+          id={detailsId}
+          headingRef={detailsHeadingRef}
+          onClose={() => {
+            setColumn(false);
+            infoRef.current?.focus();
+          }}
+        />
+      ) : null}
+      {!isWide ? (
+        <ChatDetailsSheet {...detailsProps} open={sheetOpen} onOpenChange={setSheetOpen} />
+      ) : null}
     </div>
   );
 }

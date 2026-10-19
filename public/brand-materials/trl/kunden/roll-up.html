@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+
+
+<meta charset="utf-8">
+<title>Roll-up · TRL</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../../runtime/support.js?v=c6d7d32685"></script>
+<script src="../../runtime/sheet.js?v=c6d7d32685"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../../fonts/fonts.css?v=c6d7d32685">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+
+<div style="background:#ECF2F2; min-height:100vh; padding:48px 40px; font-family:'Inter',sans-serif; color:#3A4750; display:flex; flex-direction:column; align-items:center; gap:20px;">
+  <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:#6B7B86;">Roll-up · 85 × 200 cm · Messen / Events</div>
+  <div style="width:476px; height:1120px; background:#F7FAFA; border-radius:4px; box-shadow:0 8px 36px rgba(15,24,36,0.16); overflow:hidden; position:relative; display:flex; flex-direction:column;">
+    <div style="padding:54px 44px 0; text-align:center;">
+      <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:48px;"><svg width="50" height="50" viewBox="0 0 44 44" fill="none"><rect x="1" y="1" width="42" height="42" rx="10" fill="#1B3A5C"/><path d="M14 14h16M14 19h16M14 24h10M14 29h16" stroke="#7A9B7E" stroke-width="1.6" stroke-linecap="round"/></svg><div style="display:flex; flex-direction:column; align-items:flex-start;"><span style="font-weight:600; font-size:20px; color:#1B3A5C; line-height:1;">teppichreinigen-lassen<span style="color:#7A9B7E;">.de</span></span><span style="font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:0.2em; text-transform:uppercase; color:#6B7B86; margin-top:5px;">Deutschlandweite Teppichpflege</span></div></div>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:0.18em; text-transform:uppercase; color:#7A9B7E; margin-bottom:22px;">Premium · seit 1985</div>
+      <h1 style="font-family:'Playfair Display',serif; font-weight:600; font-size:50px; line-height:1.12; color:#0F1824; margin:0 0 22px;">Teppichpflege auf Sammler-<wbr>niveau.</h1>
+      <p style="font-size:17px; line-height:1.65; color:#3A4750; margin:0 18px;">Orient, Seide &amp; Antik — behutsam gereinigt, fachgerecht restauriert, versichert transportiert.</p>
+    </div>
+    <div style="margin:40px 44px 0; flex:1; background:#ECF2F2; border:1px solid #E2E8EB; border-radius:14px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#B4C2C7" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="m21 16-5-5L5 20"/></svg>
+      <span style="font-size:13px; color:#A6B2BA; font-weight:500;">Foto-Platzhalter · Knüpfwerk-Detail</span>
+    </div>
+    <div style="padding:34px 44px 0; display:flex; flex-direction:column; gap:14px;">
+      <sc-for list="{{ items }}" as="i" hint-placeholder-count="4">
+        <div style="display:flex; align-items:center; gap:13px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7A9B7E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span style="font-size:16px; color:#0F1824; font-weight:500;">{{ i }}</span></div>
+      </sc-for>
+    </div>
+    <div style="background:#1B3A5C; margin-top:32px; padding:30px 44px; display:flex; align-items:center; justify-content:space-between;">
+      <div style="flex:1;"><div style="font-family:'Playfair Display',serif; font-weight:600; font-size:21px; color:#F7FAFA; line-height:1.25;">Individuelles Angebot nach Begutachtung</div><div style="display:flex; align-items:center; gap:10px; margin-top:14px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9DBBA1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 5 5L14 14l5 2v3a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1Z"/></svg><div><div style="font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:#9DBBA1;">Kostenlos anrufen · 24/7</div><div style="font-family:'Playfair Display',serif; font-weight:600; font-size:19px; color:#F7FAFA; line-height:1.1;">[0800-NUMMER]</div></div></div><div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#9DBBA1; margin-top:10px;">teppichreinigen-lassen.de</div></div>
+      <div style="width:100px; height:100px; background:#F7FAFA; border-radius:10px; display:flex; align-items:center; justify-content:center; padding:8px; flex:none; margin-left:16px;"><svg width="80" height="80" viewBox="0 0 100 100" fill="#1B3A5C" data-rp-qr="booking"><path d="M0 0h28v28H0V0Zm8 8v12h12V8H8Zm64-8h28v28H72V0Zm8 8v12h12V8H80ZM0 72h28v28H0V72Zm8 8v12h12V80H8Z"/><rect x="36" y="4" width="8" height="8"/><rect x="52" y="4" width="8" height="8"/><rect x="40" y="16" width="8" height="8"/><rect x="36" y="28" width="8" height="8"/><rect x="56" y="20" width="8" height="8"/><rect x="4" y="36" width="8" height="8"/><rect x="20" y="36" width="8" height="8"/><rect x="36" y="40" width="8" height="8"/><rect x="48" y="36" width="8" height="8"/><rect x="64" y="40" width="8" height="8"/><rect x="80" y="36" width="8" height="8"/><rect x="92" y="44" width="8" height="8"/><rect x="40" y="52" width="8" height="8"/><rect x="56" y="52" width="8" height="8"/><rect x="72" y="56" width="8" height="8"/><rect x="88" y="56" width="8" height="8"/><rect x="36" y="64" width="8" height="8"/><rect x="52" y="68" width="8" height="8"/><rect x="68" y="72" width="8" height="8"/><rect x="84" y="72" width="8" height="8"/><rect x="40" y="80" width="8" height="8"/><rect x="56" y="84" width="8" height="8"/><rect x="72" y="88" width="8" height="8"/><rect x="92" y="80" width="8" height="8"/></svg></div>
+    </div>
+    <div style="background:#ECF2F2; padding:10px 44px; text-align:center; border-top:1px solid #E2E8EB;"><span style="font-size:10px; color:#A6B2BA;">Madjidian-Amiri GbR · Brook 9, 20457 Hamburg-Speicherstadt · Handwerkskammer Hamburg</span></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:556,&quot;height&quot;:1180}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { items: [ "Versicherter Premium-Transport", "Kostenlose Begutachtung", "Wertgutachten & Sammler-Beratung", "Restauration & Reparatur" ] };
+  }
+}
+</script>
+</body>
+</html>

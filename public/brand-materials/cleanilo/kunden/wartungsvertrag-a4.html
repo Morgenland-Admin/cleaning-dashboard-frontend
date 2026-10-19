@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+
+
+<meta charset="utf-8">
+<title>Wartungsvertrag / Pflege-Abo A4 · CLEANILO</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../../runtime/support.js?v=c6d7d32685"></script>
+<script src="../../runtime/sheet.js?v=c6d7d32685"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../../fonts/fonts.css?v=c6d7d32685">
+<style>* { box-sizing: border-box; } body { margin: 0; } @media print { @page { size: A4; margin: 0; } .__bg{background:#fff!important;padding:0!important;} .__pg{box-shadow:none!important;} }</style>
+</helmet>
+
+<div class="__bg" style="background:#ECEEEF; padding:40px 0; font-family:'Cabin',sans-serif; color:#374151; display:flex; justify-content:center;">
+  <div class="__pg" style="width:794px; height:1123px; background:#FFFFFF; box-shadow:0 4px 28px rgba(10,24,45,0.10); position:relative; overflow:hidden; display:flex; flex-direction:column;">
+
+    <!-- header -->
+    <div style="padding:46px 56px 0; display:flex; align-items:flex-start; justify-content:space-between;">
+      <div>
+        <img src="../../assets/cleanilo-logo.svg" alt="CLEANILO" style="height:34px; margin-bottom:18px;">
+        <div style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:#039B52; margin-bottom:10px;">Pflege-Abo · Wartungsvertrag</div>
+        <div style="font-family:'Urbanist',sans-serif; font-weight:800; font-size:34px; line-height:1.05; letter-spacing:-0.02em; color:#0A182D;">Regelmäßige Pflege —<br>planbar &amp; bequem.</div>
+      </div>
+      <div style="text-align:right; font-size:11px; color:#6B7280; line-height:1.7;"><div style="font-family:'Urbanist',sans-serif; font-weight:700; color:#0A182D;">cleanilo.de</div><div>+49 40 43218915</div></div>
+    </div>
+    <div style="margin:22px 56px 0; height:3px; background:#039B52; border-radius:2px;"></div>
+
+    <div style="padding:26px 56px 0; flex:1; display:flex; flex-direction:column; gap:20px;">
+      <p style="font-size:14.5px; line-height:1.6; color:#374151; margin:0; max-width:600px;">Statt Einzelauftrag: Ihre Teppiche, Polster und Böden im festen Turnus — <span style="color:#0A182D; font-weight:600;">gleichbleibende Qualität, Vorrang bei Terminen und ein Abo-Vorteil</span> gegenüber dem Einzelpreis.</p>
+
+      <!-- two use cases -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div style="border:1px solid #EDEFF1; border-radius:12px; overflow:hidden;">
+          <div style="background:#E6F5EC; padding:14px 18px; display:flex; align-items:center; gap:10px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#039B52" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>
+            <span style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:15px; color:#0A182D;">Privat</span>
+          </div>
+          <div style="padding:16px 18px; font-size:13px; color:#374151; line-height:1.6;">Teppich &amp; Polster im Rhythmus <span style="font-weight:600; color:#0A182D;">alle 6 oder 12 Monate</span>. Abholung, Reinigung, Lieferung — Sie müssen an nichts denken.</div>
+        </div>
+        <div style="border:1px solid #EDEFF1; border-radius:12px; overflow:hidden;">
+          <div style="background:#E5EEF9; padding:14px 18px; display:flex; align-items:center; gap:10px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0852B9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V5h9v16M14 21V9h5v12M8 9h2M8 13h2M8 17h2"/></svg>
+            <span style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:15px; color:#0A182D;">Gewerbe / B2B</span>
+          </div>
+          <div style="padding:16px 18px; font-size:13px; color:#374151; line-height:1.6;">Büro, Kita, Hotel, Hausverwaltung: Unterhalts-, Teppichboden- &amp; Treppenhausreinigung <span style="font-weight:600; color:#0A182D;">monatlich, quartalsweise oder halbjährlich</span>.</div>
+        </div>
+      </div>
+
+      <!-- benefits -->
+      <div>
+        <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:16px; color:#0A182D; margin-bottom:12px;">Ihre Vorteile im Abo</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <sc-for list="{{ benefits }}" as="b" hint-placeholder-count="5">
+            <div style="display:flex; align-items:center; gap:10px; background:#F5F5F5; border-radius:8px; padding:11px 14px;">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#039B52" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              <span style="font-size:13px; color:#0A182D; font-weight:500;">{{ b }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- 3 steps -->
+      <div>
+        <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:16px; color:#0A182D; margin-bottom:12px;">In drei Schritten zum Pflege-Abo</div>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px;">
+          <div style="border:1px solid #EDEFF1; border-radius:10px; padding:16px;"><div style="font-family:'Urbanist',sans-serif; font-weight:800; font-size:24px; color:#039B52;">01</div><div style="font-size:13px; color:#0A182D; font-weight:600; margin-top:4px;">Begutachtung</div><div style="font-size:11.5px; color:#6B7280; margin-top:2px;">kostenlos &amp; unverbindlich</div></div>
+          <div style="border:1px solid #EDEFF1; border-radius:10px; padding:16px;"><div style="font-family:'Urbanist',sans-serif; font-weight:800; font-size:24px; color:#039B52;">02</div><div style="font-size:13px; color:#0A182D; font-weight:600; margin-top:4px;">Individuelles Angebot</div><div style="font-size:11.5px; color:#6B7280; margin-top:2px;">passend zu Ihrem Bedarf</div></div>
+          <div style="border:1px solid #EDEFF1; border-radius:10px; padding:16px;"><div style="font-family:'Urbanist',sans-serif; font-weight:800; font-size:24px; color:#039B52;">03</div><div style="font-size:13px; color:#0A182D; font-weight:600; margin-top:4px;">Fester Turnus</div><div style="font-size:11.5px; color:#6B7280; margin-top:2px;">wir kommen automatisch</div></div>
+        </div>
+      </div>
+
+      <!-- abo config / placeholders -->
+      <div style="border:1px solid #EDEFF1; border-radius:12px; overflow:hidden;">
+        <div style="background:#0A182D; padding:11px 18px; font-family:'Urbanist',sans-serif; font-weight:600; font-size:12px; color:#fff;">Ihr Abo — individuell konfiguriert</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0;">
+          <div style="padding:13px 18px; border-right:1px solid #EDEFF1; border-bottom:1px solid #EDEFF1; font-size:12.5px;"><span style="color:#6B7280;">Intervall</span><div style="font-family:'Urbanist',sans-serif; font-weight:700; color:#0A182D; margin-top:2px;">[PLATZHALTER]</div></div>
+          <div style="padding:13px 18px; border-bottom:1px solid #EDEFF1; font-size:12.5px;"><span style="color:#6B7280;">Abo-Rabatt</span><div style="font-family:'Urbanist',sans-serif; font-weight:700; color:#039B52; margin-top:2px;">[PLATZHALTER] %</div></div>
+          <div style="padding:13px 18px; border-right:1px solid #EDEFF1; font-size:12.5px;"><span style="color:#6B7280;">Vertragslaufzeit</span><div style="font-family:'Urbanist',sans-serif; font-weight:700; color:#0A182D; margin-top:2px;">[PLATZHALTER]</div></div>
+          <div style="padding:13px 18px; font-size:12.5px;"><span style="color:#6B7280;">Kündigungsfrist</span><div style="font-family:'Urbanist',sans-serif; font-weight:700; color:#0A182D; margin-top:2px;">[PLATZHALTER]</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA + footer -->
+    <div style="margin-top:auto;">
+      <div style="background:#039B52; padding:18px 56px; display:flex; align-items:center; justify-content:space-between;">
+        <div><div style="font-family:'Urbanist',sans-serif; font-weight:800; font-size:19px; color:#fff;">Jetzt kostenlose Begutachtung anfragen</div><div style="font-size:13px; color:#CDEEDD; margin-top:3px;">jederzeit anpassbar · kein Risiko</div></div>
+        <div style="background:#FFBF00; color:#0A182D; font-family:'Urbanist',sans-serif; font-weight:800; font-size:14px; padding:11px 18px; border-radius:10px;">cleanilo.de</div>
+      </div>
+      <div style="padding:12px 56px; background:#F5F5F5; border-top:1px solid #EDEFF1; display:flex; justify-content:space-between;">
+        <span style="font-size:10px; color:#9CA3AF;">Madjidian-Amiri GbR · Holsteiner Chaussee 5A, 22523 Hamburg · USt-IdNr. [PLATZHALTER] · Handwerkskammer Hamburg</span>
+        <span style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:10px; color:#6B7280;">Pflege-Abo · A4</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:794,&quot;height&quot;:1123}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      benefits: [
+        "Fester Turnus — Sie müssen an nichts denken",
+        "Vorrang bei der Terminvergabe",
+        "Gleichbleibende, geprüfte Qualität",
+        "Abo-Vorteil gegenüber dem Einzelpreis",
+        "Jederzeit anpassbar an Ihren Bedarf",
+        "0 € Anfahrt · Festpreise",
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

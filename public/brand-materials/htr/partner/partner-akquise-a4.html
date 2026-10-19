@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+
+
+<meta charset="utf-8">
+<title>Partner-Akquise A4 · HTR</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../../runtime/support.js?v=c6d7d32685"></script>
+<script src="../../runtime/sheet.js?v=c6d7d32685"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../../fonts/fonts.css?v=c6d7d32685">
+<style>* { box-sizing: border-box; } body { margin: 0; } @media print { @page { size: A4; margin: 0; } .__bg{background:#fff!important;padding:0!important;} .__pg{box-shadow:none!important;} }</style>
+</helmet>
+
+<div class="__bg" style="background:#E8DCC9; padding:40px 0; font-family:'DM Sans',sans-serif; color:#3D342E; display:flex; justify-content:center;">
+  <div class="__pg" style="width:794px; height:1123px; background:#FBF7F2; box-shadow:0 4px 28px rgba(30,26,23,0.12); position:relative; overflow:hidden; display:flex; flex-direction:column;">
+    <div style="background:#1E1A17; padding:46px 60px 44px; position:relative; overflow:hidden;">
+      <div style="position:relative; display:flex; align-items:center; gap:16px; margin-bottom:34px;">
+        <img src="../../assets/htr-logo-white.svg" alt="HTR" style="height:32px;">
+        <div style="width:1px; height:30px; background:rgba(255,255,255,0.2);"></div>
+        <div style="font-family:'DM Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#B8894A;">Partnerprogramm</div>
+      </div>
+      <div style="position:relative; font-family:'DM Sans',sans-serif; font-weight:600; font-size:12.5px; letter-spacing:0.16em; text-transform:uppercase; color:#C2583A; margin-bottom:16px;">Für Werkstatt- &amp; Orient-Spezialisten</div>
+      <h1 style="position:relative; font-family:'Lora',serif; font-weight:700; font-size:48px; line-height:1.04; color:#FBF7F2; margin:0 0 18px;">Werden Sie Partner<br>der Hamburg<br>Teppichreinigung.</h1>
+      <p style="position:relative; font-size:16px; line-height:1.6; color:#E3D6C9; margin:0; max-width:480px;">Heritage-Marke seit 1985. Wir bringen anspruchsvolle Orient- und Spezialaufträge — Sie liefern meisterhaftes Handwerk.</p>
+    </div>
+
+    <div style="padding:38px 60px 0; flex:1;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+        <sc-for list="{{ benefits }}" as="b" hint-placeholder-count="6">
+          <div style="display:flex; gap:14px; align-items:flex-start; border:1px solid #DCD0BE; border-radius:10px; padding:18px 20px; background:#fff;">
+            <div style="width:38px; height:38px; border-radius:9px; background:#F3DCD2; display:flex; align-items:center; justify-content:center; flex:none;" dangerouslySetInnerHTML="{{ b.icon }}"></div>
+            <div><div style="font-family:'Lora',serif; font-weight:700; font-size:15px; color:#1E1A17; margin-bottom:3px;">{{ b.title }}</div><div style="font-size:12.5px; color:#6E655C; line-height:1.5;">{{ b.desc }}</div></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top:32px;">
+        <h2 style="font-family:'Lora',serif; font-weight:700; font-size:22px; color:#1E1A17; margin:0 0 18px;">So funktioniert&apos;s</h2>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+          <div style="background:#F4ECE2; border-radius:10px; padding:22px;"><div style="font-family:'Lora',serif; font-weight:700; font-size:28px; color:#A44023;">1</div><div style="font-family:'Lora',serif; font-weight:700; font-size:15px; color:#1E1A17; margin:8px 0 4px;">Bewerben</div><div style="font-size:12.5px; color:#6E655C; line-height:1.5;">QR scannen, Werkstatt-Profil senden.</div></div>
+          <div style="background:#F4ECE2; border-radius:10px; padding:22px;"><div style="font-family:'Lora',serif; font-weight:700; font-size:28px; color:#A44023;">2</div><div style="font-family:'Lora',serif; font-weight:700; font-size:15px; color:#1E1A17; margin:8px 0 4px;">Onboarding</div><div style="font-size:12.5px; color:#6E655C; line-height:1.5;">Standards &amp; Versicherung klären.</div></div>
+          <div style="background:#A44023; border-radius:10px; padding:22px;"><div style="font-family:'Lora',serif; font-weight:700; font-size:28px; color:#FBF7F2;">3</div><div style="font-family:'Lora',serif; font-weight:700; font-size:15px; color:#FBF7F2; margin:8px 0 4px;">Aufträge erhalten</div><div style="font-size:12.5px; color:#F3DCD2; line-height:1.5;">Reinigen, abrechnen, schnell bezahlt.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:auto;">
+      <div style="background:#A44023; padding:24px 60px; display:flex; align-items:center; justify-content:space-between;">
+        <div><div style="font-family:'Lora',serif; font-weight:700; font-size:23px; color:#FBF7F2;">Jetzt bewerben</div><div style="font-size:13px; color:#F3DCD2; margin-top:5px;">hamburg-teppichreinigung.de/partner · 040 43218919</div></div>
+        <div style="width:96px; height:96px; background:#FBF7F2; border-radius:10px; display:flex; align-items:center; justify-content:center; padding:7px;"><svg width="80" height="80" viewBox="0 0 100 100" fill="#1E1A17" data-rp-qr="partner"><path d="M0 0h28v28H0V0Zm8 8v12h12V8H8Zm64-8h28v28H72V0Zm8 8v12h12V8H80ZM0 72h28v28H0V72Zm8 8v12h12V80H8Z"/><rect x="36" y="4" width="8" height="8"/><rect x="52" y="4" width="8" height="8"/><rect x="40" y="16" width="8" height="8"/><rect x="36" y="28" width="8" height="8"/><rect x="56" y="20" width="8" height="8"/><rect x="4" y="36" width="8" height="8"/><rect x="20" y="36" width="8" height="8"/><rect x="48" y="36" width="8" height="8"/><rect x="80" y="36" width="8" height="8"/><rect x="40" y="52" width="8" height="8"/><rect x="72" y="56" width="8" height="8"/><rect x="36" y="64" width="8" height="8"/><rect x="68" y="72" width="8" height="8"/><rect x="40" y="80" width="8" height="8"/><rect x="72" y="88" width="8" height="8"/></svg></div>
+      </div>
+      <div style="padding:12px 60px; background:#F4ECE2; display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-size:10px; color:#9A8E80;">Madjidian-Amiri GbR · Brook 9, 20457 Hamburg · USt-IdNr. [PLATZHALTER] · Handwerkskammer Hamburg</span>
+        <span style="font-family:'DM Sans',sans-serif; font-weight:600; font-size:10px; color:#6E655C;">Partner-Akquise · A4</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:794,&quot;height&quot;:1123}}">
+class Component extends DCLogic {
+  renderVals() {
+    const ic = (p) => ({ __html: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#A44023" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>` });
+    return {
+      benefits: [
+        { title: "Anspruchsvolle Aufträge", desc: "Orient, Seide, Antik — Arbeit für echte Spezialisten.", icon: ic('<path d="M12 2l2.5 6L21 9l-5 4 1.5 7L12 16l-5.5 4L8 13 3 9l6.5-1L12 2Z"/>') },
+        { title: "Planbare Auslastung", desc: "Stetiger Zustrom statt Saisonlöcher.", icon: ic('<path d="M3 3v18h18"/><path d="m7 14 3-3 3 3 5-6"/>') },
+        { title: "Faire Festpreis-Abrechnung", desc: "Transparente Sätze, keine Verhandlung.", icon: ic('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>') },
+        { title: "Vollversichert bis 10.000 €", desc: "Jeder Auftrag abgesichert.", icon: ic('<path d="M12 3 5 6v5c0 4.5 3 7.6 7 9 4-1.4 7-4.5 7-9V6l-7-3Z"/><path d="m9 11 2 2 4-4"/>') },
+        { title: "Marketing übernehmen wir", desc: "Heritage-Marke, Website, Bewertungen.", icon: ic('<path d="M3 11l18-5v12L3 13zM3 11v4"/>') },
+        { title: "Co-Branding-Material", desc: "Ausweis, Schild, Aufkleber inklusive.", icon: ic('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>') },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

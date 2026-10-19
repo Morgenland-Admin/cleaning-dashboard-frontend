@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+
+
+<meta charset="utf-8">
+<title>SOP A4 · CLEANILO</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../../runtime/support.js?v=c6d7d32685"></script>
+<script src="../../runtime/sheet.js?v=c6d7d32685"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../../fonts/fonts.css?v=c6d7d32685">
+<style>* { box-sizing: border-box; } body { margin: 0; } @media print { @page { size: A4; margin: 0; } .__bg{background:#fff!important;padding:0!important;} .__pg{box-shadow:none!important;} }</style>
+</helmet>
+
+<div class="__bg" style="background:#ECEEEF; padding:40px 0; font-family:'Cabin',sans-serif; color:#374151; display:flex; justify-content:center;">
+  <div class="__pg" style="width:794px; height:1123px; background:#FFFFFF; box-shadow:0 4px 28px rgba(10,24,45,0.10); position:relative; overflow:hidden; display:flex; flex-direction:column;">
+    <div style="padding:46px 60px 0; display:flex; align-items:flex-start; justify-content:space-between;">
+      <div>
+        <img src="../../assets/cleanilo-logo.svg" alt="CLEANILO" style="height:34px; margin-bottom:18px;">
+        <div style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:#039B52; margin-bottom:8px;">Qualitäts- &amp; Ablaufstandard</div>
+        <div style="font-family:'Urbanist',sans-serif; font-weight:800; font-size:32px; letter-spacing:-0.02em; color:#0A182D;">SOP für Partner</div>
+      </div>
+      <div style="text-align:right; font-size:11px; color:#6B7280; line-height:1.7;"><div style="font-family:'Urbanist',sans-serif; font-weight:700; color:#0A182D;">Verbindlich</div><div>Version 1.0 · 06/2026</div></div>
+    </div>
+    <div style="margin:22px 60px 0; height:3px; background:#039B52; border-radius:2px;"></div>
+
+    <div style="padding:28px 60px 0; flex:1; display:flex; flex-direction:column; gap:18px;">
+      <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+        <div style="display:flex; gap:18px; align-items:flex-start;">
+          <div style="width:42px; height:42px; border-radius:11px; background:#0A182D; display:flex; align-items:center; justify-content:center; font-family:'Urbanist',sans-serif; font-weight:800; font-size:16px; color:#fff; flex:none;">{{ s.no }}</div>
+          <div style="flex:1; border-bottom:1px solid #EDEFF1; padding-bottom:16px;">
+            <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:16px; color:#0A182D; margin-bottom:6px;">{{ s.title }}</div>
+            <div style="font-size:13px; color:#374151; line-height:1.6;">{{ s.body }}</div>
+          </div>
+        </div>
+      </sc-for>
+
+      <!-- Do's & Don'ts -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:6px;">
+        <div style="background:#E6F5EC; border-radius:12px; padding:22px;">
+          <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:15px; color:#02703B; margin-bottom:12px;">Do&apos;s</div>
+          <div style="display:flex; flex-direction:column; gap:8px; font-size:12.5px; color:#0A182D;">
+            <div>✓ Jeden Teppich vor Annahme fotografieren</div>
+            <div>✓ Mängel offen dokumentieren</div>
+            <div>✓ Materialgerecht &amp; schonend reinigen</div>
+            <div>✓ Termine zuverlässig einhalten</div>
+          </div>
+        </div>
+        <div style="background:#FFF4D1; border-radius:12px; padding:22px;">
+          <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:15px; color:#0A182D; margin-bottom:12px;">Don&apos;ts</div>
+          <div style="display:flex; flex-direction:column; gap:8px; font-size:12.5px; color:#0A182D;">
+            <div>✕ Keine ungetesteten Chemikalien</div>
+            <div>✕ Keine Direktabsprachen mit Kunden</div>
+            <div>✕ Keine Weitergabe an Dritte</div>
+            <div>✕ Kein Versand ohne Endkontrolle</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:auto;">
+      <div style="background:#0A182D; padding:16px 60px; display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-size:12px; color:#9DB0C9;">Haftung &amp; Versicherung: jeder Auftrag über CLEANILO versichert · Schäden binnen 24 h melden</span>
+        <img src="../../assets/cleanilo-logo-white.svg" alt="CLEANILO" style="height:20px;">
+      </div>
+      <div style="padding:12px 60px; background:#F5F5F5; display:flex; justify-content:space-between;">
+        <span style="font-size:10px; color:#9CA3AF;">Madjidian-Amiri GbR · Holsteiner Chaussee 5A, 22523 Hamburg · USt-IdNr. [PLATZHALTER] · Handwerkskammer Hamburg</span>
+        <span style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:10px; color:#6B7280;">SOP · A4</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:794,&quot;height&quot;:1123}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      steps: [
+        { no: "1", title: "Annahme", body: "Teppich entgegennehmen, Zustand prüfen, vollständig fotografieren. Abholbeleg mit Maßen, Material und Mängelvermerk ausfüllen, Kunde unterschreiben lassen." },
+        { no: "2", title: "Kennzeichnung", body: "Jeden Teppich eindeutig mit Auftrags-Nr. etikettieren. Keine Verwechslung — ein Etikett bleibt am Stück, eines am Beleg." },
+        { no: "3", title: "Bearbeitung", body: "Materialgerechte Reinigung nach CLEANILO-Standard. Bei Orient, Seide & Antik besondere Sorgfalt. Bearbeitungszeit < 5 Werktage." },
+        { no: "4", title: "Übergabe", body: "Endkontrolle, Nachher-Fotos, sorgfältige Verpackung. Rückgabe an Annahmestelle oder Lieferung frei Haus inkl. Übergabeprotokoll." },
+        { no: "5", title: "Haftung & Versicherung", body: "Jeder Auftrag ist über CLEANILO versichert. Beschädigungen oder Reklamationen unverzüglich (binnen 24 h) der Partner-Betreuung melden." },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

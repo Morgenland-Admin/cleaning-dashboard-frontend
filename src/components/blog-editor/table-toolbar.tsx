@@ -13,13 +13,13 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
 import type { Editor } from '@tiptap/react';
 
-/** Contextual row shown under the main toolbar while the caret is in a table. */
 export function TableToolbar({ editor, disabled }: { editor: Editor; disabled: boolean }) {
   const t = useT();
   const s = useEditorState({
@@ -38,9 +38,9 @@ export function TableToolbar({ editor, disabled }: { editor: Editor; disabled: b
     <div
       role="toolbar"
       aria-label={t('blogEditor.tableToolbar')}
-      className="flex flex-wrap items-center gap-1 border-t border-border/70 bg-muted/40 px-2 py-1.5"
+      className="flex flex-wrap items-center gap-1 border-t border-border bg-muted/40 px-2 py-1.5"
     >
-      <span className="mr-1 px-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <span className="mr-1 px-1 text-xs font-medium text-muted-foreground">
         {t('blogEditor.table')}
       </span>
       <TableButton
@@ -127,23 +127,24 @@ function TableButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           disabled={disabled}
           onMouseDown={(e) => e.preventDefault()}
           onClick={onClick}
           className={cn(
-            'inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-2sm font-medium transition-colors sm:h-8',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35',
+            'gap-1.5 px-2 sm:px-2',
             danger
-              ? 'text-destructive hover:bg-destructive/10'
-              : 'text-foreground/80 hover:bg-card hover:text-foreground',
+              ? 'text-destructive hover:bg-destructive-soft hover:text-destructive'
+              : 'text-muted-foreground hover:text-foreground',
           )}
         >
-          <Icon className="size-4" aria-hidden="true" />
+          <Icon aria-hidden="true" />
           <span className="hidden xl:inline">{label}</span>
           <span className="sr-only xl:hidden">{label}</span>
-        </button>
+        </Button>
       </TooltipTrigger>
       <TooltipContent className="xl:hidden">{label}</TooltipContent>
     </Tooltip>

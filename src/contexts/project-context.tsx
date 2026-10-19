@@ -116,7 +116,6 @@ function projectFromCompany(row: ApiCompanyRow): Project {
   };
 }
 
-// Fallback list while companies query loads or user is unauthenticated.
 export const PROJECTS: Project[] = [
   projectFromCompany({
     slug: 'cleanilo',

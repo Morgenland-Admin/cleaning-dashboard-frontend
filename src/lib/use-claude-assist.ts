@@ -5,15 +5,13 @@ import { aiApi, errMessage, type AiAssistKind } from './api';
 import type { ChatEntry } from '@/components/claude-chat-box';
 import type { CompanySlug } from '@/contexts/project-context';
 
-// Drives ClaudeChatBox: owns history/busy, calls the assist endpoint,
-// applies the result, and shows errors as a Claude bubble.
 export function useClaudeAssist(opts: {
   kind: AiAssistKind;
   companySlug: CompanySlug;
   refId: number;
-  getCurrent: () => string; // current editor value, read at call time
-  apply: (text: string) => void; // drop result into the editor
-  updatedLabel: string; // confirmation bubble text
+  getCurrent: () => string;
+  apply: (text: string) => void;
+  updatedLabel: string;
 }) {
   const { kind, companySlug, refId, getCurrent, apply, updatedLabel } = opts;
   const [history, setHistory] = useState<ChatEntry[]>([]);

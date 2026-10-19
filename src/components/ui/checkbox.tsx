@@ -2,31 +2,21 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
-export interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
-  /** Visual tone — defaults to rust for branded affirmatives. */
-  tone?: 'rust' | 'primary';
-}
+export type CheckboxProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>;
 
 const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
-  ({ className, checked, disabled, tone = 'rust', onChange, ...props }, ref) => {
-    const checkedBg =
-      tone === 'primary' ? 'border-foreground bg-foreground' : 'border-rust bg-rust';
-
+  ({ className, checked, disabled, onChange, ...props }, ref) => {
     return (
       <span
         className={cn(
-          'relative inline-grid size-4 shrink-0 cursor-pointer place-items-center rounded-[5px] border bg-card shadow-sm transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background',
-          checked ? checkedBg : 'border-input',
+          'relative inline-grid size-4 shrink-0 cursor-pointer place-items-center rounded-sm border bg-card shadow-xs transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background',
+          checked ? 'border-transparent bg-primary' : 'border-input hover:border-muted-foreground',
           disabled && 'cursor-not-allowed opacity-50',
           className,
         )}
       >
-        {/*
-          The visual box stays 16px, but the input is inflated past it so the hit
-          area is 24px square — the WCAG 2.5.8 target size, and far easier to tap.
-          The inset resolves against the padding box (14px inside the 1px border),
-          so 5px a side is what gets to 24, not 4.
-        */}
+        {/* The input is inflated to a 24px hit area (WCAG 2.5.8): 5px a side, because the inset
+            resolves against the 14px padding box. */}
         <input
           ref={ref}
           type="checkbox"
@@ -40,7 +30,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           viewBox="0 0 16 16"
           aria-hidden="true"
           className={cn(
-            'pointer-events-none size-3 text-white transition-opacity duration-150',
+            'pointer-events-none size-3 text-primary-foreground transition-opacity duration-fast',
             checked ? 'opacity-100' : 'opacity-0',
           )}
         >

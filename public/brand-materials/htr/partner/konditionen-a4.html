@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+
+
+<meta charset="utf-8">
+<title>Konditionen A4 · HTR</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../../runtime/support.js?v=c6d7d32685"></script>
+<script src="../../runtime/sheet.js?v=c6d7d32685"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../../fonts/fonts.css?v=c6d7d32685">
+<style>* { box-sizing: border-box; } body { margin: 0; } @media print { @page { size: A4; margin: 0; } .__bg{background:#fff!important;padding:0!important;} .__pg{box-shadow:none!important;} }</style>
+</helmet>
+
+<div class="__bg" style="background:#E8DCC9; padding:40px 0; font-family:'DM Sans',sans-serif; color:#3D342E; display:flex; justify-content:center;">
+  <div class="__pg" style="width:794px; height:1123px; background:#FBF7F2; box-shadow:0 4px 28px rgba(30,26,23,0.12); position:relative; overflow:hidden; display:flex; flex-direction:column;">
+    <div style="padding:46px 60px 0; display:flex; align-items:flex-start; justify-content:space-between;">
+      <div>
+        <img src="../../assets/htr-logo.svg" alt="HTR" style="height:32px; margin-bottom:18px;">
+        <div style="font-family:'DM Sans',sans-serif; font-weight:600; font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:#A44023; margin-bottom:8px;">Partner-Konditionen</div>
+        <div style="font-family:'Lora',serif; font-weight:700; font-size:32px; color:#1E1A17;">Provisionsmodell</div>
+      </div>
+      <div style="text-align:right; font-size:11px; color:#6E655C; line-height:1.7;"><div style="font-family:'Lora',serif; font-weight:700; color:#1E1A17;">Gültig ab</div><div>[Datum]</div></div>
+    </div>
+    <div style="margin:22px 60px 0; height:2px; background:#A44023; border-radius:2px;"></div>
+
+    <div style="padding:30px 60px 0; flex:1; display:flex; flex-direction:column; gap:22px;">
+      <p style="font-size:14px; color:#3D342E; line-height:1.65; margin:0;">Alle Vergütungswerte sind als <span style="color:#1E1A17; font-weight:600;">[PLATZHALTER]</span> gekennzeichnet und werden im individuellen Partnervertrag verbindlich festgelegt.</p>
+      <div style="border:1px solid #DCD0BE; border-radius:10px; overflow:hidden;">
+        <div style="display:grid; grid-template-columns:1.4fr 1fr 1fr; background:#1E1A17;">
+          <div style="padding:12px 18px; font-family:'DM Sans',sans-serif; font-weight:600; font-size:11px; color:#FBF7F2; text-transform:uppercase; letter-spacing:0.04em;">Leistungsart</div>
+          <div style="padding:12px 18px; font-family:'DM Sans',sans-serif; font-weight:600; font-size:11px; color:#B8967A; text-transform:uppercase; letter-spacing:0.04em; text-align:right;">Basis-Provision</div>
+          <div style="padding:12px 18px; font-family:'DM Sans',sans-serif; font-weight:600; font-size:11px; color:#B8894A; text-transform:uppercase; letter-spacing:0.04em; text-align:right;">mit Bonus</div>
+        </div>
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+          <div style="display:grid; grid-template-columns:1.4fr 1fr 1fr; border-top:1px solid #EBE2D6; background:{{ r.bg }};">
+            <div style="padding:13px 18px; font-size:13.5px; color:#1E1A17; font-weight:600;">{{ r.name }}</div>
+            <div style="padding:13px 18px; font-size:13.5px; color:#3D342E; text-align:right;">[PLATZHALTER]</div>
+            <div style="padding:13px 18px; font-size:13.5px; color:#7A2E17; font-weight:700; text-align:right; background:#F3DCD2;">[PLATZHALTER]</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
+        <div style="border:1px solid #DCD0BE; border-radius:10px; padding:22px;">
+          <div style="font-family:'Lora',serif; font-weight:700; font-size:15px; color:#1E1A17; margin-bottom:10px;">Auszahlungsrhythmus</div>
+          <div style="font-size:13px; color:#3D342E; line-height:1.6;">Abrechnung <span style="font-weight:600; color:#1E1A17;">[PLATZHALTER]</span> · Auszahlung per Überweisung · transparente Aufstellung je Auftrag.</div>
+        </div>
+        <div style="background:#A44023; border-radius:10px; padding:22px;">
+          <div style="font-family:'Lora',serif; font-weight:700; font-size:15px; color:#FBF7F2; margin-bottom:10px;">Leistungsbonus</div>
+          <div style="font-size:13px; color:#F3DCD2; line-height:1.6;">Zusätzliche <span style="font-weight:700; color:#fff;">[PLATZHALTER]</span> bei Top-Bewertungen, Termintreue und Auftragsvolumen.</div>
+        </div>
+      </div>
+      <div style="background:#F4ECE2; border:1px solid #DCD0BE; border-radius:10px; padding:18px 22px; font-size:12.5px; color:#3D342E; line-height:1.55;">Verbindlich sind ausschließlich die im Partnervertrag eingesetzten Werte. Alle Beträge zzgl. ges. MwSt., sofern zutreffend.</div>
+    </div>
+
+    <div style="margin-top:auto; padding:14px 60px; background:#F4ECE2; border-top:1px solid #DCD0BE; display:flex; justify-content:space-between;">
+      <span style="font-size:10px; color:#9A8E80;">Madjidian-Amiri GbR · Brook 9, 20457 Hamburg · USt-IdNr. [PLATZHALTER] · Handwerkskammer Hamburg</span>
+      <span style="font-family:'DM Sans',sans-serif; font-weight:600; font-size:10px; color:#6E655C;">Konditionen · A4</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:794,&quot;height&quot;:1123}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      rows: [
+        { name: "Teppichwäsche maschinell", bg: "#FFFFFF" },
+        { name: "Handgeknüpft & Orient", bg: "#F8F2EA" },
+        { name: "Seide · Antik · Restauration", bg: "#FFFFFF" },
+        { name: "Annahmestellen-Provision", bg: "#F8F2EA" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,107 +1,111 @@
-import { Layers } from 'lucide-react';
+import { ChevronsUpDown, Layers } from 'lucide-react';
 
 import { BrandMark } from '@/components/brand-mark';
-import { useProject, type BrandFilterId } from '@/contexts/project-context';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useProject } from '@/contexts/project-context';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
-export function BrandFilter() {
-  const { projects, brandView, setBrandView } = useProject();
+/** Sidebar context switcher: scopes every list to all brands or one. */
+export function BrandFilter({ collapsed = false }: { collapsed?: boolean }) {
+  const { projects, setBrandView, isAllBrands, activeProject } = useProject();
   const t = useT();
 
-  return (
-    <div
-      role="radiogroup"
-      aria-label={t('brandFilter.title')}
-      className="rounded-xl border border-sidebar-border bg-sidebar-accent/40 p-3"
+  // The stored view may be a slug or an id; resolve to an id for the radio value.
+  const currentId = isAllBrands ? 'all' : activeProject.id;
+  const name = isAllBrands ? t('brandFilter.allBrands') : activeProject.name;
+  const meta = isAllBrands
+    ? t('brandFilter.allBrandsMeta')
+    : activeProject.domain || activeProject.companySlug;
+
+  const mark = isAllBrands ? (
+    <span
+      className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary"
+      aria-hidden="true"
     >
-      <div className="px-1 pb-2 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {t('brandFilter.title')}
-      </div>
-      <ul className="flex flex-col gap-0.5">
-        <FilterRow
-          id="all"
-          active={brandView === 'all'}
-          onSelect={setBrandView}
-          name={t('brandFilter.allBrands')}
-          meta={t('brandFilter.allBrandsMeta')}
-          showIcon
-        />
-        {projects.map((project) => (
-          <FilterRow
-            key={project.id}
-            id={project.id}
-            active={brandView === project.id || brandView === project.companySlug}
-            onSelect={setBrandView}
-            name={project.name}
-            meta={project.domain || project.companySlug}
-            brand={project}
-          />
-        ))}
-      </ul>
-    </div>
+      <Layers className="size-3.5" />
+    </span>
+  ) : (
+    <BrandMark brand={activeProject} size="md" className="size-6" />
+  );
+
+  const trigger = (
+    <DropdownMenuTrigger asChild>
+      <button
+        type="button"
+        aria-label={`${t('brandFilter.switch')}: ${name}`}
+        className={cn(
+          'group flex w-full items-center gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-active text-left shadow-xs transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:border-border-strong',
+          collapsed ? 'size-10 justify-center p-0' : 'h-12 px-2 lg:h-11',
+        )}
+      >
+        {mark}
+        {collapsed ? null : (
+          <>
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="truncate text-2sm font-semibold text-foreground">{name}</span>
+              <span className="truncate text-2xs text-muted-foreground">{meta}</span>
+            </span>
+            <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </>
+        )}
+      </button>
+    </DropdownMenuTrigger>
+  );
+
+  return (
+    <DropdownMenu>
+      {collapsed ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          <TooltipContent side="right">{name}</TooltipContent>
+        </Tooltip>
+      ) : (
+        trigger
+      )}
+      <DropdownMenuContent
+        side={collapsed ? 'right' : 'bottom'}
+        align="start"
+        className="w-[min(18rem,calc(100vw-2rem))]"
+      >
+        <DropdownMenuLabel>{t('brandFilter.title')}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={currentId} onValueChange={(v) => setBrandView(v)}>
+          <DropdownMenuRadioItem value="all" className="gap-2.5">
+            <span
+              className="flex size-5 shrink-0 items-center justify-center rounded-sm bg-primary-soft text-primary"
+              aria-hidden="true"
+            >
+              <Layers className="size-3" />
+            </span>
+            <Option name={t('brandFilter.allBrands')} meta={t('brandFilter.allBrandsMeta')} />
+          </DropdownMenuRadioItem>
+          <DropdownMenuSeparator />
+          {projects.map((project) => (
+            <DropdownMenuRadioItem key={project.id} value={project.id} className="gap-2.5">
+              <BrandMark brand={project} size="sm" />
+              <Option name={project.name} meta={project.domain || project.companySlug} />
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
-function FilterRow({
-  id,
-  active,
-  onSelect,
-  name,
-  meta,
-  showIcon,
-  brand,
-}: {
-  id: BrandFilterId;
-  active: boolean;
-  onSelect: (id: BrandFilterId) => void;
-  name: string;
-  meta: string;
-  showIcon?: boolean;
-  brand?: Parameters<typeof BrandMark>[0]['brand'];
-}) {
+function Option({ name, meta }: { name: string; meta: string }) {
   return (
-    <li>
-      <button
-        type="button"
-        role="radio"
-        aria-checked={active}
-        onClick={() => onSelect(id)}
-        className={cn(
-          'group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          active
-            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-            : 'hover:bg-sidebar-accent/60',
-        )}
-      >
-        {showIcon ? (
-          <span
-            className={cn(
-              'flex size-4 shrink-0 items-center justify-center rounded-sm',
-              active ? 'bg-rust/20 text-rust' : 'bg-sidebar-border/60 text-muted-foreground',
-            )}
-            aria-hidden="true"
-          >
-            <Layers className="size-3" />
-          </span>
-        ) : brand ? (
-          <BrandMark brand={brand} size="xs" />
-        ) : (
-          <span
-            className={cn(
-              'inline-flex size-2.5 shrink-0 items-center justify-center rounded-full ring-1 ring-inset',
-              active ? 'bg-rust ring-rust' : 'bg-transparent ring-sidebar-border',
-            )}
-            aria-hidden="true"
-          />
-        )}
-        <div className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className={cn('truncate text-2sm', active ? 'font-semibold' : 'font-medium')}>
-            {name}
-          </span>
-          <span className="truncate text-2xs text-muted-foreground">{meta}</span>
-        </div>
-      </button>
-    </li>
+    <span className="flex min-w-0 flex-col leading-tight">
+      <span className="truncate text-2sm font-medium">{name}</span>
+      <span className="truncate text-2xs text-muted-foreground">{meta}</span>
+    </span>
   );
 }

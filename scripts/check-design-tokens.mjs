@@ -1,19 +1,9 @@
 #!/usr/bin/env node
-/**
- * Design-token guard.
- *
- * The audit that introduced this found 241 one-off `text-[Npx]` classes across
- * 37 files and ~50 raw Tailwind palette colours sitting next to the semantic
- * tokens that were meant to replace them. Both are the kind of drift that never
- * arrives in one reviewable diff — it arrives one hurried line at a time — so it
- * is checked mechanically instead of by eye.
- *
- * Run: `pnpm run check:tokens` (part of `pnpm run check`).
- */
+// Design-token guard: `pnpm run check:tokens` (part of `pnpm run check`).
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-/** Walk `dir` for .ts/.tsx, repo-relative. `fs.globSync` would need Node 22. */
+// Hand-rolled walk: `fs.globSync` would need Node 22.
 function sourceFiles(dir) {
   const out = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -27,7 +17,6 @@ function sourceFiles(dir) {
 const RULES = [
   {
     id: 'arbitrary-font-size',
-    // `text-[13px]`, `text-[0.8125rem]` — the scale lives in tailwind.config.js.
     pattern: /\btext-\[[\d.]+(px|rem|em)\]/g,
     message:
       'Arbitrary font size. Use the scale: text-3xs/2xs/xs/2sm/sm/base/… (tailwind.config.js).',
@@ -45,17 +34,36 @@ const RULES = [
     message:
       'Hard-coded hsl() literal. Add a CSS variable in index.css and a Tailwind colour for it.',
   },
+  {
+    id: 'serif',
+    // The blog canvas sets storefront fonts via `--bp-*` variables, not this class.
+    pattern: /\bfont-serif\b/g,
+    message: 'No serif in the console. Headings are IBM Plex Sans; use PageHeading / SectionCard.',
+  },
+  {
+    id: 'eyebrow',
+    // Legit uppercase (country codes, IBANs, kbd) needs no tracking, so only the pair is flagged.
+    pattern:
+      /\buppercase\b(?=[^"'`]*\btracking-)|\btracking-(?:wide|wider|widest|\[[^\]]+\])(?=[^"'`]*\buppercase\b)/g,
+    message:
+      'Uppercase letter-spaced label. Use SectionLabel (sentence case) or text-xs font-medium.',
+  },
+  {
+    id: 'removed-size',
+    pattern: /\btext-display-(?:sm|md|lg)\b/g,
+    message: 'The display sizes were removed. Page titles are text-title (PageHeading).',
+  },
 ];
 
-// Deliberate, documented exceptions. Keep this list short and always say why.
+// Deliberate exceptions; always say why.
 const ALLOW = [
   {
-    file: 'src/pages/blog-detail.tsx',
+    file: 'src/components/blog-editor/seo-panel.tsx',
     rule: 'raw-palette-colour',
     why: 'SERP preview deliberately mimics Google result colours, not our palette.',
   },
   {
-    file: 'src/pages/blog-detail.tsx',
+    file: 'src/components/blog-editor/seo-panel.tsx',
     rule: 'arbitrary-font-size',
     why: 'same SERP preview',
   },
@@ -63,11 +71,6 @@ const ALLOW = [
     file: 'src/contexts/project-context.tsx',
     rule: 'raw-palette-colour',
     why: 'Brand identity gradients. Categorical colour whose whole job is to be distinguishable per company, so it is deliberately outside the warm palette. This file is the single source — do not restate a gradient elsewhere.',
-  },
-  {
-    file: 'src/pages/orders.tsx',
-    rule: 'raw-palette-colour',
-    why: 'STATUS_ACCENT: an 11-step ramp across the order pipeline. A progression, not a success/warning semantic, and already one map rather than scattered classes.',
   },
 ];
 

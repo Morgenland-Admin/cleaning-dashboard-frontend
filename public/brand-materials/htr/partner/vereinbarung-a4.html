@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+
+
+<meta charset="utf-8">
+<title>Vereinbarung A4 · HTR</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../../runtime/support.js?v=c6d7d32685"></script>
+<script src="../../runtime/sheet.js?v=c6d7d32685"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../../fonts/fonts.css?v=c6d7d32685">
+<style>* { box-sizing: border-box; } body { margin: 0; } @media print { @page { size: A4; margin: 0; } .__bg{background:#fff!important;padding:0!important;} .__pg{box-shadow:none!important;} }</style>
+</helmet>
+
+<div class="__bg" style="background:#E8DCC9; padding:40px 0; font-family:'DM Sans',sans-serif; color:#3D342E; display:flex; justify-content:center;">
+  <div class="__pg" style="width:794px; height:1123px; background:#FBF7F2; box-shadow:0 4px 28px rgba(30,26,23,0.12); position:relative; overflow:hidden; display:flex; flex-direction:column;">
+    <div style="padding:40px 60px 0; display:flex; align-items:flex-start; justify-content:space-between;">
+      <div>
+        <img src="../../assets/htr-logo.svg" alt="HTR" style="height:28px; margin-bottom:16px;">
+        <div style="font-family:'Lora',serif; font-weight:700; font-size:26px; color:#1E1A17;">Partner- &amp; Annahmestellen-Vereinbarung</div>
+      </div>
+      <div style="text-align:right; font-size:10.5px; color:#6E655C; line-height:1.6;"><div style="font-weight:700; color:#1E1A17;">Vertrag-Nr.</div><div>[PLATZHALTER]</div></div>
+    </div>
+    <div style="margin:18px 60px 0; height:2px; background:#A44023; border-radius:2px;"></div>
+
+    <div style="padding:22px 60px 0; flex:1;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px;">
+        <div style="border:1px solid #DCD0BE; border-radius:8px; padding:14px 16px;"><div style="font-size:10px; color:#9A8E80; text-transform:uppercase; letter-spacing:0.06em;">Auftraggeber</div><div style="font-size:12.5px; color:#1E1A17; font-weight:600; margin-top:4px; line-height:1.5;">Madjidian-Amiri GbR · Brook 9, 20457 Hamburg</div></div>
+        <div style="border:1px solid #DCD0BE; border-radius:8px; padding:14px 16px;"><div style="font-size:10px; color:#9A8E80; text-transform:uppercase; letter-spacing:0.06em;">Partner / Annahmestelle</div><div style="font-size:12.5px; color:#9A8E80; margin-top:4px; line-height:1.5;">[ Firma · Inhaber · Anschrift ]</div></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:13px;">
+        <sc-for list="{{ clauses }}" as="c" hint-placeholder-count="6">
+          <div>
+            <div style="font-family:'Lora',serif; font-weight:700; font-size:13.5px; color:#1E1A17; margin-bottom:3px;">§ {{ c.no }} · {{ c.title }}</div>
+            <div style="font-size:12px; color:#6E655C; line-height:1.55;">{{ c.body }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="padding:0 60px 18px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:30px; margin-bottom:14px;">
+        <div><div style="border-bottom:1px solid #9A8E80; height:38px;"></div><div style="font-size:10.5px; color:#6E655C; margin-top:5px;">Ort, Datum · HTR</div></div>
+        <div><div style="border-bottom:1px solid #9A8E80; height:38px;"></div><div style="font-size:10.5px; color:#6E655C; margin-top:5px;">Ort, Datum · Partner</div></div>
+      </div>
+      <div style="background:#F4ECE2; border-radius:8px; padding:11px 16px; font-size:10px; color:#9A8E80; line-height:1.5;">Madjidian-Amiri GbR · Brook 9, 20457 Hamburg-Speicherstadt · GF M. K. Madjidian &amp; M. Amiri · USt-IdNr. [PLATZHALTER] · Handwerkskammer Hamburg · Entwurf ohne Gewähr</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:794,&quot;height&quot;:1123}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      clauses: [
+        { no: "1", title: "Gegenstand & Leistungen", body: "Der Partner erbringt Reinigungs-/Annahmeleistungen im Namen und nach Standards der Hamburg Teppichreinigung. Umfang gemäß Onboarding-Sheet und SOP." },
+        { no: "2", title: "Vergütung & Provision", body: "Vergütung/Provision gemäß Konditionenblatt — Werte [PLATZHALTER]. Abrechnung [PLATZHALTER], Auszahlung per Überweisung." },
+        { no: "3", title: "Qualität & Pflichten", body: "Einhaltung des Qualitäts- & Ablaufstandards (SOP), Begutachtung bei Orient/Seide/Antik, Foto-Dokumentation, Verschwiegenheit. Keine Direktgeschäfte mit vermittelten Kunden." },
+        { no: "4", title: "Haftung & Versicherung", body: "Aufträge sind bis 10.000 € versichert. Schäden binnen 24 h melden. Haftung im Übrigen nach gesetzlichen Vorschriften." },
+        { no: "5", title: "Datenschutz", body: "Kundendaten ausschließlich zur Auftragsabwicklung, DSGVO-konform. Keine Weitergabe an Dritte, Löschung nach Zweckerfüllung." },
+        { no: "6", title: "Laufzeit & Kündigung", body: "Beginn [Datum], unbefristet. Kündigungsfrist [PLATZHALTER]. Außerordentliche Kündigung bei Verstoß gegen SOP/Qualität bleibt vorbehalten." },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

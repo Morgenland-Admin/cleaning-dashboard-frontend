@@ -9,8 +9,7 @@ if (import.meta.env.PROD && !RAW_AUTH_URL) {
 
 export const authClient = createAuthClient({
   baseURL: RAW_AUTH_URL ?? 'http://localhost:8000',
-  // Backend mounts Better Auth at /auth (not the library default /api/auth)
-  // to avoid the api.reinigungs-portal.com/api/auth double-prefix.
+  // Backend mounts Better Auth at /auth, not the library default /api/auth.
   basePath: '/auth',
 });
 

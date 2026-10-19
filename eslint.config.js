@@ -78,8 +78,7 @@ export default tseslint.config(
         },
       ],
       'import-x/no-duplicates': 'error',
-      // react-hooks v7 ships several new aggressive rules. Surface as warnings
-      // so they're visible without blocking commits; tighten over time.
+      // New react-hooks v7 rules: warnings so they don't block commits; tighten over time.
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/refs': 'warn',
       'react-hooks/purity': 'warn',
@@ -88,10 +87,6 @@ export default tseslint.config(
       'react-hooks/static-components': 'warn',
       'react-hooks/component-hook-factories': 'warn',
       'react-hooks/use-memo': 'warn',
-      // The UI pass happened: every one of these is now clean, so they are
-      // errors — a regression should fail the build, not join a warning list
-      // nobody reads. The handful of deliberate exceptions carry an inline
-      // disable that says why.
       'jsx-a11y/no-autofocus': 'error',
       'jsx-a11y/click-events-have-key-events': 'error',
       'jsx-a11y/no-static-element-interactions': 'error',
@@ -102,11 +97,7 @@ export default tseslint.config(
     },
   },
   {
-    // `react-refresh/only-export-components` wants one component per module.
-    // These are the places where that is the wrong shape, not a mistake: a route
-    // manifest is a table, and the React convention for a context is that the
-    // provider and its hook live together. A cva `*Variants` export sits beside
-    // the component it configures for the same reason.
+    // Route tables, context+hook modules and cva `*Variants` exports legitimately export more than components.
     files: [
       'src/router.tsx',
       'src/i18n/index.tsx',
@@ -120,7 +111,6 @@ export default tseslint.config(
     },
   },
   {
-    // Repo tooling: Node scripts, not browser code.
     files: ['scripts/**/*.{js,mjs,cjs}'],
     languageOptions: {
       globals: {

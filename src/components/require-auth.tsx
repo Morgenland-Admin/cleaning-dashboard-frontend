@@ -1,6 +1,7 @@
 import { Loader2 } from 'lucide-react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
+import { useIsAdmin } from '@/lib/access';
 import { useSession } from '@/lib/auth-client';
 
 export function RequireAuth() {
@@ -20,4 +21,9 @@ export function RequireAuth() {
   }
 
   return <Outlet />;
+}
+
+/** Route gate for super_admin/admin pages; soft only, the backend 403s regardless. */
+export function RequireAdmin() {
+  return useIsAdmin() ? <Outlet /> : <Navigate to="/" replace />;
 }

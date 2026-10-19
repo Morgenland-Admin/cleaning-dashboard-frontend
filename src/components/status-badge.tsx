@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 
 type Tone = 'info' | 'warning' | 'success' | 'danger' | 'neutral';
 
+/** The label is the accessible text (a name on a plain <span> is ignored by screen readers). */
 export function StatusBadge({
   label,
   tone = 'neutral',
@@ -11,10 +12,9 @@ export function StatusBadge({
   tone?: Tone;
   className?: string;
 }) {
-  const variant = TONE_TO_VARIANT[tone];
   return (
-    <Badge variant={variant} aria-label={label} className={className}>
-      <span aria-hidden="true">{label}</span>
+    <Badge variant={TONE_TO_VARIANT[tone] ?? 'secondary'} className={className}>
+      {label}
     </Badge>
   );
 }

@@ -2,12 +2,13 @@ import { useEffect, useRef } from 'react';
 
 import type { ChatMessage } from '@/lib/api';
 
-// Mirrors the backend hub's discriminated union — kept inline for FE/BE decoupling.
+// Mirrors the backend hub's event union.
 export type ChatSocketEvent =
   | { type: 'hello'; slug: string; partnerUserId: string; role: 'admin' | 'partner' }
   | { type: 'message'; conversationId: number; message: ChatMessage }
   | { type: 'typing'; conversationId: number; from: 'admin' | 'partner'; isTyping: boolean }
-  | { type: 'read'; conversationId: number; by: 'admin' | 'partner'; readAt: string };
+  | { type: 'read'; conversationId: number; by: 'admin' | 'partner'; readAt: string }
+  | { type: 'delivered'; conversationId: number; by: 'admin' | 'partner'; deliveredAt: string };
 
 interface Options {
   baseUrl: string;
@@ -26,11 +27,7 @@ export function useChatSocket({
   onStatusChange,
   enabled = true,
 }: Options) {
-  // Callbacks in refs so re-renders don't tear down the socket. The refs are
-  // seeded on mount and then synced after each commit — assigning during render
-  // is unsafe, because React may discard that render and the ref would keep a
-  // callback from a pass that never happened. This effect is declared before
-  // the socket effect, so a reconnect always sees the current callbacks.
+  // Refs are synced in an effect (not during render) and declared before the socket effect, so reconnects see current callbacks.
   const eventRef = useRef(onEvent);
   const statusRef = useRef(onStatusChange);
 
@@ -44,7 +41,6 @@ export function useChatSocket({
   useEffect(() => {
     if (!enabled || !slug || !partnerUserId) return;
 
-    // Exponential backoff capped at 30s; reset on clean OPEN.
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
@@ -57,16 +53,18 @@ export function useChatSocket({
       const ws = new WebSocket(url);
       socketRef.current = ws;
 
-      ws.addEventListener('open', () => {
-        attempt = 0;
-        statusRef.current?.('open');
-      });
+      // Live only once the server has authorised the room (its `hello`); a socket it closes
+      // right after the handshake must keep backing off instead of reconnecting in a loop.
       ws.addEventListener('message', (msg) => {
         try {
           const evt = JSON.parse(msg.data) as ChatSocketEvent;
+          if (evt.type === 'hello') {
+            attempt = 0;
+            statusRef.current?.('open');
+          }
           eventRef.current(evt);
         } catch {
-          // Non-JSON frame — drop. Server only sends JSON.
+          // Non-JSON frame: drop.
         }
       });
       ws.addEventListener('close', () => {
@@ -78,7 +76,7 @@ export function useChatSocket({
         timer = setTimeout(connect, delay);
       });
       ws.addEventListener('error', () => {
-        // close handler will fire next and own the retry.
+        // The close handler fires next and owns the retry.
         try {
           ws.close();
         } catch {

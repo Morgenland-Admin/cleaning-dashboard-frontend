@@ -30,7 +30,7 @@ export function isIos(): boolean {
 
 export function isStandalonePwa(): boolean {
   if (typeof window === 'undefined') return false;
-  // iOS uses navigator.standalone; others use display-mode media query.
+  // iOS exposes navigator.standalone; other browsers use the display-mode media query.
   const navStandalone = (navigator as Navigator & { standalone?: boolean }).standalone;
   if (navStandalone) return true;
   return window.matchMedia?.('(display-mode: standalone)').matches ?? false;
@@ -64,7 +64,7 @@ export function usePush(): UsePushResult {
 
   const compute = useCallback(async () => {
     if (!browserSupportsPush()) {
-      // iOS Safari outside PWA lacks PushManager — show "Add to Home Screen" guidance.
+      // iOS Safari outside an installed PWA has no PushManager: show install guidance.
       setState(isIos() && !isStandalonePwa() ? 'needs-install' : 'unsupported');
       return;
     }
@@ -94,15 +94,13 @@ export function usePush(): UsePushResult {
       const status = await pushAdminApi.status();
       setIsConfigured(status.configured);
     } catch {
-      // status is non-critical for UI rendering
+      // non-critical
     }
     await compute();
   }, [compute]);
 
   useEffect(() => {
-    // `refresh` is an async probe of the browser's push permission and the
-    // server's VAPID config. There is nothing to read during render; the state
-    // lands after the await, which is what an effect is for.
+    // Async probe; state lands after the await.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);

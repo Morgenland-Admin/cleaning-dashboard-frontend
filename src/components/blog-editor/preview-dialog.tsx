@@ -12,6 +12,15 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +30,8 @@ export interface PreviewData {
   author: string;
   date: string | null;
   image: string | null;
+  imageAlt: string;
+  imageCaption: string;
   html: string;
   faq: Array<{ question: string; answer: string }>;
   readingMinutes: number;
@@ -28,9 +39,7 @@ export interface PreviewData {
 }
 
 /**
- * Full-screen reproduction of the storefront article page (hero → image card →
- * body → FAQ), in the brand's own theme when it has one. The copy inside the
- * page is the storefront's (German), on purpose — this is what visitors see.
+ * The page copy is the storefront's (German) on purpose: it is what visitors see.
  * Content is the editor's schema-restricted HTML; the backend sanitises again.
  */
 export function PreviewDialog({
@@ -57,54 +66,51 @@ export function PreviewDialog({
       : null;
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-ink/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogPortal>
+        <DialogOverlay />
+        {/* Full-screen: the primitive Content, not ui/dialog's centred card. */}
         <DialogPrimitive.Content
-          className="fixed inset-0 z-50 flex flex-col bg-muted focus:outline-none sm:inset-4 sm:overflow-hidden sm:rounded-2xl sm:border sm:border-border sm:shadow-2xl"
+          className="fixed inset-0 z-overlay flex flex-col bg-muted outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 sm:inset-4 sm:overflow-hidden sm:rounded-2xl sm:border sm:border-border sm:shadow-xl"
           aria-describedby={undefined}
         >
           <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-3 sm:px-4">
-            <DialogPrimitive.Title className="truncate text-sm font-semibold">
+            <DialogTitle className="truncate text-sm font-semibold">
               {t('blogEditor.preview')}
-            </DialogPrimitive.Title>
-            <span className="hidden min-w-0 truncate rounded-md bg-muted px-2 py-1 font-mono text-2xs text-muted-foreground md:inline">
+            </DialogTitle>
+            <span className="hidden min-w-0 truncate rounded-sm bg-muted px-2 py-1 font-mono text-2xs text-muted-foreground md:inline">
               {data.url}
             </span>
-            <div
-              role="group"
-              aria-label={t('blogEditor.previewDevice')}
-              className="ml-auto hidden rounded-lg border border-border bg-muted/60 p-0.5 sm:inline-flex"
-            >
-              {(['desktop', 'mobile'] as const).map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  aria-pressed={device === d}
-                  aria-label={d === 'desktop' ? t('blogEditor.desktop') : t('blogEditor.mobile')}
-                  onClick={() => setDevice(d)}
-                  className={cn(
-                    'inline-flex h-7 w-9 items-center justify-center rounded-md transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    device === d
-                      ? 'bg-card text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {d === 'desktop' ? (
-                    <Monitor className="size-4" aria-hidden="true" />
-                  ) : (
-                    <Smartphone className="size-4" aria-hidden="true" />
-                  )}
-                </button>
-              ))}
-            </div>
-            <DialogPrimitive.Close
-              className="ml-auto inline-flex size-9 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:ml-0"
-              aria-label={t('common.close')}
-            >
-              <X className="size-5" aria-hidden="true" />
-            </DialogPrimitive.Close>
+            <SegmentedControl
+              label={t('blogEditor.previewDevice')}
+              value={device}
+              onValueChange={setDevice}
+              size="sm"
+              className="ml-auto hidden sm:inline-flex"
+              options={[
+                {
+                  value: 'desktop',
+                  icon: <Monitor aria-hidden="true" />,
+                  label: t('blogEditor.desktop'),
+                },
+                {
+                  value: 'mobile',
+                  icon: <Smartphone aria-hidden="true" />,
+                  label: t('blogEditor.mobile'),
+                },
+              ]}
+            />
+            <DialogClose asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="ml-auto sm:ml-0"
+                aria-label={t('common.close')}
+              >
+                <X aria-hidden="true" />
+              </Button>
+            </DialogClose>
           </div>
 
           <div className="flex-1 overflow-y-auto sm:p-6">
@@ -130,9 +136,11 @@ export function PreviewDialog({
                     mobile ? 'px-5 pb-28 pt-12' : 'px-6 pb-32 pt-16 lg:pt-20',
                   )}
                 >
+                  {/* Inline: this is the live site's typography, not a console label. */}
                   <nav
                     aria-label="Brotkrumen"
-                    className="mb-5 text-sm uppercase tracking-wider opacity-80"
+                    className="mb-5 text-sm opacity-80"
+                    style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}
                   >
                     <ol className="flex flex-wrap items-center gap-2">
                       <li>Home</li>
@@ -204,14 +212,22 @@ export function PreviewDialog({
                   >
                     <img
                       src={data.image}
-                      alt={data.title}
+                      alt={data.imageAlt || data.title}
                       className="aspect-video w-full object-cover"
                     />
+                    {data.imageCaption ? (
+                      <figcaption className="site-preview-muted px-5 py-3 text-sm">
+                        {data.imageCaption}
+                      </figcaption>
+                    ) : null}
                   </figure>
                 ) : null}
                 <div
                   className="blog-editor-content blog-preview"
-                  dangerouslySetInnerHTML={{ __html: data.html }}
+                  // The storefront renders body H1s as H2 (the title is the only H1); mirror that here.
+                  dangerouslySetInnerHTML={{
+                    __html: data.html.replace(/<(\/?)h1(?=[\s>])/gi, '<$1h2'),
+                  }}
                 />
                 <div className="site-preview-border mt-12 flex flex-wrap items-center justify-between gap-4 border-t pt-8">
                   <span className="site-preview-link inline-flex items-center gap-2 text-sm font-semibold">
@@ -228,7 +244,10 @@ export function PreviewDialog({
               {data.faq.length > 0 ? (
                 <section className={cn('mx-auto max-w-3xl pb-16', mobile ? 'px-5' : 'px-6')}>
                   <div className="text-center">
-                    <p className="site-preview-muted text-xs font-semibold uppercase tracking-[0.18em]">
+                    <p
+                      className="site-preview-muted text-xs font-semibold"
+                      style={{ textTransform: 'uppercase', letterSpacing: '0.18em' }}
+                    >
                       FAQ
                     </p>
                     <h2 className="site-preview-title mt-3 text-3xl font-bold tracking-tight">
@@ -274,7 +293,7 @@ export function PreviewDialog({
             </p>
           </div>
         </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+      </DialogPortal>
+    </Dialog>
   );
 }

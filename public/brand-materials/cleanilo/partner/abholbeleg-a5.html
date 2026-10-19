@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+
+
+<meta charset="utf-8">
+<title>Abholbeleg A5 · CLEANILO</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../../runtime/support.js?v=c6d7d32685"></script>
+<script src="../../runtime/sheet.js?v=c6d7d32685"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="../../fonts/fonts.css?v=c6d7d32685">
+<style>* { box-sizing: border-box; } body { margin: 0; }</style>
+</helmet>
+
+<div style="background:#ECEEEF; min-width:100%; width:max-content; min-height:100vh; box-sizing:border-box; padding:48px; font-family:'Cabin',sans-serif; color:#374151;">
+  <div style="display:flex; flex-direction:column; gap:14px;">
+    <div style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:#6B7280;">Auftrags-/Abholbeleg · A5 · 2-fach durchschlagfähig (Original Kunde · Durchschlag CLEANILO)</div>
+    <div style="width:559px; background:#FFFFFF; border-radius:4px; box-shadow:0 4px 24px rgba(10,24,45,0.10); overflow:hidden; position:relative;">
+      <!-- durchschlag streifen -->
+      <div style="position:absolute; top:0; right:0; background:#FFBF00; color:#0A182D; font-family:'Urbanist',sans-serif; font-weight:700; font-size:9px; letter-spacing:0.08em; padding:5px 12px; border-bottom-left-radius:8px;">2-FACH · DURCHSCHLAG</div>
+
+      <div style="padding:24px 28px 0; display:flex; align-items:flex-start; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:11px;"><img src="../../assets/cleanilo-logo.svg" alt="CLEANILO" style="height:24px;"><div style="width:1px; height:22px; background:#E2E5E8;"></div><div style="font-family:'Urbanist',sans-serif; font-weight:600; font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:#6B7280;">Annahmestelle</div></div>
+        <div style="text-align:right; font-size:10px; color:#6B7280; line-height:1.5;"><div style="font-family:'Urbanist',sans-serif; font-weight:700; color:#0A182D; font-size:12px;">Auftrag-Nr.</div><div style="font-family:'Urbanist',sans-serif; font-weight:700; color:#039B52;">CL-_______</div></div>
+      </div>
+
+      <!-- Kundendaten -->
+      <div style="padding:18px 28px 0;">
+        <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:11px; color:#039B52; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">Kundendaten</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 16px;">
+          <div><div style="font-size:9.5px; color:#9CA3AF;">Name</div><div style="border-bottom:1px solid #DCE0E4; height:20px;"></div></div>
+          <div><div style="font-size:9.5px; color:#9CA3AF;">Telefon</div><div style="border-bottom:1px solid #DCE0E4; height:20px;"></div></div>
+          <div style="grid-column:1 / -1;"><div style="font-size:9.5px; color:#9CA3AF;">Adresse (für Lieferung)</div><div style="border-bottom:1px solid #DCE0E4; height:20px;"></div></div>
+        </div>
+      </div>
+
+      <!-- Positionen -->
+      <div style="padding:18px 28px 0;">
+        <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:11px; color:#039B52; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">Teppich / Polster-Positionen</div>
+        <div style="border:1px solid #EDEFF1; border-radius:8px; overflow:hidden;">
+          <div style="display:grid; grid-template-columns:28px 1fr 70px 70px 70px; background:#F5F5F5; font-family:'Urbanist',sans-serif; font-weight:600; font-size:9.5px; color:#6B7280; text-transform:uppercase;">
+            <div style="padding:8px 8px;">#</div><div style="padding:8px 8px;">Art / Material</div><div style="padding:8px 8px; text-align:right;">Maße</div><div style="padding:8px 8px; text-align:right;">m²</div><div style="padding:8px 8px; text-align:right;">€ Schätz.</div>
+          </div>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+            <div style="display:grid; grid-template-columns:28px 1fr 70px 70px 70px; border-top:1px solid #F2F4F6; height:30px; align-items:center;">
+              <div style="padding:0 8px; font-size:11px; color:#9CA3AF;">{{ r }}</div><div style="border-left:1px solid #F2F4F6; height:100%;"></div><div style="border-left:1px solid #F2F4F6; height:100%;"></div><div style="border-left:1px solid #F2F4F6; height:100%;"></div><div style="border-left:1px solid #F2F4F6; height:100%;"></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- Zustand + Foto -->
+      <div style="padding:16px 28px 0; display:grid; grid-template-columns:1.4fr 1fr; gap:16px;">
+        <div>
+          <div style="font-family:'Urbanist',sans-serif; font-weight:700; font-size:11px; color:#039B52; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">Zustands-/Mängelvermerk</div>
+          <div style="border:1px solid #EDEFF1; border-radius:8px; height:64px;"></div>
+        </div>
+        <div style="background:#FFF4D1; border-radius:8px; padding:12px 14px; display:flex; align-items:center; gap:10px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0A182D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg>
+          <div style="font-size:11px; color:#0A182D; line-height:1.4;">Foto-Pflicht: Teppich vor Annahme fotografieren.</div>
+        </div>
+      </div>
+
+      <!-- Unterschriften -->
+      <div style="padding:18px 28px 24px; display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+        <div><div style="border-bottom:1px solid #9CA3AF; height:34px;"></div><div style="font-size:10px; color:#6B7280; margin-top:5px;">Unterschrift Kunde</div></div>
+        <div><div style="border-bottom:1px solid #9CA3AF; height:34px;"></div><div style="font-size:10px; color:#6B7280; margin-top:5px;">Annahmestelle · Datum</div></div>
+      </div>
+
+      <div style="padding:10px 28px; background:#F5F5F5; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:9px; color:#9CA3AF;">Madjidian-Amiri GbR · USt-IdNr. [PLATZHALTER] · Preise inkl. MwSt., Endbetrag nach Begutachtung</span>
+        <div style="width:54px; height:54px; background:#fff; border:1px solid #EDEFF1; border-radius:6px; display:flex; align-items:center; justify-content:center; padding:4px;"><svg width="46" height="46" viewBox="0 0 100 100" fill="#0A182D" data-rp-qr="order"><path d="M0 0h28v28H0V0Zm8 8v12h12V8H8Zm64-8h28v28H72V0Zm8 8v12h12V8H80ZM0 72h28v28H0V72Zm8 8v12h12V80H8Z"/><rect x="40" y="16" width="8" height="8"/><rect x="56" y="20" width="8" height="8"/><rect x="20" y="36" width="8" height="8"/><rect x="48" y="36" width="8" height="8"/><rect x="40" y="52" width="8" height="8"/><rect x="72" y="56" width="8" height="8"/><rect x="52" y="68" width="8" height="8"/></svg></div>
+      </div>
+    </div>
+    <div style="font-size:12px; color:#9CA3AF; max-width:559px;">Durchschlagpapier (oben Original für Kunde, unten Kopie für CLEANILO). Auftrags-Nr. doppelt als QR + Klartext. DIN A5.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:655,&quot;height&quot;:900}}">
+class Component extends DCLogic { renderVals() { return { rows: ["1","2","3","4"] }; } }
+</script>
+</body>
+</html>

@@ -1,11 +1,12 @@
+import { parseEuroToCents } from './money-input.ts';
+
 export type PriceMode = 'net' | 'gross';
 
 export interface LineDraft {
   label: string;
-  /** Second line under the label on the invoice, e.g. "Premiumreinigung". */
   note: string;
   quantity: string;
-  /** Unit price as typed — read as net or gross per the active priceMode. */
+  // Euros as typed; net or gross per priceMode.
   unitPriceEur: string;
   isPackage: boolean;
 }
@@ -15,8 +16,7 @@ export function emptyLine(): LineDraft {
 }
 
 export function toCents(eur: string): number {
-  const n = Number(eur.replace(',', '.'));
-  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  return parseEuroToCents(eur) ?? 0;
 }
 
 export function toQuantity(value: string): number {
@@ -36,7 +36,6 @@ export function centsToInput(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-/** Per-line NET cents, backing VAT out of the entered value in gross mode. */
 export function lineNetCents(l: LineDraft, priceMode: PriceMode, ratePercent: number): number {
   const unit = toCents(l.unitPriceEur);
   return priceMode === 'gross' ? netFromGrossCents(unit, ratePercent) : unit;
