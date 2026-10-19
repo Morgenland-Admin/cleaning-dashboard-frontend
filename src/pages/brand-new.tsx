@@ -1,8 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
-import { PageHeading } from '@/components/page-heading';
+import { LoadingState } from '@/components/empty-state';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { Card } from '@/components/ui/card';
+import { toast } from '@/hooks/use-toast';
 import { useT } from '@/i18n';
 import { useSession } from '@/lib/auth-client';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -17,7 +20,7 @@ export function BrandNewPage() {
   const userMeta = session?.user as { accessLevel?: string } | undefined;
   const isSuperAdmin = userMeta?.accessLevel === 'super_admin';
 
-  // Soft-gate: backend would 403 anyway, but better UX to redirect early.
+  // Soft gate only: the backend 403s anyway.
   useEffect(() => {
     if (!isPending && session && !isSuperAdmin) {
       navigate('/companies', { replace: true });
@@ -27,31 +30,33 @@ export function BrandNewPage() {
   function onCreated() {
     void queryClient.invalidateQueries({ queryKey: ['companies-admin'] });
     void queryClient.invalidateQueries({ queryKey: ['projects-companies'] });
+    toast.success(t('companies.create.created'));
     navigate('/companies');
+  }
+
+  if (isPending) {
+    return (
+      <PageContainer width="narrow">
+        <LoadingState />
+      </PageContainer>
+    );
   }
 
   if (!isSuperAdmin) return null;
 
   return (
-    <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-3xl flex-col p-4 sm:p-6 lg:p-8">
+    <PageContainer width="narrow">
       <PageHeading
         title={t('companies.newPage.title')}
         subtitle={t('companies.newPage.subtitle')}
-        breadcrumb={
-          <Link to="/companies" className="hover:underline">
-            {t('companies.title')}
-          </Link>
-        }
+        breadcrumb={[
+          { label: t('companies.title'), to: '/companies' },
+          { label: t('companies.newCompany') },
+        ]}
       />
-      <section
-        aria-labelledby="brand-new-heading"
-        className="rounded-xl border border-border bg-card p-4 sm:p-6"
-      >
-        <h2 id="brand-new-heading" className="sr-only">
-          {t('companies.newPage.title')}
-        </h2>
+      <Card className="p-4 sm:p-5">
         <CreateCompanyForm onCreated={onCreated} />
-      </section>
-    </div>
+      </Card>
+    </PageContainer>
   );
 }

@@ -1,8 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { LogOut, Menu, Search } from 'lucide-react';
+import { LogOut, Menu, Monitor, Moon, Search, Settings, Sun, User } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { BrandBlock } from '@/components/brand-logo';
 import { CommandPalette, useCommandPaletteShortcut } from '@/components/command-palette';
 import { NotificationBell } from '@/components/notification-bell';
 import { SidebarBody } from '@/components/sidebar';
@@ -12,6 +13,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -22,23 +25,27 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { useTheme, type Theme } from '@/contexts/theme-context';
 import { useLocale, type Locale } from '@/i18n';
 import { useIsSeoOnly } from '@/lib/access';
 import { authClient, useSession } from '@/lib/auth-client';
-import { cn } from '@/lib/utils';
+import { useUserPreferences } from '@/lib/use-user-preferences';
+
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
 export function Header() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  // Global search + notifications cover orders/customers/inquiries — out of the
-  // `seo` scope, and their APIs 403 for it.
+  // Global search and notifications are outside the `seo` scope (their APIs 403).
   const seoOnly = useIsSeoOnly();
   useCommandPaletteShortcut(() => {
     if (!seoOnly) setPaletteOpen(true);
   });
   const { data } = useSession();
-  const { t, locale, setLocale } = useLocale();
+  const { t, locale } = useLocale();
+  const { theme } = useTheme();
+  const { update: updatePreferences } = useUserPreferences();
   const [signingOut, setSigningOut] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -48,9 +55,8 @@ export function Header() {
 
   async function onSignOut() {
     setSigningOut(true);
-    // Clear cached data BEFORE the network call so a slow / failing signOut
-    // can't leak the previous user's queries into the next paint. If signOut
-    // throws we still drop the session client-side and bounce to /login.
+    // Clear cached data before the network call so a failing signOut cannot leak
+    // the previous user's queries.
     queryClient.clear();
     try {
       await authClient.signOut();
@@ -61,84 +67,78 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-border/70 bg-background/85 px-3 backdrop-blur-md sm:gap-3 sm:px-4 lg:px-6">
-      {/* Mobile menu trigger — opens the sidebar in a sheet */}
+    <header className="sticky top-0 z-header flex h-14 items-center gap-2 border-b border-border bg-background/85 px-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 sm:gap-3 sm:px-4 lg:px-6">
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetTrigger asChild>
           <button
             type="button"
             aria-label={t('header.openMenu')}
-            className="-ml-1 inline-flex size-9 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
+            className="-ml-1 grid size-10 place-items-center rounded-md text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
           >
-            <Menu className="size-5" />
+            <Menu className="size-5" aria-hidden="true" />
           </button>
         </SheetTrigger>
-        <SheetContent side="left">
+        <SheetContent side="left" className="p-0">
           <SheetTitle>{t('brand.name')}</SheetTitle>
           <SheetDescription>{t('brand.tagline')}</SheetDescription>
           <SidebarBody onNavigate={() => setMobileNavOpen(false)} />
         </SheetContent>
       </Sheet>
 
+      <BrandBlock compact size={28} className="lg:hidden" />
+
       {seoOnly ? null : (
         <>
-          {/*
-        A button, not an input: the palette owns the real field. Typing here and
-        having nothing happen was the old bug — now the whole pill is the affordance
-        that opens it, and ⌘K does the same from anywhere.
-      */}
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="group relative hidden h-9 w-full max-w-[520px] items-center rounded-full border border-border bg-card pl-9 pr-16 text-left text-sm text-muted-foreground shadow-sm transition-colors hover:border-foreground/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
+            className="group relative hidden h-9 w-full max-w-md items-center rounded-md border border-border-strong bg-card pl-9 pr-16 text-left text-2sm text-muted-foreground shadow-xs transition-colors hover:border-input hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
           >
             <Search
               className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
               aria-hidden="true"
             />
-            {t('search.placeholder')}
-            <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 select-none items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-3xs font-medium md:inline-flex">
-              ⌘K
+            <span className="truncate">{t('search.placeholder')}</span>
+            <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 select-none items-center rounded border border-border bg-muted px-1.5 text-2xs font-medium text-muted-foreground md:inline-flex">
+              {IS_MAC ? '⌘K' : 'Ctrl K'}
             </kbd>
-          </button>
-          {/* Mobile: the pill has no room, so search is an icon button. */}
-          <button
-            type="button"
-            onClick={() => setPaletteOpen(true)}
-            aria-label={t('search.title')}
-            className="ml-1 inline-flex size-10 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
-          >
-            <Search className="size-4" aria-hidden="true" />
           </button>
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         </>
       )}
 
-      <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+      <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
+        {seoOnly ? null : (
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label={t('search.title')}
+            className="grid size-10 place-items-center rounded-md text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
+          >
+            <Search className="size-[1.125rem]" aria-hidden="true" />
+          </button>
+        )}
         {seoOnly ? null : <NotificationBell />}
-
-        {/* Locale toggle — hidden on smallest screens, available in Settings */}
-        <LocaleToggle value={locale} onChange={setLocale} className="hidden sm:flex" />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="ml-0.5 rounded-full outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="ml-1 rounded-full outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label={t('header.accountMenu')}
             >
-              <Avatar className="size-8 ring-2 ring-background">
-                {user?.image ? <AvatarImage src={user.image} alt={displayName} /> : null}
-                <AvatarFallback className="bg-rust/15 text-xs font-semibold uppercase text-rust">
+              <Avatar className="size-8">
+                {user?.image ? <AvatarImage src={user.image} alt="" /> : null}
+                <AvatarFallback className="bg-primary-soft text-xs font-semibold text-primary">
                   {initials}
                 </AvatarFallback>
               </Avatar>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col">
-                <span className="text-sm font-medium">
+                <span className="truncate text-2sm font-medium text-foreground">
                   {user?.name?.trim() || t('user.signedIn')}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">{user?.email ?? ''}</span>
@@ -146,11 +146,45 @@ export function Header() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => navigate('/profile')}>
+              <User aria-hidden="true" />
               {t('user.profile')}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => navigate('/settings')}>
+              <Settings aria-hidden="true" />
               {t('user.settings')}
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>{t('header.appearance')}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={theme}
+              onValueChange={(v) => updatePreferences({ theme: v as Theme })}
+            >
+              <DropdownMenuRadioItem value="light" className="gap-2">
+                <Sun className="size-4 text-muted-foreground" aria-hidden="true" />
+                {t('header.themeLight')}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="dark" className="gap-2">
+                <Moon className="size-4 text-muted-foreground" aria-hidden="true" />
+                {t('header.themeDark')}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="system" className="gap-2">
+                <Monitor className="size-4 text-muted-foreground" aria-hidden="true" />
+                {t('header.themeSystem')}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>{t('header.language')}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={locale}
+              onValueChange={(v) => updatePreferences({ locale: v as Locale })}
+            >
+              <DropdownMenuRadioItem value="de" lang="de">
+                Deutsch
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="en" lang="en">
+                English
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               disabled={signingOut}
@@ -160,51 +194,12 @@ export function Header() {
               }}
               className="text-destructive focus:text-destructive"
             >
-              <LogOut className="size-4" />
+              <LogOut aria-hidden="true" />
               {signingOut ? t('user.signingOut') : t('user.signOut')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
     </header>
-  );
-}
-
-function LocaleToggle({
-  value,
-  onChange,
-  className,
-}: {
-  value: Locale;
-  onChange: (v: Locale) => void;
-  className?: string;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label="Language"
-      className={cn(
-        'items-center rounded-full border border-border bg-card p-0.5 shadow-sm',
-        className,
-      )}
-    >
-      {(['de', 'en'] as const).map((option) => (
-        <button
-          key={option}
-          type="button"
-          onClick={() => onChange(option)}
-          aria-pressed={value === option}
-          aria-label={option === 'de' ? 'Deutsch' : 'English'}
-          className={cn(
-            'rounded-full px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide transition-colors',
-            value === option
-              ? 'bg-foreground text-background'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {option}
-        </button>
-      ))}
-    </div>
   );
 }

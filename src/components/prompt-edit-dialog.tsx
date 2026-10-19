@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Loader2, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 
 import { ClaudeIcon } from '@/components/claude-icon';
+import { LoadingState } from '@/components/empty-state';
+import { SectionLabel } from '@/components/section';
+import { ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { useT } from '@/i18n';
@@ -19,11 +23,7 @@ import { aiApi, errMessage, type AiAssistKind } from '@/lib/api';
 
 import type { CompanySlug } from '@/contexts/project-context';
 
-/**
- * Edits the instruction text Claude gets for one assist kind, per brand.
- * The locked output rules are shown read-only — they are appended server-side
- * so an edit can never break the mail template or invent prices.
- */
+/** The locked output rules are appended server-side, so an edit can never break the mail template or invent prices. */
 export function PromptEditDialog({
   open,
   onOpenChange,
@@ -39,8 +39,7 @@ export function PromptEditDialog({
 }) {
   const t = useT();
   const queryClient = useQueryClient();
-  // `null` = untouched: show whatever the server says the prompt is, so the
-  // editor stays in sync through load and reset without an effect.
+  // `null` = untouched: show whatever the server says the prompt is.
   const [draft, setDraft] = useState<string | null>(null);
 
   const query = useQuery({
@@ -77,7 +76,7 @@ export function PromptEditDialog({
     mutationFn: () => aiApi.resetPrompt(companySlug, kind),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['ai-prompts', companySlug] });
-      setDraft(null); // fall back to the refetched default
+      setDraft(null);
       toast({ title: t('prompts.resetDone') });
     },
     onError: (err) => {
@@ -95,7 +94,7 @@ export function PromptEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClaudeIcon />
@@ -107,23 +106,17 @@ export function PromptEditDialog({
         </DialogHeader>
 
         {query.isLoading ? (
-          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-          </div>
+          <LoadingState className="min-h-40" />
         ) : query.error ? (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            <span>{errMessage(query.error)}</span>
-          </div>
+          <ErrorState
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            retrying={query.isFetching}
+          />
         ) : (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="prompt-body" className="text-xs font-medium">
-                {t('prompts.instructionsLabel')}
-              </label>
+              <Label htmlFor="prompt-body">{t('prompts.instructionsLabel')}</Label>
               <Textarea
                 id="prompt-body"
                 rows={12}
@@ -131,21 +124,23 @@ export function PromptEditDialog({
                 readOnly={!canEdit}
                 disabled={busy}
                 onChange={(e) => setDraft(e.target.value)}
+                aria-describedby="prompt-body-hint"
                 className="min-h-[220px] resize-y font-mono text-xs leading-relaxed"
               />
-              <p className="text-2xs text-muted-foreground">{t('prompts.brandPlaceholderHint')}</p>
+              <p id="prompt-body-hint" className="text-xs text-muted-foreground">
+                {t('prompts.brandPlaceholderHint')}
+              </p>
             </div>
 
-            {/* Read-only: appended to every request, not editable by design. */}
-            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-              <div className="mb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="rounded-lg border border-border bg-muted px-3 py-2">
+              <SectionLabel as="p" className="mb-1">
                 {t('prompts.lockedLabel')}
-              </div>
+              </SectionLabel>
               <p className="text-xs leading-relaxed text-muted-foreground">{prompt?.lockedRules}</p>
             </div>
 
             {!canEdit ? (
-              <p className="text-2xs text-muted-foreground">{t('prompts.readOnlyHint')}</p>
+              <p className="text-xs text-muted-foreground">{t('prompts.readOnlyHint')}</p>
             ) : null}
           </div>
         )}
@@ -156,17 +151,14 @@ export function PromptEditDialog({
             variant="outline"
             size="sm"
             disabled={!canEdit || busy || !prompt?.isCustom}
+            loading={resetMutation.isPending}
             onClick={() => resetMutation.mutate()}
             title={t('prompts.resetHint')}
           >
-            {resetMutation.isPending ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RotateCcw className="size-3.5" />
-            )}
+            <RotateCcw aria-hidden="true" />
             {t('prompts.reset')}
           </Button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
             <Button type="button" variant="outline" size="sm" disabled={busy} onClick={close}>
               {t('common.cancel')}
             </Button>
@@ -174,9 +166,9 @@ export function PromptEditDialog({
               type="button"
               size="sm"
               disabled={!canEdit || busy || !dirty || tooShort}
+              loading={saveMutation.isPending}
               onClick={() => saveMutation.mutate(value.trim())}
             >
-              {saveMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
               {t('common.save')}
             </Button>
           </div>

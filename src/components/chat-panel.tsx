@@ -1,23 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  CheckCheck,
-  Check as CheckIcon,
-  Loader2,
-  Paperclip,
-  Send,
-  X,
-} from 'lucide-react';
+import { CheckCheck, Check as CheckIcon, Loader2, Paperclip, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { AttachmentGallery } from '@/components/attachment-gallery';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from '@/hooks/use-toast';
 import { useLocale } from '@/i18n';
-import { chatAdminApi, uploadsAdminApi, type ChatAttachment, type ChatMessage } from '@/lib/api';
+import {
+  chatAdminApi,
+  errMessage,
+  uploadsAdminApi,
+  type ChatAttachment,
+  type ChatMessage,
+} from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { useChatSocket } from '@/lib/use-chat-socket';
-import { formatDateTime } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 
 import type { CompanySlug } from '@/contexts/project-context';
 
@@ -158,10 +159,19 @@ export function ChatPanel({
     );
     setUploading((u) => u.filter((f) => !arr.includes(f)));
     const ok: ChatAttachment[] = [];
-    for (const r of results) {
+    const failed: { name: string; reason: unknown }[] = [];
+    results.forEach((r, i) => {
       if (r.status === 'fulfilled') ok.push(r.value);
-    }
+      else failed.push({ name: arr[i]?.name ?? '', reason: r.reason });
+    });
     if (ok.length > 0) setAttachments((curr) => [...curr, ...ok]);
+    if (failed.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: t('chat.uploadFailed'),
+        description: `${failed.map((f) => f.name).join(', ')}: ${errMessage(failed[0]!.reason)}`,
+      });
+    }
   }
 
   function handleDragEnter(e: React.DragEvent) {
@@ -198,19 +208,19 @@ export function ChatPanel({
       {dragDepth > 0 ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-rust/10 backdrop-blur-sm"
+          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-highlight/10 backdrop-blur-sm"
         >
-          <div className="rounded-xl border-2 border-dashed border-rust/60 bg-card px-6 py-4 text-sm font-medium text-rust shadow-lg">
+          <div className="rounded-lg border-2 border-dashed border-primary/60 bg-card px-6 py-4 text-sm font-medium text-primary shadow-lg">
             {t('chat.dropHere')}
           </div>
         </div>
       ) : null}
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background/40 px-4 py-3 sm:px-5">
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-4 py-2.5 sm:px-5">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">
+          <h2 className="truncate text-sm font-semibold leading-5">
             {t('chat.threadWith', { partner: partnerName })}
-          </p>
-          <p className="text-2xs text-muted-foreground">
+          </h2>
+          <p className="text-2xs text-muted-foreground" aria-live="polite">
             {wsStatus === 'open'
               ? t('chat.statusLive')
               : wsStatus === 'connecting'
@@ -220,14 +230,14 @@ export function ChatPanel({
         </div>
         <span
           aria-hidden="true"
-          className={
-            'size-2 rounded-full ' +
-            (wsStatus === 'open'
+          className={cn(
+            'size-2 rounded-full',
+            wsStatus === 'open'
               ? 'bg-success'
               : wsStatus === 'connecting'
                 ? 'bg-warning'
-                : 'bg-muted-foreground/40')
-          }
+                : 'bg-border-strong',
+          )}
         />
       </header>
 
@@ -236,24 +246,15 @@ export function ChatPanel({
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 sm:px-5"
       >
         {threadQuery.isLoading ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex items-center gap-2 text-sm text-muted-foreground"
-          >
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            <span>{t('chat.loadingThread')}</span>
-          </div>
+          <LoadingState inline label={t('chat.loadingThread')} />
         ) : threadQuery.error ? (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <span>{(threadQuery.error as Error).message}</span>
-          </div>
+          <ErrorState
+            error={threadQuery.error}
+            onRetry={() => void threadQuery.refetch()}
+            retrying={threadQuery.isFetching}
+          />
         ) : messages.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{t('chat.emptyThread')}</p>
+          <EmptyState size="sm" message={t('chat.emptyThread')} />
         ) : (
           messages.map((m) => (
             <MessageBubble
@@ -267,7 +268,7 @@ export function ChatPanel({
           ))
         )}
         {partnerTyping ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
             <span aria-hidden="true" className="inline-flex gap-1">
               <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
               <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:120ms]" />
@@ -278,30 +279,33 @@ export function ChatPanel({
         ) : null}
       </div>
 
-      <div className="shrink-0 border-t border-border bg-background/40 p-3 sm:p-4">
+      <div className="shrink-0 border-t border-border bg-card p-3 sm:p-4">
         {attachments.length > 0 || uploading.length > 0 ? (
           <ul className="mb-2 flex flex-wrap gap-2">
             {attachments.map((a) => (
               <li
                 key={a.key}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
+                className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-muted py-0.5 pl-2 pr-0.5 text-xs"
               >
                 <Paperclip className="size-3" aria-hidden="true" />
                 <span className="max-w-[140px] truncate">{a.name}</span>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => setAttachments((curr) => curr.filter((x) => x.key !== a.key))}
                   aria-label={t('chat.removeAttachment', { name: a.name })}
-                  className="-m-1 rounded-md p-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="text-muted-foreground hover:text-foreground"
                 >
-                  <X className="size-3" aria-hidden="true" />
-                </button>
+                  <X aria-hidden="true" />
+                </Button>
               </li>
             ))}
             {uploading.map((f, i) => (
               <li
                 key={`${f.name}-${i}`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
+                role="status"
+                className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-muted px-2 py-1 text-xs text-muted-foreground"
               >
                 <Loader2 className="size-3 animate-spin" aria-hidden="true" />
                 <span className="max-w-[140px] truncate">{f.name}</span>
@@ -311,12 +315,8 @@ export function ChatPanel({
         ) : null}
 
         <div className="flex items-end gap-2">
-          {/*
-            A proxy for the paperclip button, which carries the label and the
-            focus ring. Hidden from the a11y tree and taken out of the tab order
-            so it is not a second, nameless stop — `aria-hidden` on its own would
-            be invalid here, since `sr-only` leaves an input focusable.
-          */}
+          {/* Proxy for the paperclip button, which carries label and focus ring. `aria-hidden` alone would
+              be invalid here (sr-only leaves the input focusable), so it is also out of the tab order. */}
           <input
             ref={fileInputRef}
             type="file"
@@ -344,35 +344,35 @@ export function ChatPanel({
             className="min-h-[40px] flex-1 resize-none"
           />
           <div className="flex shrink-0 items-end gap-1.5">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="icon"
               onClick={() => fileInputRef.current?.click()}
               disabled={sendMutation.isPending}
               aria-label={t('chat.attachFile')}
-              className="inline-flex size-9 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+              title={t('chat.attachFile')}
             >
-              <Paperclip className="size-4" aria-hidden="true" />
-            </button>
+              <Paperclip aria-hidden="true" />
+            </Button>
             <Button
               type="button"
               size="icon"
               onClick={handleSend}
               disabled={!canSend}
+              loading={sendMutation.isPending}
               aria-label={t('chat.send')}
+              title={t('chat.send')}
             >
-              {sendMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Send className="size-4" aria-hidden="true" />
-              )}
+              <Send aria-hidden="true" />
             </Button>
           </div>
         </div>
         <p className="mt-1.5 text-2xs text-muted-foreground">{t('chat.sendHint')}</p>
         {sendMutation.error ? (
-          <p role="alert" className="mt-1.5 text-2xs text-destructive">
-            {(sendMutation.error as Error).message}
-          </p>
+          <Alert tone="destructive" title={t('chat.sendFailed')} className="mt-2">
+            {errMessage(sendMutation.error)}
+          </Alert>
         ) : null}
       </div>
     </section>
@@ -393,42 +393,44 @@ function MessageBubble({
   t: ReturnType<typeof useLocale>['t'];
 }) {
   return (
-    <div className={'flex gap-2 ' + (isMine ? 'flex-row-reverse' : '')}>
+    <div className={cn('flex gap-2', isMine && 'flex-row-reverse')}>
       <div
-        className={'flex max-w-[78%] flex-col gap-1.5 ' + (isMine ? 'items-end' : 'items-start')}
+        className={cn('flex max-w-[78%] flex-col gap-1.5', isMine ? 'items-end' : 'items-start')}
       >
         {message.attachments.length > 0 ? (
           <AttachmentGallery
             companySlug={companySlug}
             attachments={message.attachments}
-            className={
-              'grid gap-1.5 ' +
-              (message.attachments.length === 1 ? 'w-48 grid-cols-1' : 'w-64 grid-cols-2')
-            }
+            className={cn(
+              'grid gap-1.5',
+              message.attachments.length === 1 ? 'w-48 grid-cols-1' : 'w-64 grid-cols-2',
+            )}
           />
         ) : null}
         {message.body ? (
           <div
-            className={
-              'rounded-2xl px-3 py-2 text-sm ' +
-              (isMine ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground')
-            }
+            className={cn(
+              'rounded-2xl px-3 py-2 text-sm text-foreground',
+              isMine ? 'rounded-br-sm bg-primary-soft' : 'rounded-bl-sm bg-muted',
+            )}
           >
             <p className="whitespace-pre-wrap break-words">{message.body}</p>
           </div>
         ) : null}
-        <div className="flex items-center gap-1 px-1 text-3xs text-muted-foreground">
+        <div className="flex items-center gap-1 px-1 text-2xs text-muted-foreground">
           <time dateTime={message.createdAt} className="tabular-nums">
             {formatDateTime(message.createdAt, bcp47)}
           </time>
           {isMine ? (
             message.readAt ? (
-              <span aria-label={t('chat.read')} title={t('chat.read')}>
+              <span title={t('chat.read')}>
                 <CheckCheck className="size-3" aria-hidden="true" />
+                <span className="sr-only">{t('chat.read')}</span>
               </span>
             ) : message.deliveredAt ? (
-              <span aria-label={t('chat.delivered')} title={t('chat.delivered')}>
+              <span title={t('chat.delivered')}>
                 <CheckIcon className="size-3" aria-hidden="true" />
+                <span className="sr-only">{t('chat.delivered')}</span>
               </span>
             ) : null
           ) : null}

@@ -5,33 +5,33 @@ import {
   CreditCard,
   Inbox,
   Layers,
-  Loader2,
+  MoreHorizontal,
   Pause,
   Pencil,
   Play,
   Plus,
-  RefreshCcw,
-  X,
   XCircle,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { FormField } from '@/components/form-field';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
-import { PageHeading } from '@/components/page-heading';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
 import { StatusBadge } from '@/components/status-badge';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from '@/components/ui/sheet';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { ListSkeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -41,68 +41,45 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useProject, type CompanySlug } from '@/contexts/project-context';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useProject } from '@/contexts/project-context';
+import { toast } from '@/hooks/use-toast';
 import { useLocale, useT } from '@/i18n';
 import {
-  ApiError,
+  errMessage,
   subscriptionsAdminApi,
   type SubscriptionAction,
-  type SubscriptionCreateInput,
   type SubscriptionRow,
   type SubscriptionStatus,
-  type SubscriptionUpdateInput,
 } from '@/lib/api';
 import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils';
+import { STATUS_TONE, lifecycleActionsFor } from '@/pages/subscriptions-shared';
+
+import type { ListNavState } from '@/lib/list-nav';
 
 type StatusFilter = SubscriptionStatus | 'all';
 
 const STATUS_FILTERS: StatusFilter[] = ['all', 'active', 'paused', 'past_due', 'cancelled'];
 
-const STATUS_TONE: Record<SubscriptionStatus, 'success' | 'info' | 'danger' | 'neutral'> = {
-  active: 'success',
-  paused: 'info',
-  past_due: 'danger',
-  cancelled: 'neutral',
-};
-
-/** Valid lifecycle transitions; cancelled is terminal. */
-function lifecycleActionsFor(status: SubscriptionStatus): SubscriptionAction[] {
-  switch (status) {
-    case 'active':
-      return ['pause', 'cancel'];
-    case 'paused':
-    case 'past_due':
-      return ['resume', 'cancel'];
-    case 'cancelled':
-      return [];
-  }
-}
-
-function errMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
+/** Stretched row link (one real link per row); row actions sit above it (z-[1]), below the sticky header (z-10). */
+const ROW_LINK =
+  'rounded-sm after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring';
 
 export function SubscriptionsPage() {
   const t = useT();
   const { bcp47 } = useLocale();
   const { activeProject, isAllBrands } = useProject();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
   usePageTitle(t('subscriptions.title'));
 
   const slug = activeProject.companySlug;
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  // The list scrolls inside its own box so a few hundred rows stay navigable
-  // without the page growing to many screens tall. The table header sticks to
-  // the top of that box.
   const listScrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
-  const [sheet, setSheet] = useState<
-    { mode: 'create' } | { mode: 'edit'; sub: SubscriptionRow } | null
-  >(null);
   const [confirm, setConfirm] = useState<{
     sub: SubscriptionRow;
     action: 'pause' | 'cancel';
@@ -131,7 +108,11 @@ export function SubscriptionsPage() {
     [listQuery.data],
   );
 
-  // Switching filter or brand shows a different list — start it at the top.
+  const navState: ListNavState = useMemo(
+    () => ({ from: `${location.pathname}${location.search}`, ids: rows.map((s) => s.id) }),
+    [location.pathname, location.search, rows],
+  );
+
   useEffect(() => {
     listScrollRef.current?.scrollTo({ top: 0 });
   }, [statusFilter, slug]);
@@ -139,9 +120,10 @@ export function SubscriptionsPage() {
   const lifecycle = useMutation({
     mutationFn: (vars: { id: number; action: SubscriptionAction }) =>
       subscriptionsAdminApi.action(slug, vars.id, vars.action),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       setConfirm(null);
       setActionError(null);
+      toast.success(t(`subscriptions.toast.${vars.action}` as never));
       void queryClient.invalidateQueries({ queryKey: ['subscriptions', slug] });
     },
     onError: (err) => {
@@ -150,6 +132,8 @@ export function SubscriptionsPage() {
       setActionError(errMessage(err));
     },
   });
+
+  const pending = lifecycle.isPending ? lifecycle.variables : undefined;
 
   function runAction(sub: SubscriptionRow, action: SubscriptionAction) {
     if (action === 'resume') {
@@ -161,162 +145,126 @@ export function SubscriptionsPage() {
 
   if (isAllBrands) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+      <PageContainer width="full">
         <PageHeading title={t('subscriptions.title')} subtitle={t('subscriptions.subtitle')} />
         <EmptyState
-          icon={<Layers className="size-6" aria-hidden="true" />}
+          variant="dashed"
+          icon={<Layers aria-hidden="true" />}
           message={t('subscriptions.selectBrandFirst')}
         />
-      </div>
+      </PageContainer>
     );
   }
 
-  const queryErrorMessage = listQuery.error ? errMessage(listQuery.error) : null;
+  const newButton = (
+    <Button size="sm" asChild>
+      <Link to="/abos/neu">
+        <Plus aria-hidden="true" />
+        {t('subscriptions.newSubscription')}
+      </Link>
+    </Button>
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+    <PageContainer width="full" className="gap-4">
       <PageHeading
+        className="mb-1"
         title={t('subscriptions.title')}
         subtitle={t('subscriptions.subtitle')}
-        breadcrumb={
-          <>
-            <span>{activeProject.name}</span>
-            <span aria-hidden="true"> / </span>
-            <span className="text-foreground">{t('subscriptions.title')}</span>
-          </>
-        }
+        breadcrumb={[{ label: activeProject.name }, { label: t('subscriptions.title') }]}
         actions={
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-11 sm:h-9"
+            <RefreshButton
+              fetching={listQuery.isFetching}
               onClick={() => void listQuery.refetch()}
-              disabled={listQuery.isFetching}
-              aria-busy={listQuery.isFetching || undefined}
-            >
-              <RefreshCcw
-                className={cn('size-3.5', listQuery.isFetching && 'animate-spin')}
-                aria-hidden="true"
-              />
-              {t('common.refresh')}
-            </Button>
-            <Button size="sm" className="h-11 sm:h-9" onClick={() => setSheet({ mode: 'create' })}>
-              <Plus className="size-3.5" aria-hidden="true" />
-              {t('subscriptions.newSubscription')}
-            </Button>
+            />
+            {newButton}
           </>
         }
       />
 
-      <div
-        role="tablist"
-        aria-label={t('subscriptions.filterStatus')}
-        className="inline-flex flex-wrap items-center gap-1 self-start rounded-lg border border-border bg-card p-1"
-      >
-        {STATUS_FILTERS.map((value) => {
-          const active = statusFilter === value;
-          return (
-            <button
-              key={value}
-              role="tab"
-              type="button"
-              aria-selected={active}
-              onClick={() => setStatusFilter(value)}
-              className={cn(
-                'inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:px-2.5 sm:text-2xs sm:uppercase sm:tracking-wide',
-                active
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                value === 'past_due' && !active && 'text-destructive',
-              )}
-            >
-              {value === 'all'
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <SegmentedControl
+          label={t('subscriptions.filterStatus')}
+          value={statusFilter}
+          onValueChange={setStatusFilter}
+          overflow="scroll"
+          className="sm:w-auto"
+          options={STATUS_FILTERS.map((value) => ({
+            value,
+            label:
+              value === 'all'
                 ? t('subscriptions.filterAll')
-                : t(`subscriptions.status.${value}` as never)}
-            </button>
-          );
-        })}
+                : t(`subscriptions.status.${value}` as never),
+            icon:
+              value === 'past_due' ? (
+                <AlertCircle className="text-destructive" aria-hidden="true" />
+              ) : undefined,
+          }))}
+        />
+        {rows.length > 0 ? (
+          <p className="shrink-0 text-2sm tabular-nums text-muted-foreground">
+            {listQuery.hasNextPage
+              ? t('subscriptions.countMore', { n: rows.length })
+              : t('subscriptions.count', { n: rows.length })}
+          </p>
+        ) : null}
       </div>
 
       {actionError ? (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-        >
-          <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <span className="flex-1">{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label={t('common.close')}
-            className="-m-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
-        </div>
+        <Alert tone="destructive" onDismiss={() => setActionError(null)}>
+          {actionError}
+        </Alert>
       ) : null}
 
       {listQuery.isLoading ? (
-        <ListSkeleton rows={4} avatar={false} />
-      ) : queryErrorMessage ? (
-        <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <span>{queryErrorMessage}</span>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-11 sm:h-8"
-            onClick={() => void listQuery.refetch()}
-          >
-            <RefreshCcw className="size-3.5" aria-hidden="true" />
-            {t('common.refresh')}
-          </Button>
+        <div role="status" aria-label={t('common.loading')}>
+          <ListSkeleton rows={4} avatar={false} />
         </div>
+      ) : listQuery.error ? (
+        <ErrorState
+          error={listQuery.error}
+          onRetry={() => void listQuery.refetch()}
+          retrying={listQuery.isFetching}
+        />
       ) : rows.length === 0 ? (
         <EmptyState
-          icon={<Inbox className="size-6" aria-hidden="true" />}
+          variant="dashed"
+          icon={<Inbox aria-hidden="true" />}
           title={t('subscriptions.empty')}
           message={t('subscriptions.emptyHint')}
-          action={
-            <Button size="sm" className="h-11 sm:h-9" onClick={() => setSheet({ mode: 'create' })}>
-              <Plus className="size-3.5" aria-hidden="true" />
-              {t('subscriptions.newSubscription')}
-            </Button>
-          }
+          action={newButton}
         />
       ) : (
-        <div
-          ref={listScrollRef}
-          className="flex flex-col gap-5 lg:max-h-[calc(100svh-17rem)] lg:overflow-y-auto lg:overscroll-contain"
-        >
-          {/* Mobile: stacked cards */}
-          <ul className="flex flex-col gap-2 md:hidden">
-            {rows.map((sub) => (
-              <SubscriptionCard
-                key={sub.id}
-                sub={sub}
-                bcp47={bcp47}
-                isActing={lifecycle.isPending}
-                onEdit={() => setSheet({ mode: 'edit', sub })}
-                onAction={(action) => runAction(sub, action)}
-              />
-            ))}
-          </ul>
+        // overflow-clip rounds the corners without becoming a scroll container, so the sticky header pins to the list box.
+        <div className="overflow-clip rounded-lg border border-border bg-card">
+          <div
+            ref={listScrollRef}
+            className="lg:max-h-[calc(100svh-16rem)] lg:overflow-y-auto lg:overscroll-contain"
+          >
+            <ul className="divide-y divide-border md:hidden">
+              {rows.map((sub) => (
+                <SubscriptionListItem
+                  key={sub.id}
+                  sub={sub}
+                  bcp47={bcp47}
+                  navState={navState}
+                  pendingAction={pending?.id === sub.id ? pending.action : null}
+                  onEdit={() => navigate(`/abos/${sub.id}/bearbeiten`)}
+                  onAction={(action) => runAction(sub, action)}
+                />
+              ))}
+            </ul>
 
-          {/* Desktop: table */}
-          <div className="hidden rounded-xl border border-border bg-card md:block">
-            <Table containerClassName="w-full">
-              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
-                <TableRow className="border-b border-border text-2xs uppercase tracking-wide hover:bg-transparent">
+            <Table containerClassName="hidden w-full md:block">
+              <TableHeader sticky>
+                <TableRow>
                   <TableHead>{t('subscriptions.plan')}</TableHead>
                   <TableHead>{t('subscriptions.customer')}</TableHead>
-                  <TableHead>{t('subscriptions.price')}</TableHead>
+                  <TableHead className="text-right">{t('subscriptions.price')}</TableHead>
                   <TableHead>{t('subscriptions.nextService')}</TableHead>
                   <TableHead>{t('subscriptions.filterStatus')}</TableHead>
-                  <TableHead>
+                  <TableHead className="w-0">
                     <span className="sr-only">{t('subscriptions.edit')}</span>
                   </TableHead>
                 </TableRow>
@@ -327,25 +275,25 @@ export function SubscriptionsPage() {
                     key={sub.id}
                     sub={sub}
                     bcp47={bcp47}
-                    isActing={lifecycle.isPending}
-                    onEdit={() => setSheet({ mode: 'edit', sub })}
+                    navState={navState}
+                    pendingAction={pending?.id === sub.id ? pending.action : null}
+                    onEdit={() => navigate(`/abos/${sub.id}/bearbeiten`)}
                     onAction={(action) => runAction(sub, action)}
                   />
                 ))}
               </TableBody>
             </Table>
-          </div>
 
-          <InfiniteScrollSentinel
-            hasMore={listQuery.hasNextPage}
-            isLoading={listQuery.isFetchingNextPage}
-            onIntersect={() => {
-              if (!listQuery.isFetchingNextPage) void listQuery.fetchNextPage();
-            }}
-            // Only a root when that box actually scrolls (lg+); otherwise the
-            // sentinel sits inside it forever and pages in the whole list.
-            rootRef={isDesktop ? listScrollRef : undefined}
-          />
+            <InfiniteScrollSentinel
+              hasMore={listQuery.hasNextPage}
+              isLoading={listQuery.isFetchingNextPage}
+              onIntersect={() => {
+                if (!listQuery.isFetchingNextPage) void listQuery.fetchNextPage();
+              }}
+              // Root only where the box scrolls (lg+); otherwise the sentinel is always visible and loads every page.
+              rootRef={isDesktop ? listScrollRef : undefined}
+            />
+          </div>
         </div>
       )}
 
@@ -370,24 +318,9 @@ export function SubscriptionsPage() {
           onConfirm={() => lifecycle.mutate({ id: confirm.sub.id, action: confirm.action })}
         />
       ) : null}
-
-      {sheet ? (
-        <SubscriptionSheet
-          key={sheet.mode === 'edit' ? `edit-${sheet.sub.id}` : 'create'}
-          slug={slug}
-          editing={sheet.mode === 'edit' ? sheet.sub : null}
-          onClose={() => setSheet(null)}
-          onSaved={() => {
-            setSheet(null);
-            void queryClient.invalidateQueries({ queryKey: ['subscriptions', slug] });
-          }}
-        />
-      ) : null}
-    </div>
+    </PageContainer>
   );
 }
-
-// --- Row presentation --------------------------------------------------------
 
 function PriceLabel({ sub, bcp47 }: { sub: SubscriptionRow; bcp47: string }) {
   const t = useT();
@@ -406,230 +339,251 @@ function PriceLabel({ sub, bcp47 }: { sub: SubscriptionRow; bcp47: string }) {
 function StripeLinkedBadge() {
   const t = useT();
   return (
-    <Badge variant="info" className="gap-1 whitespace-nowrap px-1.5 py-px text-3xs">
-      <CreditCard className="size-3" aria-hidden="true" />
+    <Badge variant="info">
+      <CreditCard aria-hidden="true" />
       {t('subscriptions.stripeLinked')}
     </Badge>
   );
 }
 
-function RowActions({
-  sub,
-  isActing,
-  onEdit,
-  onAction,
-  layout,
-}: {
-  sub: SubscriptionRow;
-  isActing: boolean;
-  onEdit: () => void;
-  onAction: (action: SubscriptionAction) => void;
-  layout: 'icons' | 'buttons';
-}) {
-  const t = useT();
-  const actions = lifecycleActionsFor(sub.status);
-  const terminal = sub.status === 'cancelled';
-  if (terminal) return null;
+function nextServiceLabel(sub: SubscriptionRow, bcp47: string): string | null {
+  return sub.nextServiceDate
+    ? formatDateTime(sub.nextServiceDate, bcp47, { dateStyle: 'medium' })
+    : null;
+}
 
-  if (layout === 'icons') {
-    return (
-      <div className="flex items-center justify-end gap-1">
+function IconAction({
+  label,
+  tooltip,
+  onClick,
+  disabled,
+  loading,
+  className,
+  children,
+}: {
+  label: string;
+  tooltip: string;
+  onClick: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
-          onClick={onEdit}
-          aria-label={`${t('subscriptions.edit')}: ${sub.planName}`}
-          title={t('subscriptions.edit')}
+          size="icon-sm"
+          onClick={onClick}
+          disabled={disabled}
+          loading={loading}
+          aria-label={label}
+          className={className}
         >
-          <Pencil className="size-4" aria-hidden="true" />
+          {children}
         </Button>
-        {actions.includes('pause') ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={isActing}
-            onClick={() => onAction('pause')}
-            aria-label={`${t('subscriptions.pause')}: ${sub.planName}`}
-            title={t('subscriptions.pause')}
-          >
-            <Pause className="size-4" aria-hidden="true" />
-          </Button>
-        ) : null}
-        {actions.includes('resume') ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={isActing}
-            onClick={() => onAction('resume')}
-            aria-label={`${t('subscriptions.resume')}: ${sub.planName}`}
-            title={t('subscriptions.resume')}
-          >
-            <Play className="size-4" aria-hidden="true" />
-          </Button>
-        ) : null}
-        {actions.includes('cancel') ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={isActing}
-            onClick={() => onAction('cancel')}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            aria-label={`${t('subscriptions.cancel')}: ${sub.planName}`}
-            title={t('subscriptions.cancel')}
-          >
-            <XCircle className="size-4" aria-hidden="true" />
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
 
+interface RowActionProps {
+  sub: SubscriptionRow;
+  pendingAction: SubscriptionAction | null;
+  onEdit: () => void;
+  onAction: (action: SubscriptionAction) => void;
+}
+
+function RowIconActions({ sub, pendingAction, onEdit, onAction }: RowActionProps) {
+  const t = useT();
+  if (sub.status === 'cancelled') return null;
+  const actions = lifecycleActionsFor(sub.status);
+  const busy = pendingAction !== null;
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button variant="outline" size="sm" className="h-11 flex-1" onClick={onEdit}>
-        <Pencil className="size-3.5" aria-hidden="true" />
-        {t('subscriptions.edit')}
-      </Button>
+    <div className="relative z-[1] flex items-center justify-end gap-0.5">
+      <IconAction
+        label={`${t('subscriptions.edit')}: ${sub.planName}`}
+        tooltip={t('subscriptions.edit')}
+        onClick={onEdit}
+      >
+        <Pencil aria-hidden="true" />
+      </IconAction>
       {actions.includes('pause') ? (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-11 flex-1"
-          disabled={isActing}
+        <IconAction
+          label={`${t('subscriptions.pause')}: ${sub.planName}`}
+          tooltip={t('subscriptions.pause')}
+          disabled={busy}
+          loading={pendingAction === 'pause'}
           onClick={() => onAction('pause')}
         >
-          <Pause className="size-3.5" aria-hidden="true" />
-          {t('subscriptions.pause')}
-        </Button>
+          <Pause aria-hidden="true" />
+        </IconAction>
       ) : null}
       {actions.includes('resume') ? (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-11 flex-1"
-          disabled={isActing}
+        <IconAction
+          label={`${t('subscriptions.resume')}: ${sub.planName}`}
+          tooltip={t('subscriptions.resume')}
+          disabled={busy}
+          loading={pendingAction === 'resume'}
           onClick={() => onAction('resume')}
         >
-          <Play className="size-3.5" aria-hidden="true" />
-          {t('subscriptions.resume')}
-        </Button>
+          <Play aria-hidden="true" />
+        </IconAction>
       ) : null}
       {actions.includes('cancel') ? (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-11 flex-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          disabled={isActing}
+        <IconAction
+          label={`${t('subscriptions.cancel')}: ${sub.planName}`}
+          tooltip={t('subscriptions.cancel')}
+          disabled={busy}
+          loading={pendingAction === 'cancel'}
           onClick={() => onAction('cancel')}
+          className="text-destructive hover:bg-destructive-soft hover:text-destructive"
         >
-          <XCircle className="size-3.5" aria-hidden="true" />
-          {t('subscriptions.cancel')}
-        </Button>
+          <XCircle aria-hidden="true" />
+        </IconAction>
       ) : null}
     </div>
   );
 }
 
-function SubscriptionCard({
-  sub,
-  bcp47,
-  isActing,
-  onEdit,
-  onAction,
-}: {
-  sub: SubscriptionRow;
-  bcp47: string;
-  isActing: boolean;
-  onEdit: () => void;
-  onAction: (action: SubscriptionAction) => void;
-}) {
+function RowMenuActions({ sub, pendingAction, onEdit, onAction }: RowActionProps) {
   const t = useT();
+  if (sub.status === 'cancelled') return null;
+  const actions = lifecycleActionsFor(sub.status);
+  const busy = pendingAction !== null;
   return (
-    <li
-      className={cn(
-        'flex flex-col gap-3 rounded-xl border border-border bg-card p-4',
-        sub.status === 'cancelled' && 'opacity-60',
-        sub.status === 'past_due' && 'border-destructive/40',
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate font-medium text-foreground">{sub.planName}</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {sub.customerName ? `${sub.customerName} · ${sub.customerEmail}` : sub.customerEmail}
-          </p>
-        </div>
-        <StatusBadge
-          label={t(`subscriptions.status.${sub.status}` as never)}
-          tone={STATUS_TONE[sub.status]}
-          className="shrink-0"
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
-        <PriceLabel sub={sub} bcp47={bcp47} />
-        {sub.nextServiceDate ? (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <CalendarClock className="size-3.5" aria-hidden="true" />
-            {formatDateTime(sub.nextServiceDate, bcp47, { dateStyle: 'medium' })}
-          </span>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          loading={busy}
+          className="relative z-[1]"
+          aria-label={t('subscriptions.rowActions', { plan: sub.planName })}
+        >
+          <MoreHorizontal aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onEdit}>
+          <Pencil aria-hidden="true" />
+          {t('subscriptions.edit')}
+        </DropdownMenuItem>
+        {actions.includes('pause') ? (
+          <DropdownMenuItem disabled={busy} onSelect={() => onAction('pause')}>
+            <Pause aria-hidden="true" />
+            {t('subscriptions.pause')}
+          </DropdownMenuItem>
         ) : null}
-        {sub.stripeSubscriptionId ? <StripeLinkedBadge /> : null}
+        {actions.includes('resume') ? (
+          <DropdownMenuItem disabled={busy} onSelect={() => onAction('resume')}>
+            <Play aria-hidden="true" />
+            {t('subscriptions.resume')}
+          </DropdownMenuItem>
+        ) : null}
+        {actions.includes('cancel') ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={busy}
+              onSelect={() => onAction('cancel')}
+              className="text-destructive focus:text-destructive"
+            >
+              <XCircle aria-hidden="true" />
+              {t('subscriptions.cancel')}
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+interface RowProps extends RowActionProps {
+  bcp47: string;
+  navState: ListNavState;
+}
+
+function SubscriptionListItem({ bcp47, navState, ...props }: RowProps) {
+  const t = useT();
+  const { sub } = props;
+  const next = nextServiceLabel(sub, bcp47);
+  return (
+    <li className="relative flex items-start gap-3 px-4 py-3 transition-colors hover:bg-accent/60">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/abos/${sub.id}`}
+            state={navState}
+            className={cn('min-w-0 truncate text-2sm font-medium text-foreground', ROW_LINK)}
+          >
+            {sub.planName}
+          </Link>
+          <StatusBadge
+            label={t(`subscriptions.status.${sub.status}` as never)}
+            tone={STATUS_TONE[sub.status]}
+          />
+        </div>
+        <p className="truncate text-xs text-muted-foreground">
+          {sub.customerName ? `${sub.customerName} · ${sub.customerEmail}` : sub.customerEmail}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <PriceLabel sub={sub} bcp47={bcp47} />
+          {next ? (
+            <span className="inline-flex items-center gap-1 tabular-nums text-muted-foreground">
+              <CalendarClock className="size-3.5" aria-hidden="true" />
+              {next}
+            </span>
+          ) : null}
+          {sub.stripeSubscriptionId ? <StripeLinkedBadge /> : null}
+        </div>
       </div>
-      <RowActions
-        sub={sub}
-        isActing={isActing}
-        onEdit={onEdit}
-        onAction={onAction}
-        layout="buttons"
-      />
+      <RowMenuActions {...props} />
     </li>
   );
 }
 
-function SubscriptionTableRow({
-  sub,
-  bcp47,
-  isActing,
-  onEdit,
-  onAction,
-}: {
-  sub: SubscriptionRow;
-  bcp47: string;
-  isActing: boolean;
-  onEdit: () => void;
-  onAction: (action: SubscriptionAction) => void;
-}) {
+function SubscriptionTableRow({ bcp47, navState, ...props }: RowProps) {
   const t = useT();
+  const { sub } = props;
+  const customer = sub.customerName ? `${sub.customerName} · ${sub.customerEmail}` : null;
   return (
-    <TableRow
-      className={cn(
-        sub.status === 'cancelled' && 'opacity-60',
-        sub.status === 'past_due' && 'bg-destructive/5',
-      )}
-    >
-      <TableCell>
+    <TableRow className="relative">
+      <TableCell className="max-w-[22rem]">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-foreground">{sub.planName}</span>
+          <Link
+            to={`/abos/${sub.id}`}
+            state={navState}
+            title={sub.planName}
+            className={cn(
+              'min-w-0 truncate font-medium text-foreground underline-offset-2 hover:underline',
+              ROW_LINK,
+            )}
+          >
+            {sub.planName}
+          </Link>
           {sub.stripeSubscriptionId ? <StripeLinkedBadge /> : null}
         </div>
       </TableCell>
-      <TableCell className="max-w-[16rem]">
-        {sub.customerName ? (
-          <>
-            <p className="truncate">{sub.customerName}</p>
-            <p className="truncate text-xs text-muted-foreground">{sub.customerEmail}</p>
-          </>
-        ) : (
-          <p className="truncate">{sub.customerEmail}</p>
-        )}
+      <TableCell className="max-w-[20rem]">
+        <p className="truncate" title={customer ?? sub.customerEmail}>
+          {sub.customerName ? (
+            <>
+              {sub.customerName}{' '}
+              <span className="text-muted-foreground">· {sub.customerEmail}</span>
+            </>
+          ) : (
+            sub.customerEmail
+          )}
+        </p>
       </TableCell>
-      <TableCell>
+      <TableCell className="text-right">
         <PriceLabel sub={sub} bcp47={bcp47} />
       </TableCell>
-      <TableCell className="whitespace-nowrap text-muted-foreground">
-        {sub.nextServiceDate
-          ? formatDateTime(sub.nextServiceDate, bcp47, { dateStyle: 'medium' })
-          : '—'}
+      <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
+        {nextServiceLabel(sub, bcp47) ?? '—'}
       </TableCell>
       <TableCell>
         <StatusBadge
@@ -637,222 +591,9 @@ function SubscriptionTableRow({
           tone={STATUS_TONE[sub.status]}
         />
       </TableCell>
-      <TableCell>
-        <RowActions
-          sub={sub}
-          isActing={isActing}
-          onEdit={onEdit}
-          onAction={onAction}
-          layout="icons"
-        />
+      <TableCell className="py-1.5">
+        <RowIconActions {...props} />
       </TableCell>
     </TableRow>
-  );
-}
-
-// --- Create / edit sheet -------------------------------------------------------
-
-/** Accepts "49.90" and German "49,90" / "1.234,56"; returns integer cents. */
-function parseEurToCents(value: string): number | undefined {
-  let v = value.trim();
-  if (!v) return undefined;
-  if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');
-  const n = Number(v);
-  if (!Number.isFinite(n) || n < 0) return undefined;
-  return Math.round(n * 100);
-}
-
-function SubscriptionSheet({
-  slug,
-  editing,
-  onClose,
-  onSaved,
-}: {
-  slug: CompanySlug;
-  editing: SubscriptionRow | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const t = useT();
-  const isEdit = editing != null;
-
-  const [customerEmail, setCustomerEmail] = useState(editing?.customerEmail ?? '');
-  const [customerName, setCustomerName] = useState(editing?.customerName ?? '');
-  const [planName, setPlanName] = useState(editing?.planName ?? '');
-  const [monthlyPrice, setMonthlyPrice] = useState(
-    editing ? (editing.monthlyPriceCents / 100).toFixed(2) : '',
-  );
-  const [intervalMonths, setIntervalMonths] = useState(String(editing?.intervalMonths ?? 1));
-  const [nextServiceDate, setNextServiceDate] = useState(
-    editing?.nextServiceDate ? editing.nextServiceDate.slice(0, 10) : '',
-  );
-  const [stripeId, setStripeId] = useState(editing?.stripeSubscriptionId ?? '');
-  const [services, setServices] = useState(editing?.servicesIncluded.join(', ') ?? '');
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const mutation = useMutation({
-    mutationFn: () => {
-      const cents = parseEurToCents(monthlyPrice);
-      const interval = Math.max(1, parseInt(intervalMonths, 10) || 1);
-      const servicesArr = services
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      if (editing) {
-        const patch: SubscriptionUpdateInput = {
-          planName: planName.trim(),
-          intervalMonths: interval,
-          stripeSubscriptionId: stripeId.trim() === '' ? null : stripeId.trim(),
-          servicesIncluded: servicesArr,
-          nextServiceDate: nextServiceDate === '' ? null : nextServiceDate,
-        };
-        if (cents !== undefined) patch.monthlyPriceCents = cents;
-        return subscriptionsAdminApi.update(slug, editing.id, patch);
-      }
-
-      const payload: SubscriptionCreateInput = {
-        customerEmail: customerEmail.trim(),
-        planName: planName.trim(),
-        intervalMonths: interval,
-      };
-      if (customerName.trim()) payload.customerName = customerName.trim();
-      if (cents !== undefined) payload.monthlyPriceCents = cents;
-      if (stripeId.trim()) payload.stripeSubscriptionId = stripeId.trim();
-      if (servicesArr.length > 0) payload.servicesIncluded = servicesArr;
-      if (nextServiceDate) payload.nextServiceDate = nextServiceDate;
-      return subscriptionsAdminApi.create(slug, payload);
-    },
-    onSuccess: onSaved,
-    onError: (err) => setFormError(errMessage(err)),
-  });
-
-  return (
-    <Sheet
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <SheetContent
-        side="right"
-        variant="content"
-        className="flex flex-col gap-5 overflow-y-auto sm:max-w-md"
-      >
-        <div>
-          <SheetTitle className="not-sr-only font-serif text-xl tracking-tight">
-            {isEdit ? t('subscriptions.edit') : t('subscriptions.newSubscription')}
-          </SheetTitle>
-          <SheetDescription>{t('subscriptions.subtitle')}</SheetDescription>
-        </div>
-
-        <form
-          className="flex flex-1 flex-col gap-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setFormError(null);
-            if (!planName.trim() || (!isEdit && !customerEmail.trim())) return;
-            mutation.mutate();
-          }}
-        >
-          <FormField label={t('subscriptions.form.customerEmail')} required={!isEdit}>
-            <Input
-              type="email"
-              value={customerEmail}
-              onChange={(e) => setCustomerEmail(e.target.value)}
-              disabled={isEdit}
-              autoComplete="email"
-              className="h-11 sm:h-9"
-            />
-          </FormField>
-          <FormField label={t('subscriptions.form.customerName')}>
-            <Input
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              disabled={isEdit}
-              autoComplete="name"
-              className="h-11 sm:h-9"
-            />
-          </FormField>
-          <FormField label={t('subscriptions.form.planName')} required>
-            <Input
-              value={planName}
-              onChange={(e) => setPlanName(e.target.value)}
-              className="h-11 sm:h-9"
-            />
-          </FormField>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label={t('subscriptions.form.monthlyPrice')}>
-              <Input
-                inputMode="decimal"
-                value={monthlyPrice}
-                onChange={(e) => setMonthlyPrice(e.target.value)}
-                placeholder="49,90"
-                className="h-11 sm:h-9"
-              />
-            </FormField>
-            <FormField label={t('subscriptions.form.intervalMonths')}>
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                value={intervalMonths}
-                onChange={(e) => setIntervalMonths(e.target.value)}
-                className="h-11 sm:h-9"
-              />
-            </FormField>
-          </div>
-          <FormField label={t('subscriptions.form.nextServiceDate')}>
-            <Input
-              type="date"
-              value={nextServiceDate}
-              onChange={(e) => setNextServiceDate(e.target.value)}
-              className="h-11 sm:h-9"
-            />
-          </FormField>
-          <FormField label={t('subscriptions.form.stripeId')}>
-            <Input
-              value={stripeId}
-              onChange={(e) => setStripeId(e.target.value)}
-              placeholder="sub_…"
-              className="h-11 font-mono text-xs sm:h-9"
-            />
-          </FormField>
-          <FormField label={t('subscriptions.form.services')}>
-            <Input
-              value={services}
-              onChange={(e) => setServices(e.target.value)}
-              className="h-11 sm:h-9"
-            />
-          </FormField>
-
-          {formError ? (
-            <div
-              role="alert"
-              className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-            >
-              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <span>{formError}</span>
-            </div>
-          ) : null}
-
-          <div className="mt-auto flex gap-2 pt-2">
-            <SheetClose asChild>
-              <Button type="button" variant="ghost" className="h-11 flex-1 sm:h-9">
-                {t('common.cancel')}
-              </Button>
-            </SheetClose>
-            <Button type="submit" className="h-11 flex-1 sm:h-9" disabled={mutation.isPending}>
-              {mutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : isEdit ? null : (
-                <Plus className="size-4" aria-hidden="true" />
-              )}
-              {isEdit ? t('subscriptions.form.save') : t('subscriptions.form.create')}
-            </Button>
-          </div>
-        </form>
-      </SheetContent>
-    </Sheet>
   );
 }

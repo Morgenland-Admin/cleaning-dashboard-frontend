@@ -1,29 +1,29 @@
-import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  ChevronDown,
-  Eye,
-  EyeOff,
-  Flag,
-  Loader2,
-  RefreshCcw,
-  Reply,
-  Star,
-  Trash2,
-} from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, Flag, Reply, Star, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ClaudeChatBox } from '@/components/claude-chat-box';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
+import { FilterChip } from '@/components/filter-chip';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
-import { PageHeading } from '@/components/page-heading';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
+import { SectionLabel } from '@/components/section';
 import { StatusBadge } from '@/components/status-badge';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject, type CompanySlug } from '@/contexts/project-context';
@@ -53,6 +53,8 @@ const STATUS_TONE: Record<ReviewStatus, 'info' | 'success' | 'warning' | 'neutra
 
 const STATUS_FILTERS: (ReviewStatus | 'all')[] = ['all', 'new', 'published', 'flagged', 'hidden'];
 
+type PendingAction = 'published' | 'hidden' | 'delete' | null;
+
 function apiMessage(err: unknown, t: ReturnType<typeof useT>): string | null {
   if (!err) return null;
   if (err instanceof ApiError) return err.message;
@@ -71,8 +73,6 @@ export function ReviewsPage() {
   const slug = activeProject.companySlug;
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | 'all'>('all');
 
-  // The list scrolls inside its own box so a few hundred rows stay navigable
-  // without the page growing to many screens tall.
   const listScrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
   const [flaggedOnly, setFlaggedOnly] = useState(false);
@@ -109,10 +109,9 @@ export function ReviewsPage() {
     }
   }, [listQuery]);
 
-  // Switching filter or brand shows a different list — start it at the top.
   useEffect(() => {
     listScrollRef.current?.scrollTo({ top: 0 });
-  }, [statusFilter, slug]);
+  }, [statusFilter, flaggedOnly, slug]);
 
   const invalidate = useCallback(
     () => void queryClient.invalidateQueries({ queryKey: ['reviews', slug] }),
@@ -149,43 +148,32 @@ export function ReviewsPage() {
       invalidate();
       setDeleteTarget(null);
     },
-    // Close the confirm dialog so the error alert underneath is visible.
     onError: () => setDeleteTarget(null),
   });
 
   const listError = apiMessage(listQuery.error, t);
-  // Flag/respond errors are surfaced inside their dialogs; this alert covers the rest.
+  // Flag/respond errors surface inside their dialogs; this alert covers the rest.
   const actionError = apiMessage(statusMutation.error, t) ?? apiMessage(deleteMutation.error, t);
 
-  const busyId =
-    (statusMutation.isPending ? statusMutation.variables?.id : null) ??
-    (deleteMutation.isPending ? deleteMutation.variables : null);
+  function pendingFor(id: number): PendingAction {
+    if (statusMutation.isPending && statusMutation.variables?.id === id) {
+      return statusMutation.variables.status === 'hidden' ? 'hidden' : 'published';
+    }
+    if (deleteMutation.isPending && deleteMutation.variables === id) return 'delete';
+    return null;
+  }
 
   const heading = (
     <PageHeading
-      breadcrumb={
-        <span className="flex items-center gap-2">
-          <span>{isAllBrands ? t('brandFilter.allBrands') : activeProject.name}</span>
-          <span aria-hidden="true">/</span>
-          <span className="text-foreground">{t('reviews.title')}</span>
-        </span>
-      }
+      breadcrumb={[
+        { label: isAllBrands ? t('brandFilter.allBrands') : activeProject.name },
+        { label: t('reviews.title') },
+      ]}
       title={t('reviews.title')}
       subtitle={t('reviews.subtitle')}
       actions={
         isAllBrands ? undefined : (
-          <Button
-            variant="outline"
-            className="h-11"
-            onClick={() => void listQuery.refetch()}
-            disabled={listQuery.isFetching}
-          >
-            <RefreshCcw
-              className={cn('size-4', listQuery.isFetching && 'animate-spin')}
-              aria-hidden="true"
-            />
-            {t('common.refresh')}
-          </Button>
+          <RefreshButton onClick={() => void listQuery.refetch()} fetching={listQuery.isFetching} />
         )
       }
     />
@@ -193,129 +181,106 @@ export function ReviewsPage() {
 
   if (isAllBrands) {
     return (
-      <div className="mx-auto w-full max-w-3xl">
+      <PageContainer width="full">
         {heading}
-        <Card>
-          <CardContent className="p-0">
-            <EmptyState
-              icon={<Star className="size-8" aria-hidden="true" />}
-              message={t('reviews.selectBrandFirst')}
-            />
-          </CardContent>
-        </Card>
-      </div>
+        <EmptyState
+          variant="dashed"
+          icon={<Star aria-hidden="true" />}
+          message={t('reviews.selectBrandFirst')}
+        />
+      </PageContainer>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <PageContainer width="full">
       {heading}
 
-      <div className="flex flex-col gap-6">
-        {/* Filters: status chips + flagged-only toggle */}
-        <div
-          className="flex flex-wrap items-center gap-2"
-          role="group"
-          aria-label={t('reviews.filterStatus')}
-        >
-          {STATUS_FILTERS.map((value) => (
-            <FilterChip
-              key={value}
-              active={statusFilter === value}
-              label={value === 'all' ? t('reviews.filterAll') : t(STATUS_KEY[value])}
-              onClick={() => setStatusFilter(value)}
-            />
-          ))}
-          <span aria-hidden="true" className="h-6 w-px bg-border" />
-          <FilterChip
-            active={flaggedOnly}
-            label={t('reviews.onlyFlagged')}
-            icon={<Flag className="size-3.5" aria-hidden="true" />}
-            onClick={() => setFlaggedOnly((v) => !v)}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <SegmentedControl
+            label={t('reviews.filterStatus')}
+            value={statusFilter}
+            onValueChange={setStatusFilter}
+            overflow="scroll"
+            options={STATUS_FILTERS.map((value) => ({
+              value,
+              label: value === 'all' ? t('reviews.filterAll') : t(STATUS_KEY[value]),
+            }))}
           />
+          <FilterChip
+            pressed={flaggedOnly}
+            onPressedChange={setFlaggedOnly}
+            icon={<Flag aria-hidden="true" />}
+          >
+            {t('reviews.onlyFlagged')}
+          </FilterChip>
         </div>
 
         {listError ? (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between"
-          >
-            <span className="flex items-start gap-2">
-              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <span>{listError}</span>
-            </span>
-            <Button
-              variant="outline"
-              className="h-11 shrink-0"
-              onClick={() => void listQuery.refetch()}
-              disabled={listQuery.isFetching}
-            >
-              <RefreshCcw className="size-4" aria-hidden="true" />
-              {t('common.refresh')}
-            </Button>
-          </div>
+          <ErrorState
+            error={new Error(listError)}
+            onRetry={() => void listQuery.refetch()}
+            retrying={listQuery.isFetching}
+          />
         ) : null}
 
         {actionError ? (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          <Alert
+            tone="destructive"
+            onDismiss={() => {
+              statusMutation.reset();
+              deleteMutation.reset();
+            }}
           >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <span>{actionError}</span>
-          </div>
+            {actionError}
+          </Alert>
         ) : null}
 
         {listQuery.isLoading ? (
-          <div className="flex flex-col gap-4" aria-hidden="true">
-            {[0, 1, 2].map((i) => (
-              <SkeletonCard key={i} />
-            ))}
-          </div>
-        ) : reviews.length === 0 && !listError ? (
-          <Card>
-            <CardContent className="p-0">
-              <EmptyState
-                icon={<Star className="size-8" aria-hidden="true" />}
-                title={t('reviews.empty')}
-                message={t('reviews.emptyHint')}
-              />
-            </CardContent>
-          </Card>
+          <SkeletonRows label={t('common.loading')} />
+        ) : reviews.length === 0 ? (
+          listError ? null : (
+            <EmptyState
+              variant="dashed"
+              icon={<Star aria-hidden="true" />}
+              title={t('reviews.empty')}
+              message={t('reviews.emptyHint')}
+            />
+          )
         ) : (
           <div
             ref={listScrollRef}
-            className="flex flex-col gap-4 lg:max-h-[calc(100svh-15rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
+            className="rounded-lg border border-border bg-card lg:max-h-[calc(100svh-15rem)] lg:overflow-y-auto lg:overscroll-contain"
           >
-            {reviews.map((review) => (
-              <ReviewCard
-                key={review.id}
-                review={review}
-                t={t}
-                bcp47={bcp47}
-                disabled={busyId === review.id}
-                readOnly={readOnly}
-                onPublish={() => statusMutation.mutate({ id: review.id, status: 'published' })}
-                onHide={() => statusMutation.mutate({ id: review.id, status: 'hidden' })}
-                onFlag={() => {
-                  flagMutation.reset();
-                  setFlagTarget(review);
-                }}
-                onRespond={() => {
-                  respondMutation.reset();
-                  setRespondTarget(review);
-                }}
-                onDelete={() => setDeleteTarget(review)}
-              />
-            ))}
+            <ul className="divide-y divide-border">
+              {reviews.map((review) => (
+                <ReviewListItem
+                  key={review.id}
+                  review={review}
+                  t={t}
+                  bcp47={bcp47}
+                  pending={pendingFor(review.id)}
+                  readOnly={readOnly}
+                  onPublish={() => statusMutation.mutate({ id: review.id, status: 'published' })}
+                  onHide={() => statusMutation.mutate({ id: review.id, status: 'hidden' })}
+                  onFlag={() => {
+                    flagMutation.reset();
+                    setFlagTarget(review);
+                  }}
+                  onRespond={() => {
+                    respondMutation.reset();
+                    setRespondTarget(review);
+                  }}
+                  onDelete={() => setDeleteTarget(review)}
+                />
+              ))}
+            </ul>
             <InfiniteScrollSentinel
               hasMore={!!listQuery.hasNextPage}
               isLoading={listQuery.isFetchingNextPage}
               onIntersect={loadMore}
-              // Only a root when that box actually scrolls (lg+); otherwise the
-              // sentinel sits inside it forever and pages in the whole list.
+              // Root only when the box scrolls (lg+); otherwise the sentinel stays inside it and loads every page.
               rootRef={isDesktop ? listScrollRef : undefined}
             />
           </div>
@@ -378,37 +343,7 @@ export function ReviewsPage() {
           }}
         />
       </div>
-    </div>
-  );
-}
-
-function FilterChip({
-  active,
-  label,
-  icon,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  icon?: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        'inline-flex h-11 items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-        active
-          ? 'border-transparent bg-primary text-primary-foreground'
-          : 'border-border bg-card text-foreground/80 hover:bg-muted',
-      )}
-    >
-      {icon}
-      {label}
-    </button>
+    </PageContainer>
   );
 }
 
@@ -419,21 +354,18 @@ function StarRating({ rating, label }: { rating: number; label: string }) {
         <Star
           key={i}
           aria-hidden="true"
-          className={cn(
-            'size-4',
-            i <= rating ? 'fill-rating text-rating' : 'text-muted-foreground/40',
-          )}
+          className={cn('size-4', i <= rating ? 'fill-rating text-rating' : 'text-input')}
         />
       ))}
     </span>
   );
 }
 
-function ReviewCard({
+function ReviewListItem({
   review,
   t,
   bcp47,
-  disabled,
+  pending,
   readOnly,
   onPublish,
   onHide,
@@ -444,7 +376,7 @@ function ReviewCard({
   review: ReviewRow;
   t: ReturnType<typeof useT>;
   bcp47: string;
-  disabled: boolean;
+  pending: PendingAction;
   readOnly: boolean;
   onPublish: () => void;
   onHide: () => void;
@@ -452,108 +384,112 @@ function ReviewCard({
   onRespond: () => void;
   onDelete: () => void;
 }) {
+  const disabled = pending !== null;
   const name =
     review.customerName && review.customerName.trim() !== ''
       ? review.customerName
       : t('reviews.anonymous');
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 p-4 sm:p-6">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <StarRating
-            rating={review.rating}
-            label={t('reviews.ratingAria', { n: review.rating })}
-          />
-          <span className="min-w-0 truncate text-sm font-semibold">{name}</span>
-          {review.customerEmail ? (
-            <span className="min-w-0 truncate text-xs text-muted-foreground">
-              {review.customerEmail}
-            </span>
-          ) : null}
-          <time dateTime={review.createdAt} className="text-xs tabular-nums text-muted-foreground">
-            {formatDateTime(review.createdAt, bcp47)}
-          </time>
-          <span className="ml-auto flex flex-wrap items-center gap-1.5">
-            <StatusBadge label={t(STATUS_KEY[review.status])} tone={STATUS_TONE[review.status]} />
-            {review.flagged ? (
-              <Badge variant="destructive" className="gap-1">
-                <Flag className="size-3" aria-hidden="true" />
-                {t('reviews.flaggedBadge')}
-              </Badge>
-            ) : null}
+    <li className="flex flex-col gap-2 px-4 py-3 sm:px-5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <StarRating rating={review.rating} label={t('reviews.ratingAria', { n: review.rating })} />
+        <span className="min-w-0 truncate text-2sm font-semibold">{name}</span>
+        {review.customerEmail ? (
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {review.customerEmail}
           </span>
-        </div>
+        ) : null}
+        <time dateTime={review.createdAt} className="text-xs tabular-nums text-muted-foreground">
+          {formatDateTime(review.createdAt, bcp47)}
+        </time>
+        <span className="ml-auto flex flex-wrap items-center gap-1.5">
+          <StatusBadge label={t(STATUS_KEY[review.status])} tone={STATUS_TONE[review.status]} />
+          {review.flagged ? (
+            <Badge variant="destructive">
+              <Flag aria-hidden="true" />
+              {t('reviews.flaggedBadge')}
+            </Badge>
+          ) : null}
+        </span>
+      </div>
 
-        {review.comment ? <ExpandableComment text={review.comment} /> : null}
+      {review.comment ? <ExpandableComment text={review.comment} /> : null}
 
-        {review.flagged && review.flagReason ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
-            <span className="mb-0.5 block text-xs font-medium uppercase tracking-wide text-destructive">
-              {t('reviews.flagReason')}
-            </span>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-              {review.flagReason}
-            </p>
+      {review.flagged && review.flagReason ? (
+        <Alert tone="warning" icon={<Flag aria-hidden="true" />} title={t('reviews.flagReason')}>
+          <p className="whitespace-pre-wrap">{review.flagReason}</p>
+        </Alert>
+      ) : null}
+
+      {review.partnerResponse ? (
+        <blockquote className="border-l-2 border-primary/40 pl-3">
+          <div className="mb-0.5 flex flex-wrap items-center gap-2">
+            <SectionLabel as="span">{t('reviews.responded')}</SectionLabel>
+            {review.respondedAt ? (
+              <time
+                dateTime={review.respondedAt}
+                className="text-xs tabular-nums text-muted-foreground"
+              >
+                {formatDateTime(review.respondedAt, bcp47)}
+              </time>
+            ) : null}
           </div>
-        ) : null}
+          <p className="whitespace-pre-wrap text-2sm leading-relaxed text-foreground/90">
+            {review.partnerResponse}
+          </p>
+        </blockquote>
+      ) : null}
 
-        {review.partnerResponse ? (
-          <blockquote className="ml-2 border-l-2 border-primary/40 pl-3 sm:ml-4">
-            <div className="mb-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-medium uppercase tracking-wide">{t('reviews.responded')}</span>
-              {review.respondedAt ? (
-                <time dateTime={review.respondedAt} className="tabular-nums">
-                  {formatDateTime(review.respondedAt, bcp47)}
-                </time>
-              ) : null}
-            </div>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-              {review.partnerResponse}
-            </p>
-          </blockquote>
-        ) : null}
-
-        {readOnly ? null : (
-          <div className="flex flex-wrap gap-2 pt-1">
-            {review.status !== 'published' ? (
-              <Button variant="outline" className="h-11" onClick={onPublish} disabled={disabled}>
-                <Eye className="size-4" aria-hidden="true" />
-                {t('reviews.publish')}
-              </Button>
-            ) : null}
-            {review.status !== 'hidden' ? (
-              <Button variant="outline" className="h-11" onClick={onHide} disabled={disabled}>
-                <EyeOff className="size-4" aria-hidden="true" />
-                {t('reviews.hide')}
-              </Button>
-            ) : null}
-            <Button variant="outline" className="h-11" onClick={onRespond} disabled={disabled}>
-              <Reply className="size-4" aria-hidden="true" />
-              {t('reviews.respond')}
-            </Button>
-            {!review.flagged ? (
-              <Button variant="outline" className="h-11" onClick={onFlag} disabled={disabled}>
-                <Flag className="size-4" aria-hidden="true" />
-                {t('reviews.flag')}
-              </Button>
-            ) : null}
+      {readOnly ? null : (
+        <div className="-ml-2 flex flex-wrap items-center gap-1">
+          {review.status !== 'published' ? (
             <Button
-              variant="outline"
-              className="h-11 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={onDelete}
+              variant="ghost"
+              size="xs"
+              onClick={onPublish}
               disabled={disabled}
+              loading={pending === 'published'}
             >
-              {disabled ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Trash2 className="size-4" aria-hidden="true" />
-              )}
-              {t('reviews.deleteAction')}
+              <Eye aria-hidden="true" />
+              {t('reviews.publish')}
             </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          ) : null}
+          {review.status !== 'hidden' ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={onHide}
+              disabled={disabled}
+              loading={pending === 'hidden'}
+            >
+              <EyeOff aria-hidden="true" />
+              {t('reviews.hide')}
+            </Button>
+          ) : null}
+          <Button variant="ghost" size="xs" onClick={onRespond} disabled={disabled}>
+            <Reply aria-hidden="true" />
+            {t('reviews.respond')}
+          </Button>
+          {!review.flagged ? (
+            <Button variant="ghost" size="xs" onClick={onFlag} disabled={disabled}>
+              <Flag aria-hidden="true" />
+              {t('reviews.flag')}
+            </Button>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="xs"
+            className="text-destructive hover:bg-destructive-soft hover:text-destructive"
+            onClick={onDelete}
+            disabled={disabled}
+            loading={pending === 'delete'}
+          >
+            <Trash2 aria-hidden="true" />
+            {t('reviews.deleteAction')}
+          </Button>
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -564,7 +500,7 @@ function ExpandableComment({ text }: { text: string }) {
   const isLong = text.length > LONG_COMMENT_CHARS || text.split('\n').length > 4;
 
   if (!isLong) {
-    return <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>;
+    return <p className="whitespace-pre-wrap text-2sm leading-relaxed">{text}</p>;
   }
 
   return (
@@ -572,18 +508,17 @@ function ExpandableComment({ text }: { text: string }) {
       type="button"
       aria-expanded={expanded}
       onClick={() => setExpanded((v) => !v)}
-      className={cn(
-        '-mx-1 rounded-md px-1 py-0.5 text-left',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-      )}
+      className="-mx-1 rounded-md px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
-      <p className={cn('whitespace-pre-wrap text-sm leading-relaxed', !expanded && 'line-clamp-4')}>
+      <p
+        className={cn('whitespace-pre-wrap text-2sm leading-relaxed', !expanded && 'line-clamp-4')}
+      >
         {text}
       </p>
       <span className="mt-1 inline-flex min-h-6 items-center gap-1 text-xs font-medium text-primary">
         <ChevronDown
           aria-hidden="true"
-          className={cn('size-3.5 transition-transform', expanded && 'rotate-180')}
+          className={cn('size-3.5 transition-transform duration-fast', expanded && 'rotate-180')}
         />
         <span aria-hidden="true">…</span>
       </span>
@@ -591,11 +526,15 @@ function ExpandableComment({ text }: { text: string }) {
   );
 }
 
-function SkeletonCard() {
+function SkeletonRows({ label }: { label: string }) {
   return (
-    <Card>
-      <CardContent className="p-4 sm:p-6">
-        <div className="space-y-3" aria-hidden="true">
+    <div
+      role="status"
+      aria-label={label}
+      className="divide-y divide-border rounded-lg border border-border bg-card"
+    >
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="space-y-2.5 px-4 py-3 sm:px-5" aria-hidden="true">
           <div className="flex items-center gap-3">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-4 w-32" />
@@ -603,13 +542,13 @@ function SkeletonCard() {
           </div>
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-5/6" />
-          <div className="flex gap-2 pt-1">
-            <Skeleton className="h-11 w-28" />
-            <Skeleton className="h-11 w-28" />
+          <div className="flex gap-2">
+            <Skeleton className="h-7 w-24" />
+            <Skeleton className="h-7 w-24" />
           </div>
         </div>
-      </CardContent>
-    </Card>
+      ))}
+    </div>
   );
 }
 
@@ -688,7 +627,6 @@ function ReviewTextDialog({
   isPending: boolean;
   errorText: string | null;
   onSubmit: (value: string) => void;
-  /** When set, shows the Claude assistant above the textarea (respond only). */
   aiAssist?: { companySlug: CompanySlug; reviewId: number };
   t: ReturnType<typeof useT>;
 }) {
@@ -696,77 +634,63 @@ function ReviewTextDialog({
   const trimmed = value.trim();
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content
-          aria-describedby={undefined}
-          className="fixed left-1/2 top-1/2 z-50 grid w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-card p-6 shadow-lg outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent aria-describedby={undefined} className={cn(aiAssist && 'max-w-lg')}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (trimmed !== '') onSubmit(trimmed);
+          }}
         >
-          <DialogPrimitive.Title className="text-lg font-semibold">{title}</DialogPrimitive.Title>
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (trimmed !== '') onSubmit(trimmed);
-            }}
-          >
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={textareaId}>{label}</Label>
-              {aiAssist ? (
-                <div className="overflow-hidden rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring">
-                  <textarea
-                    id={textareaId}
-                    rows={6}
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    required
-                    disabled={isPending}
-                    className="block min-h-[120px] w-full resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed outline-none disabled:opacity-50"
-                  />
-                  <ReviewResponseAssistant
-                    companySlug={aiAssist.companySlug}
-                    reviewId={aiAssist.reviewId}
-                    value={value}
-                    setValue={setValue}
-                    t={t}
-                  />
-                </div>
-              ) : (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={textareaId}>{label}</Label>
+            {aiAssist ? (
+              <div className="overflow-hidden rounded-md border border-input bg-card shadow-xs transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
                 <Textarea
                   id={textareaId}
-                  rows={5}
+                  rows={6}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
                   required
                   disabled={isPending}
+                  className="block min-h-[120px] resize-none rounded-none border-0 leading-relaxed shadow-none focus-visible:ring-0"
                 />
-              )}
-            </div>
-            {errorText ? (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="flex items-start gap-1.5 text-sm text-destructive"
-              >
-                <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                <span>{errorText}</span>
+                <ReviewResponseAssistant
+                  companySlug={aiAssist.companySlug}
+                  reviewId={aiAssist.reviewId}
+                  value={value}
+                  setValue={setValue}
+                  t={t}
+                />
               </div>
-            ) : null}
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <DialogPrimitive.Close asChild>
-                <Button type="button" variant="outline" className="h-11" disabled={isPending}>
-                  {cancelLabel}
-                </Button>
-              </DialogPrimitive.Close>
-              <Button type="submit" className="h-11" disabled={isPending || trimmed === ''}>
-                {isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-                {submitLabel}
+            ) : (
+              <Textarea
+                id={textareaId}
+                rows={5}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                required
+                disabled={isPending}
+              />
+            )}
+          </div>
+          {errorText ? <Alert tone="destructive">{errorText}</Alert> : null}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={isPending}>
+                {cancelLabel}
               </Button>
-            </div>
-          </form>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+            </DialogClose>
+            <Button type="submit" loading={isPending} disabled={trimmed === ''}>
+              {submitLabel}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

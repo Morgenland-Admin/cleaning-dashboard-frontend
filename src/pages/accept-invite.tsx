@@ -1,15 +1,40 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader2, Lock } from 'lucide-react';
-import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Fragment, useState, type ReactNode } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
-import { BrandBlock } from '@/components/brand-logo';
+import { BackLink } from '@/components/back-link';
+import { LoadingState } from '@/components/empty-state';
+import { FormField } from '@/components/form-field';
+import { PasswordInput } from '@/components/password-input';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { useT } from '@/i18n';
 import { ApiError, invitesPublicApi } from '@/lib/api';
+import { usePageTitle } from '@/lib/use-page-title';
+import { AuthFrame, AuthHeading, AuthSuccess } from '@/pages/reset-password';
+
+type T = ReturnType<typeof useT>;
+
+const MEMBERSHIP_ROLES = ['owner', 'admin', 'manager', 'viewer', 'partner'] as const;
+
+function roleLabel(role: string, t: T): string {
+  return (MEMBERSHIP_ROLES as readonly string[]).includes(role)
+    ? t(`profile.role.${role as (typeof MEMBERSHIP_ROLES)[number]}`)
+    : role;
+}
+
+// Fills `{{name}}` placeholders with nodes: bold parts without splitting the sentence (word order differs per language).
+function withNodes(template: string, nodes: Record<string, ReactNode>): ReactNode {
+  return template.split(/\{\{(\w+)\}\}/g).map((part, i) =>
+    // Odd indexes are the captured placeholder names.
+    i % 2 === 1 ? <Fragment key={i}>{nodes[part] ?? part}</Fragment> : part,
+  );
+}
 
 export function AcceptInvitePage() {
+  const t = useT();
+  usePageTitle(t('auth.invite.title'));
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
   const navigate = useNavigate();
@@ -24,7 +49,6 @@ export function AcceptInvitePage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
@@ -38,7 +62,7 @@ export function AcceptInvitePage() {
       }),
     onSuccess: () => {
       setDone(true);
-      // Better Auth signUp via auth.api doesn't return a session — redirect to /login.
+      // signUp via auth.api returns no session, so send the user to /login.
       setTimeout(() => navigate('/login', { replace: true }), 1500);
     },
     onError: (err) => {
@@ -46,30 +70,27 @@ export function AcceptInvitePage() {
     },
   });
 
+  const backToLogin = (
+    <BackLink to="/login" className="mt-6 self-start">
+      {t('login.forgotPasswordBack')}
+    </BackLink>
+  );
+
   if (!token) {
     return (
-      <CenteredFrame>
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <span>Einladungs-Token fehlt im Link.</span>
-        </div>
-        <Link
-          to="/login"
-          className="mt-6 inline-flex items-center justify-center text-2sm font-medium text-foreground hover:underline"
-        >
-          ← Zurück zum Login
-        </Link>
-      </CenteredFrame>
+      <AuthFrame>
+        <AuthHeading title={t('auth.invite.title')} />
+        <Alert tone="destructive">{t('auth.invite.tokenMissing')}</Alert>
+        {backToLogin}
+      </AuthFrame>
     );
   }
 
   if (lookup.isLoading) {
     return (
-      <CenteredFrame>
-        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Einladung wird geprüft …
-        </div>
-      </CenteredFrame>
+      <AuthFrame>
+        <LoadingState label={t('auth.invite.checking')} />
+      </AuthFrame>
     );
   }
 
@@ -79,149 +100,97 @@ export function AcceptInvitePage() {
         ? lookup.error.message
         : lookup.error
           ? (lookup.error as Error).message
-          : 'Einladung nicht gefunden.';
+          : t('auth.invite.notFound');
     return (
-      <CenteredFrame>
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <span>{msg}</span>
-        </div>
-        <Link
-          to="/login"
-          className="mt-6 inline-flex items-center justify-center text-2sm font-medium text-foreground hover:underline"
-        >
-          ← Zurück zum Login
-        </Link>
-      </CenteredFrame>
+      <AuthFrame>
+        <AuthHeading title={t('auth.invite.title')} />
+        <Alert tone="destructive">{msg}</Alert>
+        {backToLogin}
+      </AuthFrame>
     );
   }
 
   if (done) {
     return (
-      <CenteredFrame>
-        <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-success-soft text-success">
-            <CheckCircle2 className="size-6" />
-          </div>
-          <div className="space-y-1">
-            <h2 className="font-serif text-xl font-semibold tracking-tight">Konto erstellt</h2>
-            <p className="text-sm text-muted-foreground">
-              Du wirst gleich zum Login weitergeleitet …
-            </p>
-          </div>
-        </div>
-      </CenteredFrame>
+      <AuthFrame>
+        <AuthSuccess title={t('auth.invite.successTitle')} body={t('auth.invite.successBody')} />
+      </AuthFrame>
     );
   }
 
   const invite = lookup.data.invite;
+  const strong = (text: string) => (
+    <strong className="font-semibold text-foreground">{text}</strong>
+  );
 
   return (
-    <CenteredFrame>
-      <div className="space-y-1 text-center">
-        <h1 className="font-serif text-xl font-semibold tracking-tight">Einladung annehmen</h1>
-        <p className="text-sm text-muted-foreground">
-          <strong>{invite.invitedByName}</strong> hat dich
-          {invite.companyName ? (
-            <>
-              {' '}
-              für <strong>{invite.companyName}</strong>
-            </>
-          ) : null}{' '}
-          als <em>{invite.role}</em> eingeladen.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          E-Mail: <code>{invite.email}</code>
-        </p>
-      </div>
+    <AuthFrame>
+      <AuthHeading
+        title={t('auth.invite.title')}
+        subtitle={withNodes(
+          invite.companyName ? t('auth.invite.invitedByForCompany') : t('auth.invite.invitedBy'),
+          {
+            name: strong(invite.invitedByName),
+            company: invite.companyName ? strong(invite.companyName) : null,
+            role: strong(roleLabel(invite.role, t)),
+          },
+        )}
+      />
 
       <form
-        className="mt-6 space-y-4"
+        className="grid gap-4"
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
           if (password.length < 8) {
-            setError('Passwort muss mindestens 8 Zeichen lang sein.');
+            setError(t('auth.invite.passwordTooShort'));
             return;
           }
           if (!firstName.trim()) {
-            setError('Bitte Vorname angeben.');
+            setError(t('auth.invite.firstNameRequired'));
             return;
           }
           accept.mutate();
         }}
       >
+        <FormField label={t('auth.invite.email')}>
+          <Input value={invite.email} readOnly disabled />
+        </FormField>
+
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="first-name">Vorname</Label>
+          <FormField label={t('auth.invite.firstName')} required>
             <Input
-              id="first-name"
+              autoComplete="given-name"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               required
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="last-name">Nachname</Label>
-            <Input id="last-name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="password">Passwort</Label>
-          <div className="relative">
-            <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          </FormField>
+          <FormField label={t('auth.invite.lastName')}>
             <Input
-              id="password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
-              required
-              className="pl-9 pr-10"
+              autoComplete="family-name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword((s) => !s)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-2 text-muted-foreground hover:text-foreground"
-              aria-label={showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
-            >
-              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </button>
-          </div>
-          <p className="text-2xs text-muted-foreground">Mindestens 8 Zeichen.</p>
+          </FormField>
         </div>
 
-        {error ? (
-          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        <FormField label={t('auth.invite.password')} hint={t('auth.invite.passwordHint')} required>
+          <PasswordInput
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            required
+          />
+        </FormField>
 
-        <Button type="submit" disabled={accept.isPending} className="w-full">
-          {accept.isPending ? (
-            <>
-              <Loader2 className="mr-2 size-4 animate-spin" /> Konto wird erstellt …
-            </>
-          ) : (
-            'Einladung annehmen'
-          )}
+        {error ? <Alert tone="destructive">{error}</Alert> : null}
+
+        <Button type="submit" loading={accept.isPending} className="w-full">
+          {accept.isPending ? t('auth.invite.submitting') : t('auth.invite.submit')}
         </Button>
       </form>
-    </CenteredFrame>
-  );
-}
-
-function CenteredFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid min-h-screen place-items-center bg-background p-6">
-      <div className="w-full max-w-md space-y-6">
-        <div className="flex justify-center">
-          <BrandBlock />
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">{children}</div>
-      </div>
-    </div>
+    </AuthFrame>
   );
 }

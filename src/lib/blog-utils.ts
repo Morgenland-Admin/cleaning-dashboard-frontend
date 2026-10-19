@@ -1,14 +1,15 @@
 import type { DictKey } from '@/i18n';
-import type { SeoPageRow, SeoPageStatus } from '@/lib/api';
+import type { BlogListItem, SeoPageRow, SeoPageStatus, UserAccessLevel } from '@/lib/api';
+import type { DocFacts } from '@/lib/blog-seo';
 
-/** Client-side upload guardrails (backend allows up to 10 MB). */
+// Client-side limit; the backend allows up to 10 MB.
 export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export const ACCEPTED_IMAGE_LABEL = 'JPG, PNG, WebP';
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
-/** Recommended Open Graph dimensions for the article hero / social card. */
-export const OG_WIDTH = 1200;
-export const OG_HEIGHT = 630;
+// The storefront hero crops to 16:9; Google Discover wants ≥1200 px wide.
+export const RECOMMENDED_IMAGE = { width: 1600, height: 900 };
+export const MIN_IMAGE_WIDTH = 1200;
 
 export const STATUS_KEY: Record<SeoPageStatus, DictKey> = {
   draft: 'blog.statusDraft',
@@ -22,8 +23,27 @@ export const STATUS_TONE: Record<SeoPageStatus, 'info' | 'success' | 'warning'> 
   protected: 'warning',
 };
 
+export function isPublic(status: SeoPageStatus): boolean {
+  return status === 'live' || status === 'protected';
+}
+
+// Mirrors the backend's seo-pages write gate (requireAccess).
+export function canEditBlog(level: UserAccessLevel | undefined): boolean {
+  return level === 'super_admin' || level === 'admin' || level === 'manager' || level === 'seo';
+}
+
 export function postSlug(path: string): string {
   return path.replace(/^blog\//, '');
+}
+
+/** The storefront serves posts with a trailing slash (Next `trailingSlash: true`). */
+export function publicPostUrl(domain: string | null | undefined, slug: string): string | null {
+  return domain && slug ? `https://${domain}/blog/${slug}/` : null;
+}
+
+/** What the storefront puts in <title> when the SEO title is empty. */
+export function defaultSeoTitle(title: string, brand: string): string {
+  return title.trim() ? `${title.trim()} | ${brand}` : '';
 }
 
 export function formatBytes(bytes: number): string {
@@ -32,8 +52,18 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Pull the featured image URL out of the article's JSON-LD, if any. */
-export function featuredImageUrl(row: SeoPageRow): string | null {
+export type ListBlocker = 'title' | 'body' | 'image';
+
+/** Same rule as the backend's "needs attention" filter. */
+export function listBlockers(item: BlogListItem): ListBlocker[] {
+  const out: ListBlocker[] = [];
+  if (!item.hasTitle) out.push('title');
+  if (!item.hasBody) out.push('body');
+  if (!item.image) out.push('image');
+  return out;
+}
+
+export function featuredImageUrl(row: Pick<SeoPageRow, 'schemaJsonld'>): string | null {
   const schema = row.schemaJsonld;
   const nodes = Array.isArray(schema) ? schema : schema ? [schema] : [];
   for (const node of nodes) {
@@ -51,8 +81,7 @@ export function featuredImageUrl(row: SeoPageRow): string | null {
   return null;
 }
 
-/** Read author / publish date carried in the article's JSON-LD Article node. */
-export function articleMeta(row: SeoPageRow): {
+export function articleMeta(row: Pick<SeoPageRow, 'schemaJsonld'>): {
   author: string | null;
   datePublished: string | null;
 } {
@@ -79,21 +108,18 @@ export function articleMeta(row: SeoPageRow): {
   return { author, datePublished };
 }
 
-/** Path prefix every blog row carries in seo_pages (`blog/<slug>`). */
+// Blog posts are seo_pages rows with path `blog/<slug>`.
 export const BLOG_PATH_PREFIX = 'blog/';
 
 const UMLAUTS: Record<string, string> = { ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' };
 
-/**
- * German-aware URL slug: umlauts transliterated (ä → ae), everything else
- * reduced to a-z0-9 joined by single hyphens. Matches the backend PATH_RE.
- */
+// Must match the backend PATH_RE.
 export function slugify(input: string): string {
   return input
     .toLowerCase()
     .replace(/[äöüß]/g, (c) => UMLAUTS[c] ?? c)
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 120)
@@ -109,8 +135,8 @@ export interface ArticleFields {
 }
 
 export function readArticle(row: Pick<SeoPageRow, 'schemaJsonld'>): ArticleFields {
-  const { author, datePublished } = articleMeta(row as SeoPageRow);
-  return { image: featuredImageUrl(row as SeoPageRow), author, datePublished };
+  const { author, datePublished } = articleMeta(row);
+  return { image: featuredImageUrl(row), author, datePublished };
 }
 
 function isObject(node: unknown): node is Record<string, unknown> {
@@ -121,11 +147,7 @@ function isArticle(node: unknown): node is Record<string, unknown> {
   return isObject(node) && /article|blogposting/i.test(String(node['@type'] ?? ''));
 }
 
-/**
- * Write the editor's article fields onto the JSON-LD Article node, keeping
- * every other node and key the automation put there. Empty values delete the
- * key so the storefront falls back to its defaults.
- */
+// Keeps nodes/keys the automation wrote; empty values delete the key so the storefront uses its defaults.
 export function writeArticle(
   schema: SeoPageRow['schemaJsonld'],
   fields: ArticleFields & { headline: string; description: string },
@@ -158,22 +180,42 @@ export function writeArticle(
   return apply(isObject(schema) ? schema : {});
 }
 
-/** Plain text of an HTML fragment (for word counts and SEO checks). */
-export function htmlToText(html: string): string {
-  if (typeof DOMParser === 'undefined') return html.replace(/<[^>]+>/g, ' ');
-  return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '';
-}
-
 export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-/** Same rate the storefront uses for its "Min. Lesezeit". */
+// Same rate as the storefront's "Min. Lesezeit".
 export function readingMinutes(words: number): number {
   return Math.max(1, Math.round(words / 200));
 }
 
-/** `2026-10-09T…Z` → `2026-10-09` for a date input, in local time. */
+/** Facts the SEO checks need, read from the editor's HTML (browser only: DOMParser). */
+export function extractDocFacts(html: string): DocFacts & { text: string } {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const text = (doc.body.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const firstParagraph =
+    Array.from(doc.querySelectorAll('p'))
+      .map((p) => (p.textContent ?? '').trim())
+      .find(Boolean) ?? '';
+  return {
+    text,
+    words: countWords(text),
+    headings: Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6')).map((h) => ({
+      level: Number(h.tagName.slice(1)),
+      text: (h.textContent ?? '').trim(),
+    })),
+    images: Array.from(doc.querySelectorAll('img')).map((img) => ({
+      src: img.getAttribute('src') ?? '',
+      alt: img.getAttribute('alt'),
+    })),
+    links: Array.from(doc.querySelectorAll('a[href]')).map((a) => ({
+      href: a.getAttribute('href') ?? '',
+      text: (a.textContent ?? '').trim(),
+    })),
+    firstParagraph,
+  };
+}
+
 export function toDateInput(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -182,11 +224,7 @@ export function toDateInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/**
- * Storefronts whose look the editor canvas and preview reproduce (see
- * `.site-theme-*` in index.css). Brands without an entry fall back to the
- * dashboard palette.
- */
+// Brands without an entry fall back to the dashboard palette (see `.site-theme-*` in index.css).
 const SITE_THEME: Partial<Record<string, string>> = {
   hamburg_teppichreinigung: 'site-theme-hamburg',
 };

@@ -1,18 +1,5 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  CheckCircle2,
-  Download,
-  Inbox,
-  Loader2,
-  Pencil,
-  Plus,
-  RefreshCcw,
-  Search,
-  Trash2,
-  Users,
-  X,
-} from 'lucide-react';
+import { CheckCircle2, Download, Eye, Inbox, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -20,10 +7,13 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { CsvImportSheet } from '@/components/csv-import-sheet';
 import { EmptyState } from '@/components/empty-state';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
-import { PageHeading } from '@/components/page-heading';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
+import { SearchInput } from '@/components/search-input';
 import { StatusBadge } from '@/components/status-badge';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { ListSkeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -43,15 +33,12 @@ import {
   type Customer,
   type LoyaltyTier,
 } from '@/lib/api';
+import { useDebounced } from '@/lib/use-debounced';
 import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
-import {
-  cn,
-  formatCurrency,
-  formatDateTime,
-  formatNumber,
-  isNonContactableEmail,
-} from '@/lib/utils';
+import { formatCurrency, formatDateTime, formatNumber, isNonContactableEmail } from '@/lib/utils';
+
+import type { ListNavState } from '@/lib/list-nav';
 
 type TierFilter = LoyaltyTier | 'all';
 
@@ -73,25 +60,15 @@ export function CustomersPage() {
   const slug = activeProject.companySlug;
   const [tier, setTier] = useState<TierFilter>('all');
   const [search, setSearch] = useState('');
-  // The search runs server-side (an id or name can sit thousands of rows deep),
-  // so the input is debounced to keep one request per pause in typing.
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  // The list scrolls inside its own box so a few hundred rows stay navigable
-  // without the page growing to many screens tall. The table header sticks to
-  // the top of that box.
+  const debounced = useDebounced(search.trim(), 300);
+  const debouncedSearch = search.trim() === '' ? '' : debounced;
   const listScrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
   const [confirming, setConfirming] = useState<Customer | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-
   function clearSearch() {
     setSearch('');
-    setDebouncedSearch('');
   }
 
   const listQuery = useInfiniteQuery({
@@ -116,8 +93,8 @@ export function CustomersPage() {
     () => (listQuery.data?.pages ?? []).flatMap((p) => p.customers),
     [listQuery.data],
   );
+  const navState: ListNavState = useMemo(() => ({ ids: rows.map((c) => c.id) }), [rows]);
 
-  // Switching filter, search or brand shows a different list — start it at the top.
   useEffect(() => {
     listScrollRef.current?.scrollTo({ top: 0 });
   }, [tier, debouncedSearch, slug]);
@@ -137,35 +114,39 @@ export function CustomersPage() {
 
   if (isAllBrands) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+      <PageContainer width="full">
         <PageHeading title={t('customers.title')} subtitle={t('customers.subtitle')} />
         <EmptyState
-          icon={<Users className="size-6" aria-hidden="true" />}
+          variant="dashed"
+          icon={<Users aria-hidden="true" />}
           message={t('customers.selectBrandFirst')}
         />
-      </div>
+      </PageContainer>
     );
   }
 
-  const queryErrorMessage = listQuery.error ? errMessage(listQuery.error) : null;
-  // Spinner in the search box: the typed text is ahead of the results, or the
-  // matching request is still in flight.
   const searching =
     search.trim() !== debouncedSearch ||
     (!!debouncedSearch && listQuery.isFetching && !listQuery.isFetchingNextPage);
 
+  const sentinel = (
+    <InfiniteScrollSentinel
+      hasMore={listQuery.hasNextPage}
+      isLoading={listQuery.isFetchingNextPage}
+      onIntersect={() => {
+        if (!listQuery.isFetchingNextPage) void listQuery.fetchNextPage();
+      }}
+      // Root only where the box scrolls (lg+); otherwise the sentinel is always visible and loads every page.
+      rootRef={isDesktop ? listScrollRef : undefined}
+    />
+  );
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+    <PageContainer width="full">
       <PageHeading
         title={t('customers.title')}
         subtitle={t('customers.subtitle')}
-        breadcrumb={
-          <>
-            <span>{activeProject.name}</span>
-            <span aria-hidden="true"> / </span>
-            <span className="text-foreground">{t('customers.title')}</span>
-          </>
-        }
+        breadcrumb={[{ label: activeProject.name }, { label: t('customers.title') }]}
         actions={
           <>
             <ExportCustomersButton />
@@ -175,28 +156,17 @@ export function CustomersPage() {
               i18nPrefix="customers"
               sampleHref="/admin/customers/import/sample"
               importFn={(cs, body) => customersAdminApi.import(cs, body)}
-              triggerClassName="h-11 sm:h-9"
               onImported={() =>
                 void queryClient.invalidateQueries({ queryKey: ['customers', slug] })
               }
             />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-11 sm:h-9"
+            <RefreshButton
               onClick={() => void listQuery.refetch()}
-              disabled={listQuery.isFetching}
-              aria-busy={listQuery.isFetching || undefined}
-            >
-              <RefreshCcw
-                className={cn('size-3.5', listQuery.isFetching && 'animate-spin')}
-                aria-hidden="true"
-              />
-              {t('common.refresh')}
-            </Button>
-            <Button size="sm" className="h-11 sm:h-9" asChild>
+              fetching={listQuery.isFetching}
+            />
+            <Button size="sm" asChild>
               <Link to="/customers/new">
-                <Plus className="size-3.5" aria-hidden="true" />
+                <Plus aria-hidden="true" />
                 {t('customers.newCustomer')}
               </Link>
             </Button>
@@ -204,194 +174,137 @@ export function CustomersPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          role="tablist"
-          aria-label={t('customers.filterTier')}
-          className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1"
-        >
-          {TIER_FILTERS.map((value) => {
-            const active = tier === value;
-            return (
-              <button
-                key={value}
-                role="tab"
-                type="button"
-                aria-selected={active}
-                onClick={() => setTier(value)}
-                className={cn(
-                  'inline-flex min-h-11 items-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:px-2.5 sm:text-2xs sm:uppercase sm:tracking-wide',
-                  active
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                )}
-              >
-                {value === 'all' ? t('customers.filterAll') : t(`customers.tier.${value}` as never)}
-              </button>
-            );
-          })}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <SegmentedControl
+            label={t('customers.filterTier')}
+            value={tier}
+            onValueChange={setTier}
+            overflow="scroll"
+            className="min-w-0"
+            options={TIER_FILTERS.map((value) => ({
+              value,
+              label:
+                value === 'all' ? t('customers.filterAll') : t(`customers.tier.${value}` as never),
+            }))}
+          />
+          <SearchInput
+            value={search}
+            onValueChange={setSearch}
+            searching={searching}
+            placeholder={t('customers.searchPlaceholder')}
+            containerClassName="sm:w-72 sm:shrink-0"
+          />
         </div>
 
-        <div className="relative w-full sm:w-72">
-          {searching ? (
-            <Loader2
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
-              aria-hidden="true"
+        {actionError ? (
+          <Alert tone="destructive" onDismiss={() => setActionError(null)}>
+            {actionError}
+          </Alert>
+        ) : null}
+
+        {listQuery.isLoading ? (
+          <div role="status">
+            <span className="sr-only">{t('common.loading')}</span>
+            <ListSkeleton rows={4} avatar={false} />
+          </div>
+        ) : listQuery.error ? (
+          <ErrorState
+            error={listQuery.error}
+            onRetry={() => void listQuery.refetch()}
+            retrying={listQuery.isFetching}
+          />
+        ) : rows.length === 0 ? (
+          debouncedSearch ? (
+            <EmptyState
+              variant="dashed"
+              icon={<Search aria-hidden="true" />}
+              title={t('customers.searchEmpty')}
+              message={t('customers.searchEmptyHint', { query: debouncedSearch })}
+              action={
+                <Button variant="outline" size="sm" onClick={clearSearch}>
+                  <X aria-hidden="true" />
+                  {t('customers.clearSearch')}
+                </Button>
+              }
             />
           ) : (
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
+            <EmptyState
+              variant="dashed"
+              icon={<Inbox aria-hidden="true" />}
+              title={t('customers.empty')}
+              message={t('customers.emptyHint')}
+              action={
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/customers/new">
+                    <Plus aria-hidden="true" />
+                    {t('customers.newCustomer')}
+                  </Link>
+                </Button>
+              }
             />
-          )}
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('customers.searchPlaceholder')}
-            aria-label={t('customers.searchPlaceholder')}
-            className="pl-9 pr-9"
-          />
-          {search ? (
-            <button
-              type="button"
-              onClick={clearSearch}
-              aria-label={t('customers.clearSearch')}
-              className="absolute right-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-6"
-            >
-              <X className="size-4" aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      {actionError ? (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-        >
-          <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <span className="flex-1">{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label={t('common.close')}
-            className="-m-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
-
-      {listQuery.isLoading ? (
-        <ListSkeleton rows={4} avatar />
-      ) : queryErrorMessage ? (
-        <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <span>{queryErrorMessage}</span>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-11 sm:h-8"
-            onClick={() => void listQuery.refetch()}
-          >
-            <RefreshCcw className="size-3.5" aria-hidden="true" />
-            {t('common.refresh')}
-          </Button>
-        </div>
-      ) : rows.length === 0 ? (
-        debouncedSearch ? (
-          <EmptyState
-            icon={<Search className="size-6" aria-hidden="true" />}
-            title={t('customers.searchEmpty')}
-            message={t('customers.searchEmptyHint', { query: debouncedSearch })}
-            action={
-              <Button variant="outline" size="sm" className="h-11 sm:h-9" onClick={clearSearch}>
-                <X className="size-3.5" aria-hidden="true" />
-                {t('customers.clearSearch')}
-              </Button>
-            }
-          />
+          )
         ) : (
-          <EmptyState
-            icon={<Inbox className="size-6" aria-hidden="true" />}
-            title={t('customers.empty')}
-            message={t('customers.emptyHint')}
-            action={
-              <Button size="sm" className="h-11 sm:h-9" asChild>
-                <Link to="/customers/new">
-                  <Plus className="size-3.5" aria-hidden="true" />
-                  {t('customers.newCustomer')}
-                </Link>
-              </Button>
-            }
-          />
-        )
-      ) : (
-        <div
-          ref={listScrollRef}
-          className="flex flex-col gap-5 lg:max-h-[calc(100svh-17rem)] lg:overflow-y-auto lg:overscroll-contain"
-        >
-          <ul className="flex flex-col gap-2 md:hidden">
-            {rows.map((c) => (
-              <CustomerCard
-                key={c.id}
-                customer={c}
-                bcp47={bcp47}
-                onDelete={() => setConfirming(c)}
-              />
-            ))}
-          </ul>
+          <>
+            <ul className="divide-y divide-border rounded-lg border border-border bg-card md:hidden">
+              {rows.map((c) => (
+                <CustomerMobileRow
+                  key={c.id}
+                  customer={c}
+                  navState={navState}
+                  bcp47={bcp47}
+                  isDeleting={deleteMutation.isPending && deleteMutation.variables?.id === c.id}
+                  onDelete={() => setConfirming(c)}
+                />
+              ))}
+            </ul>
 
-          <div className="hidden rounded-xl border border-border bg-card md:block">
-            <Table containerClassName="w-full">
-              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border [&_th]:bg-card">
-                <TableRow className="border-b border-border text-2xs uppercase tracking-wide hover:bg-transparent">
-                  <TableHead className="w-16">{t('customers.colId')}</TableHead>
-                  <TableHead>{t('customers.colCustomer')}</TableHead>
-                  <TableHead>{t('customers.colPhone')}</TableHead>
-                  <TableHead className="text-right">{t('customers.colOrders')}</TableHead>
-                  <TableHead className="text-right">{t('customers.colSpent')}</TableHead>
-                  <TableHead>{t('customers.colTier')}</TableHead>
-                  <TableHead>{t('customers.colCreated')}</TableHead>
-                  <TableHead>
-                    <span className="sr-only">{t('customers.colActions')}</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((c) => (
-                  <CustomerTableRow
-                    key={c.id}
-                    customer={c}
-                    bcp47={bcp47}
-                    isDeleting={deleteMutation.isPending && deleteMutation.variables?.id === c.id}
-                    onDelete={() => setConfirming(c)}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+            {/* Card is the scroll container (sticky header anchors to it), so the Table's own wrapper must not scroll. */}
+            <div
+              ref={listScrollRef}
+              className="hidden overflow-x-auto rounded-lg border border-border bg-card md:block lg:max-h-[calc(100svh-17rem)] lg:overflow-auto lg:overscroll-contain"
+            >
+              <Table containerClassName="w-full">
+                <TableHeader sticky>
+                  <TableRow>
+                    <TableHead className="w-16 text-right">{t('customers.colId')}</TableHead>
+                    <TableHead>{t('customers.colCustomer')}</TableHead>
+                    <TableHead>{t('customers.colEmail')}</TableHead>
+                    <TableHead>{t('customers.colPhone')}</TableHead>
+                    <TableHead className="text-right">{t('customers.colOrders')}</TableHead>
+                    <TableHead className="text-right">{t('customers.colSpent')}</TableHead>
+                    <TableHead>{t('customers.colTier')}</TableHead>
+                    <TableHead>{t('customers.colCreated')}</TableHead>
+                    <TableHead>
+                      <span className="sr-only">{t('customers.colActions')}</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((c) => (
+                    <CustomerTableRow
+                      key={c.id}
+                      customer={c}
+                      navState={navState}
+                      bcp47={bcp47}
+                      isDeleting={deleteMutation.isPending && deleteMutation.variables?.id === c.id}
+                      onDelete={() => setConfirming(c)}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+              {isDesktop ? sentinel : null}
+            </div>
 
-          <InfiniteScrollSentinel
-            hasMore={listQuery.hasNextPage}
-            isLoading={listQuery.isFetchingNextPage}
-            onIntersect={() => {
-              if (!listQuery.isFetchingNextPage) void listQuery.fetchNextPage();
-            }}
-            // Only a root when that box actually scrolls (lg+); otherwise the
-            // sentinel sits inside it forever and pages in the whole list.
-            rootRef={isDesktop ? listScrollRef : undefined}
-          />
-        </div>
-      )}
+            {isDesktop ? null : sentinel}
+          </>
+        )}
+      </div>
 
       <ConfirmDialog
         open={!!confirming}
         onOpenChange={(open) => {
-          if (!open && !deleteMutation.isPending) setConfirming(null);
+          if (!open) setConfirming(null);
         }}
         title={t('customers.confirmDeleteTitle')}
         description={
@@ -405,69 +318,108 @@ export function CustomersPage() {
           if (confirming) deleteMutation.mutate(confirming);
         }}
       />
-    </div>
+    </PageContainer>
   );
 }
 
-// --- Row presentation --------------------------------------------------------
+/** Stretched row link (one real link per row); row actions sit above it (z-[1]), below the sticky header (z-10). */
+const ROW_LINK =
+  'rounded-sm after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring';
 
-function CustomerCard({
+function IdChip({ id }: { id: number }) {
+  return (
+    <span className="rounded-sm bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-foreground">
+      #{id}
+    </span>
+  );
+}
+
+function TierBadges({ customer }: { customer: Customer }) {
+  const t = useT();
+  return (
+    <>
+      <StatusBadge
+        label={t(`customers.tier.${customer.loyaltyTier}` as never)}
+        tone={TIER_TONE[customer.loyaltyTier]}
+      />
+      {isNonContactableEmail(customer.email) ? (
+        <StatusBadge label={t('customers.nonContactable')} tone="warning" />
+      ) : null}
+    </>
+  );
+}
+
+function DeleteButton({
   customer,
-  bcp47,
+  isDeleting,
   onDelete,
 }: {
   customer: Customer;
-  bcp47: string;
+  isDeleting: boolean;
   onDelete: () => void;
+}) {
+  const t = useT();
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      loading={isDeleting}
+      onClick={onDelete}
+      className="relative z-[1] text-destructive hover:bg-destructive-soft hover:text-destructive"
+      aria-label={`${t('customers.delete')}: ${customer.email}`}
+      title={t('customers.delete')}
+    >
+      <Trash2 aria-hidden="true" />
+    </Button>
+  );
+}
+
+function CustomerMobileRow({
+  customer,
+  bcp47,
+  isDeleting,
+  onDelete,
+  navState,
+}: {
+  customer: Customer;
+  bcp47: string;
+  isDeleting: boolean;
+  onDelete: () => void;
+  navState: ListNavState;
 }) {
   const t = useT();
   const noEmail = isNonContactableEmail(customer.email);
   return (
-    <li className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-      <div className="flex items-start justify-between gap-2">
-        <Link to={`/customers/${customer.id}`} className="min-w-0 hover:underline">
-          <p className="truncate font-medium text-foreground">{customer.name ?? '—'}</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {noEmail ? t('customers.noEmail') : customer.email}
-          </p>
-        </Link>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <StatusBadge
-            label={t(`customers.tier.${customer.loyaltyTier}` as never)}
-            tone={TIER_TONE[customer.loyaltyTier]}
-          />
-          {noEmail ? <StatusBadge label={t('customers.nonContactable')} tone="warning" /> : null}
+    <li className="relative flex items-start gap-3 px-3 py-2.5 transition-colors hover:bg-accent/60">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/customers/${customer.id}`}
+            state={navState}
+            className={`min-w-0 truncate text-2sm font-medium text-foreground ${ROW_LINK}`}
+            title={t('customers.viewProfile')}
+          >
+            {customer.name ?? '—'}
+          </Link>
+          <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+            #{customer.id}
+          </span>
+        </div>
+        <p className="truncate text-xs text-muted-foreground">
+          {noEmail ? t('customers.noEmail') : customer.email}
+          {customer.phone ? ` · ${customer.phone}` : ''}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <TierBadges customer={customer} />
+          <span className="tabular-nums">
+            {t('customers.colOrders')}: {formatNumber(customer.totalOrders, bcp47)}
+          </span>
+          <span className="tabular-nums">
+            {formatCurrency(customer.totalSpentCents / 100, 'EUR', bcp47)}
+          </span>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium tabular-nums text-foreground">
-          #{customer.id}
-        </span>
-        {customer.phone ? <span>{customer.phone}</span> : null}
-        <span>
-          {t('customers.colOrders')}: {formatNumber(customer.totalOrders, bcp47)}
-        </span>
-        <span>
-          {t('customers.colSpent')}: {formatCurrency(customer.totalSpentCents / 100, 'EUR', bcp47)}
-        </span>
-      </div>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" className="h-11 flex-1" asChild>
-          <Link to={`/customers/${customer.id}`}>
-            <Pencil className="size-3.5" aria-hidden="true" />
-            {t('customers.viewProfile')}
-          </Link>
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-11 flex-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          onClick={onDelete}
-        >
-          <Trash2 className="size-3.5" aria-hidden="true" />
-          {t('customers.delete')}
-        </Button>
-      </div>
+      <DeleteButton customer={customer} isDeleting={isDeleting} onDelete={onDelete} />
     </li>
   );
 }
@@ -477,87 +429,71 @@ function CustomerTableRow({
   bcp47,
   isDeleting,
   onDelete,
+  navState,
 }: {
   customer: Customer;
   bcp47: string;
   isDeleting: boolean;
   onDelete: () => void;
+  navState: ListNavState;
 }) {
   const t = useT();
   const noEmail = isNonContactableEmail(customer.email);
   return (
-    <TableRow>
-      <TableCell className="whitespace-nowrap">
-        <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium tabular-nums text-foreground">
-          #{customer.id}
-        </span>
+    <TableRow className="relative">
+      <TableCell className="whitespace-nowrap py-2 text-right">
+        <IdChip id={customer.id} />
       </TableCell>
-      <TableCell className="max-w-[22rem]">
-        <Link to={`/customers/${customer.id}`} className="group block min-w-0">
-          <p className="truncate font-medium text-foreground group-hover:underline">
-            {customer.name ?? '—'}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {noEmail ? t('customers.noEmail') : customer.email}
-          </p>
+      <TableCell className="max-w-[16rem] py-2">
+        <Link
+          to={`/customers/${customer.id}`}
+          state={navState}
+          className={`block truncate font-medium text-foreground hover:underline ${ROW_LINK}`}
+          title={t('customers.viewProfile')}
+        >
+          {customer.name ?? '—'}
         </Link>
       </TableCell>
-      <TableCell className="whitespace-nowrap text-muted-foreground">
+      <TableCell className="max-w-[18rem] truncate py-2 text-muted-foreground">
+        {noEmail ? t('customers.noEmail') : customer.email}
+      </TableCell>
+      <TableCell className="whitespace-nowrap py-2 text-muted-foreground">
         {customer.phone ?? '—'}
       </TableCell>
-      <TableCell className="text-right tabular-nums">
+      <TableCell className="py-2 text-right tabular-nums">
         {formatNumber(customer.totalOrders, bcp47)}
       </TableCell>
-      <TableCell className="text-right tabular-nums">
+      <TableCell className="whitespace-nowrap py-2 text-right tabular-nums">
         {formatCurrency(customer.totalSpentCents / 100, 'EUR', bcp47)}
       </TableCell>
-      <TableCell>
-        <div className="flex flex-wrap items-center gap-1">
-          <StatusBadge
-            label={t(`customers.tier.${customer.loyaltyTier}` as never)}
-            tone={TIER_TONE[customer.loyaltyTier]}
-          />
-          {noEmail ? <StatusBadge label={t('customers.nonContactable')} tone="warning" /> : null}
+      <TableCell className="py-2">
+        <div className="flex items-center gap-1">
+          <TierBadges customer={customer} />
         </div>
       </TableCell>
-      <TableCell className="whitespace-nowrap text-muted-foreground">
+      <TableCell className="whitespace-nowrap py-2 tabular-nums text-muted-foreground">
         {formatDateTime(customer.createdAt, bcp47, { dateStyle: 'medium' })}
       </TableCell>
-      <TableCell>
+      <TableCell className="py-2">
         <div className="flex items-center justify-end gap-1">
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             asChild
+            className="relative z-[1]"
             aria-label={`${t('customers.viewProfile')}: ${customer.email}`}
             title={t('customers.viewProfile')}
           >
-            <Link to={`/customers/${customer.id}`}>
-              <Pencil className="size-4" aria-hidden="true" />
+            <Link to={`/customers/${customer.id}`} state={navState}>
+              <Eye aria-hidden="true" />
             </Link>
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={isDeleting}
-            onClick={onDelete}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            aria-label={`${t('customers.delete')}: ${customer.email}`}
-            title={t('customers.delete')}
-          >
-            {isDeleting ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Trash2 className="size-4" aria-hidden="true" />
-            )}
-          </Button>
+          <DeleteButton customer={customer} isDeleting={isDeleting} onDelete={onDelete} />
         </div>
       </TableCell>
     </TableRow>
   );
 }
-
-// --- Export ------------------------------------------------------------------
 
 function ExportCustomersButton() {
   const t = useT();
@@ -579,9 +515,9 @@ function ExportCustomersButton() {
 
   if (state === 'queued') {
     return (
-      <Button variant="outline" size="sm" asChild className="h-11 text-success sm:h-9">
+      <Button variant="outline" size="sm" asChild className="text-success">
         <Link to="/exports">
-          <CheckCircle2 className="size-3.5" aria-hidden="true" />
+          <CheckCircle2 aria-hidden="true" />
           {t('customers.exportQueued')}
         </Link>
       </Button>
@@ -589,18 +525,8 @@ function ExportCustomersButton() {
   }
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="h-11 sm:h-9"
-      onClick={createExport}
-      disabled={state === 'loading'}
-    >
-      {state === 'loading' ? (
-        <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-      ) : (
-        <Download className="size-3.5" aria-hidden="true" />
-      )}
+    <Button variant="outline" size="sm" onClick={createExport} loading={state === 'loading'}>
+      <Download aria-hidden="true" />
       {t('customers.export')}
     </Button>
   );

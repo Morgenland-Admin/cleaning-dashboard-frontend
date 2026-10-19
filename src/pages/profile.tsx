@@ -1,25 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
-  MapPin,
-  Pencil,
-  Plus,
-  ShieldCheck,
-  Star,
-  Trash2,
-  Users as UsersIcon,
-  X,
-} from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, MapPin, Pencil, Plus, ShieldCheck, Star, Trash2 } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { AddressAutocomplete } from '@/components/address-autocomplete';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { FormField } from '@/components/form-field';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { SectionCard } from '@/components/section';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { useT } from '@/i18n';
 import {
   usersApi,
@@ -32,7 +29,6 @@ import {
   ApiError,
 } from '@/lib/api';
 import { usePageTitle } from '@/lib/use-page-title';
-import { cn } from '@/lib/utils';
 
 const GENDER_KEYS = {
   male: 'profile.genderMale',
@@ -76,8 +72,7 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (!user) return;
-    // Seeds the form from the server record. Keyed on the user's id (not the
-    // whole object), so a background refetch cannot overwrite live typing.
+    // Keyed on the user's id, not the object, so a refetch cannot overwrite live typing.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm({
       firstName: user.firstName ?? '',
@@ -126,20 +121,28 @@ export function ProfilePage() {
     mutation.mutate(patch);
   }
 
+  const heading = <PageHeading title={t('profile.title')} subtitle={t('profile.subtitle')} />;
+
   if (meQuery.isLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-[1000px] items-center justify-center py-24">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        <span className="sr-only">{t('common.loading')}</span>
-      </div>
+      <PageContainer width="narrow">
+        {heading}
+        <LoadingState />
+      </PageContainer>
     );
   }
 
   if (!user) {
     return (
-      <div className="mx-auto w-full max-w-[1000px]">
-        <ErrorBanner message={t('profile.loadFailed')} />
-      </div>
+      <PageContainer width="narrow">
+        {heading}
+        <ErrorState
+          title={t('profile.loadFailed')}
+          error={meQuery.error}
+          onRetry={() => void meQuery.refetch()}
+          retrying={meQuery.isFetching}
+        />
+      </PageContainer>
     );
   }
 
@@ -155,186 +158,159 @@ export function ProfilePage() {
         : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-6">
-      <header>
-        <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-          {t('profile.title')}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t('profile.subtitle')}</p>
-      </header>
+    <PageContainer width="narrow">
+      {heading}
 
-      <section className="rounded-2xl border border-border bg-card p-4 sm:p-6">
-        <div className="flex flex-wrap items-center gap-4">
-          <Avatar className="size-14 ring-2 ring-background sm:size-16">
-            {user.image ? <AvatarImage src={user.image} alt={user.name} /> : null}
-            <AvatarFallback className="bg-rust/15 text-base font-semibold text-rust">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="font-serif text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
-              {user.name}
-            </div>
-            <div className="truncate text-sm text-muted-foreground">{user.email}</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Pill
-                icon={ShieldCheck}
-                label={t(`profile.access.${user.accessLevel}` as never)}
-                tone="rust"
-              />
-              <Pill
-                label={user.audience === 'admin' ? t('profile.pillAdminAccount') : user.audience}
-              />
-              {user.isActive ? (
-                <Pill label={t('profile.pillActive')} tone="positive" />
-              ) : (
-                <Pill label={t('profile.pillInactive')} tone="muted" />
-              )}
-              {user.emailVerified ? (
-                <Pill label={t('profile.pillEmailVerified')} tone="positive" />
-              ) : null}
+      <div className="flex flex-col gap-4">
+        <Card className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <Avatar className="size-10">
+              {user.image ? <AvatarImage src={user.image} alt={user.name} /> : null}
+              <AvatarFallback className="bg-primary-soft text-2sm font-semibold text-primary">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>
+              <p className="truncate text-2sm text-muted-foreground">{user.email}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <Badge variant="accent">
+                  <ShieldCheck aria-hidden="true" />
+                  {t(`profile.access.${user.accessLevel}` as never)}
+                </Badge>
+                <Badge variant="secondary">
+                  {user.audience === 'admin' ? t('profile.pillAdminAccount') : user.audience}
+                </Badge>
+                {user.isActive ? (
+                  <Badge variant="success">{t('profile.pillActive')}</Badge>
+                ) : (
+                  <Badge variant="secondary">{t('profile.pillInactive')}</Badge>
+                )}
+                {user.emailVerified ? (
+                  <Badge variant="success">{t('profile.pillEmailVerified')}</Badge>
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </Card>
 
-      <section className="rounded-2xl border border-border bg-card">
-        <header className="border-b border-border/60 px-4 py-4 sm:px-6">
-          <h2 className="font-serif text-lg font-semibold tracking-tight">
-            {t('profile.personalTitle')}
-          </h2>
-          <p className="text-xs text-muted-foreground">{t('profile.personalSubtitle')}</p>
-        </header>
-        <form onSubmit={onSubmit} className="grid gap-4 p-4 sm:p-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('profile.firstName')} htmlFor="firstName">
-              <Input
-                id="firstName"
-                value={form.firstName ?? ''}
-                onChange={(e) => update('firstName', e.target.value)}
-              />
-            </Field>
-            <Field label={t('profile.lastName')} htmlFor="lastName">
-              <Input
-                id="lastName"
-                value={form.lastName ?? ''}
-                onChange={(e) => update('lastName', e.target.value)}
-              />
-            </Field>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('profile.email')} htmlFor="email" hint={t('profile.emailHint')}>
-              <Input id="email" value={user.email} disabled />
-            </Field>
-            <Field label={t('profile.phone')} htmlFor="phone">
-              <Input
-                id="phone"
-                type="tel"
-                value={form.phone ?? ''}
-                onChange={(e) => update('phone', e.target.value)}
-                placeholder={t('profile.phonePlaceholder')}
-              />
-            </Field>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('profile.dateOfBirth')} htmlFor="dob">
-              <Input
-                id="dob"
-                type="date"
-                value={form.dateOfBirth ?? ''}
-                onChange={(e) => update('dateOfBirth', e.target.value)}
-              />
-            </Field>
-            <Field label={t('profile.gender')} htmlFor="gender">
-              <NativeSelect
-                id="gender"
-                value={form.gender ?? ''}
-                onChange={(v) => update('gender', (v as UserGender) || null)}
-              >
-                <option value="">{t('profile.genderUnspecified')}</option>
-                {GENDERS.map((g) => (
-                  <option key={g} value={g}>
-                    {t(GENDER_KEYS[g])}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('profile.avatarUrl')} htmlFor="image" hint={t('profile.avatarHint')}>
-              <Input
-                id="image"
-                type="url"
-                value={form.image ?? ''}
-                onChange={(e) => update('image', e.target.value)}
-                placeholder="https://…"
-              />
-            </Field>
-            <Field label={t('profile.timezone')} htmlFor="timezone">
-              <Input
-                id="timezone"
-                value={form.timezone ?? ''}
-                onChange={(e) => update('timezone', e.target.value)}
-                placeholder={t('profile.timezonePlaceholder')}
-              />
-            </Field>
-          </div>
-
-          {mutationError ? <ErrorBanner message={mutationError} /> : null}
-
-          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border/60 pt-4">
-            {saved ? (
-              <span role="status" className="inline-flex items-center gap-1.5 text-xs text-success">
-                <CheckCircle2 className="size-3.5" /> {t('common.saved')}
-              </span>
+        <form onSubmit={onSubmit}>
+          <SectionCard
+            as="fieldset"
+            title={t('profile.personalTitle')}
+            description={t('profile.personalSubtitle')}
+            footer={
+              <>
+                {saved ? (
+                  <span
+                    role="status"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-success"
+                  >
+                    <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                    {t('common.saved')}
+                  </span>
+                ) : null}
+                <Button type="submit" loading={mutation.isPending}>
+                  {t('profile.saveChanges')}
+                </Button>
+              </>
+            }
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label={t('profile.firstName')}>
+                <Input
+                  autoComplete="given-name"
+                  value={form.firstName ?? ''}
+                  onChange={(e) => update('firstName', e.target.value)}
+                />
+              </FormField>
+              <FormField label={t('profile.lastName')}>
+                <Input
+                  autoComplete="family-name"
+                  value={form.lastName ?? ''}
+                  onChange={(e) => update('lastName', e.target.value)}
+                />
+              </FormField>
+              <FormField label={t('profile.email')} hint={t('profile.emailHint')}>
+                <Input value={user.email} disabled />
+              </FormField>
+              <FormField label={t('profile.phone')}>
+                <Input
+                  type="tel"
+                  autoComplete="tel"
+                  value={form.phone ?? ''}
+                  onChange={(e) => update('phone', e.target.value)}
+                  placeholder={t('profile.phonePlaceholder')}
+                />
+              </FormField>
+              <FormField label={t('profile.dateOfBirth')}>
+                <DatePicker
+                  value={form.dateOfBirth ?? ''}
+                  onValueChange={(v) => update('dateOfBirth', v)}
+                />
+              </FormField>
+              <FormField label={t('profile.gender')}>
+                <Select<UserGender | ''>
+                  value={form.gender ?? ''}
+                  onValueChange={(v) => update('gender', v || null)}
+                  options={[
+                    { value: '', label: t('profile.genderUnspecified') },
+                    ...GENDERS.map((g) => ({ value: g, label: t(GENDER_KEYS[g]) })),
+                  ]}
+                />
+              </FormField>
+              <FormField label={t('profile.avatarUrl')} hint={t('profile.avatarHint')}>
+                <Input
+                  type="url"
+                  value={form.image ?? ''}
+                  onChange={(e) => update('image', e.target.value)}
+                  placeholder="https://…"
+                />
+              </FormField>
+              <FormField label={t('profile.timezone')}>
+                <Input
+                  value={form.timezone ?? ''}
+                  onChange={(e) => update('timezone', e.target.value)}
+                  placeholder={t('profile.timezonePlaceholder')}
+                />
+              </FormField>
+            </div>
+            {mutationError ? (
+              <Alert tone="destructive" className="mt-4">
+                {mutationError}
+              </Alert>
             ) : null}
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  {t('common.saving')}
-                </>
-              ) : (
-                t('profile.saveChanges')
-              )}
-            </Button>
-          </div>
+          </SectionCard>
         </form>
-      </section>
 
-      <AddressesSection />
+        <AddressesSection />
 
-      <section className="rounded-2xl border border-border bg-card">
-        <header className="border-b border-border/60 px-4 py-4 sm:px-6">
-          <h2 className="font-serif text-lg font-semibold tracking-tight">
-            {t('profile.membershipsTitle')}
-          </h2>
-          <p className="text-xs text-muted-foreground">{t('profile.membershipsSubtitle')}</p>
-        </header>
-        <div className="p-4 sm:p-6">
+        <SectionCard
+          title={t('profile.membershipsTitle')}
+          description={t('profile.membershipsSubtitle')}
+        >
           {membershipsQuery.isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> {t('profile.membershipsLoading')}
-            </div>
+            <LoadingState inline label={t('profile.membershipsLoading')} />
+          ) : membershipsQuery.error ? (
+            <ErrorState
+              error={membershipsQuery.error}
+              onRetry={() => void membershipsQuery.refetch()}
+              retrying={membershipsQuery.isFetching}
+            />
           ) : membershipsQuery.data?.memberships.length ? (
-            <ul className="divide-y divide-border/60">
+            <ul className="divide-y divide-border">
               {membershipsQuery.data.memberships.map((m) => (
                 <MembershipRowItem key={m.companySlug} row={m} t={t} />
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">{t('profile.membershipsEmpty')}</p>
+            <EmptyState size="sm" message={t('profile.membershipsEmpty')} />
           )}
-        </div>
-      </section>
-    </div>
+        </SectionCard>
+      </div>
+    </PageContainer>
   );
 }
-
-// --- Addresses section ----------------------------------------------------
 
 function AddressesSection() {
   const t = useT();
@@ -344,8 +320,8 @@ function AddressesSection() {
     queryFn: ({ signal }) => usersApi.addresses(signal),
   });
 
-  /** "new" → empty form at the top, number → editing that row, null → list only. */
   const [editing, setEditing] = useState<number | 'new' | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Address | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (input: AddressInput) => usersApi.createAddress(input),
@@ -379,44 +355,40 @@ function AddressesSection() {
         prev ? { addresses: prev.addresses.filter((a) => a.id !== id) } : prev,
       );
     },
+    onSettled: () => setConfirmDelete(null),
   });
 
   const addresses = query.data?.addresses ?? [];
-  const mutationError = [createMutation.error, updateMutation.error, deleteMutation.error].find(
-    (e) => e instanceof ApiError,
-  ) as ApiError | undefined;
+  const failed = [createMutation.error, updateMutation.error, deleteMutation.error].find(Boolean);
+  const mutationError = failed
+    ? failed instanceof Error && failed.message
+      ? failed.message
+      : t('profile.saveError')
+    : null;
 
   return (
-    <section className="rounded-2xl border border-border bg-card">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-4 sm:px-6">
-        <div>
-          <h2 className="font-serif text-lg font-semibold tracking-tight">
-            {t('profile.addressesTitle')}
-          </h2>
-          <p className="text-xs text-muted-foreground">{t('profile.addressesSubtitle')}</p>
-        </div>
-        {editing === 'new' ? null : (
+    <SectionCard
+      title={t('profile.addressesTitle')}
+      description={t('profile.addressesSubtitle')}
+      actions={
+        editing === 'new' ? null : (
           <Button
             variant="outline"
             size="sm"
             onClick={() => setEditing('new')}
             disabled={createMutation.isPending}
           >
-            <Plus className="size-3.5" />
+            <Plus aria-hidden="true" />
             {t('profile.addAddress')}
           </Button>
-        )}
-      </header>
-
-      <div className="flex flex-col p-4 sm:p-6">
-        {mutationError ? (
-          <div className="mb-4">
-            <ErrorBanner message={mutationError.message} />
-          </div>
-        ) : null}
+        )
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {mutationError ? <Alert tone="destructive">{mutationError}</Alert> : null}
 
         {editing === 'new' ? (
-          <div className="mb-4 rounded-xl border border-rust/30 bg-rust/[0.04] p-4">
+          <div className="rounded-lg border border-border-strong bg-muted/40 p-4">
             <AddressForm
               initial={null}
               onCancel={() => setEditing(null)}
@@ -427,21 +399,26 @@ function AddressesSection() {
         ) : null}
 
         {query.isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            {t('common.loading')}
-          </div>
+          <LoadingState inline />
+        ) : query.error ? (
+          <ErrorState
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            retrying={query.isFetching}
+          />
         ) : addresses.length === 0 && editing !== 'new' ? (
-          <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-background/60 py-10 text-center text-sm text-muted-foreground">
-            <MapPin className="size-5 opacity-50" />
-            {t('profile.addressesEmpty')}
-          </div>
-        ) : (
-          <ul className="flex flex-col gap-3">
+          <EmptyState
+            variant="dashed"
+            size="sm"
+            icon={<MapPin aria-hidden="true" />}
+            message={t('profile.addressesEmpty')}
+          />
+        ) : addresses.length > 0 ? (
+          <ul className="divide-y divide-border rounded-lg border">
             {addresses.map((a) => (
               <li key={a.id}>
                 {editing === a.id ? (
-                  <div className="rounded-xl border border-rust/30 bg-rust/[0.04] p-4">
+                  <div className="bg-muted/40 p-4">
                     <AddressForm
                       initial={a}
                       onCancel={() => setEditing(null)}
@@ -453,16 +430,35 @@ function AddressesSection() {
                   <AddressRow
                     address={a}
                     onEdit={() => setEditing(a.id)}
-                    onDelete={() => deleteMutation.mutate(a.id)}
+                    onDelete={() => setConfirmDelete(a)}
                     isDeleting={deleteMutation.isPending && deleteMutation.variables === a.id}
                   />
                 )}
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
-    </section>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+        title={t('profile.deleteAddressTitle')}
+        description={t('profile.deleteAddressBody', {
+          label: confirmDelete
+            ? (confirmDelete.label ?? `${confirmDelete.line1}, ${confirmDelete.city}`)
+            : '',
+        })}
+        confirmLabel={t('profile.deleteAddress')}
+        onConfirm={() => {
+          if (confirmDelete) deleteMutation.mutate(confirmDelete.id);
+        }}
+        isDangerous
+        isPending={deleteMutation.isPending}
+      />
+    </SectionCard>
   );
 }
 
@@ -479,40 +475,42 @@ function AddressRow({
 }) {
   const t = useT();
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-border bg-background/60 p-4">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-rust/10 text-rust">
-        <MapPin className="size-4" />
-      </div>
+    <div className="flex items-start gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold">{a.label ?? t(ADDRESS_TYPE_KEYS[a.type])}</span>
-          <Pill label={t(ADDRESS_TYPE_KEYS[a.type])} tone="muted" />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-sm font-semibold text-foreground">
+            {a.label ?? t(ADDRESS_TYPE_KEYS[a.type])}
+          </span>
+          <Badge variant="secondary">{t(ADDRESS_TYPE_KEYS[a.type])}</Badge>
           {a.isDefault ? (
-            <Pill label={t('profile.addressDefaultBadge')} tone="rust" icon={Star} />
+            <Badge variant="accent">
+              <Star aria-hidden="true" />
+              {t('profile.addressDefaultBadge')}
+            </Badge>
           ) : null}
         </div>
-        <div className="mt-1 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-0.5 text-2sm text-muted-foreground">
           {a.line1}
           {a.line2 ? <>, {a.line2}</> : null}
           <br />
           {a.postalCode} {a.city}
           {a.region ? <>, {a.region}</> : null}
           {a.country ? <> · {a.country}</> : null}
-        </div>
+        </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={onEdit} aria-label={t('common.edit')}>
-          <Pencil className="size-4" />
+      <div className="flex shrink-0 items-center gap-1">
+        <Button variant="ghost" size="icon-sm" onClick={onEdit} aria-label={t('common.edit')}>
+          <Pencil aria-hidden="true" />
         </Button>
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-sm"
           onClick={onDelete}
-          disabled={isDeleting}
+          loading={isDeleting}
           aria-label={t('profile.deleteAddress')}
-          className="text-destructive hover:text-destructive"
+          className="text-destructive hover:bg-destructive-soft hover:text-destructive"
         >
-          {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          <Trash2 aria-hidden="true" />
         </Button>
       </div>
     </div>
@@ -543,6 +541,7 @@ function AddressForm({
   submitting: boolean;
 }) {
   const t = useT();
+  const defaultId = useId();
   const [state, setState] = useState<AddressFormState>(() => ({
     label: initial?.label ?? '',
     type: initial?.type ?? 'primary',
@@ -577,32 +576,24 @@ function AddressForm({
   return (
     <form onSubmit={handleSubmit} className="grid gap-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t('profile.addressLabel')} htmlFor="addr-label">
+        <FormField label={t('profile.addressLabel')}>
           <Input
-            id="addr-label"
             value={state.label}
             onChange={(e) => set('label', e.target.value)}
             placeholder={t('profile.addressLabelPlaceholder')}
           />
-        </Field>
-        <Field label={t('profile.addressType')} htmlFor="addr-type">
-          <NativeSelect
-            id="addr-type"
+        </FormField>
+        <FormField label={t('profile.addressType')}>
+          <Select<AddressType>
             value={state.type}
-            onChange={(v) => set('type', v as AddressType)}
-          >
-            {ADDRESS_TYPES.map((tp) => (
-              <option key={tp} value={tp}>
-                {t(ADDRESS_TYPE_KEYS[tp])}
-              </option>
-            ))}
-          </NativeSelect>
-        </Field>
+            onValueChange={(v) => set('type', v)}
+            options={ADDRESS_TYPES.map((tp) => ({ value: tp, label: t(ADDRESS_TYPE_KEYS[tp]) }))}
+          />
+        </FormField>
       </div>
 
-      <Field label={t('profile.addressLine1')} htmlFor="addr-line1">
+      <FormField label={t('profile.addressLine1')}>
         <AddressAutocomplete
-          id="addr-line1"
           value={state.line1}
           onChange={(v) => set('line1', v)}
           onPick={(a) => {
@@ -610,194 +601,83 @@ function AddressForm({
             if (a.city) set('city', a.city);
           }}
         />
-      </Field>
+      </FormField>
 
-      <Field label={t('profile.addressLine2')} htmlFor="addr-line2">
-        <Input id="addr-line2" value={state.line2} onChange={(e) => set('line2', e.target.value)} />
-      </Field>
+      <FormField label={t('profile.addressLine2')}>
+        <Input value={state.line2} onChange={(e) => set('line2', e.target.value)} />
+      </FormField>
 
       <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">
-        <Field label={t('profile.addressPostalCode')} htmlFor="addr-zip">
+        <FormField label={t('profile.addressPostalCode')} required>
           <Input
-            id="addr-zip"
             value={state.postalCode}
             onChange={(e) => set('postalCode', e.target.value)}
+            autoComplete="postal-code"
+            className="tabular-nums"
             required
           />
-        </Field>
-        <Field label={t('profile.addressCity')} htmlFor="addr-city">
+        </FormField>
+        <FormField label={t('profile.addressCity')} required>
           <Input
-            id="addr-city"
             value={state.city}
             onChange={(e) => set('city', e.target.value)}
+            autoComplete="address-level2"
             required
           />
-        </Field>
+        </FormField>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t('profile.addressRegion')} htmlFor="addr-region">
+        <FormField label={t('profile.addressRegion')}>
+          <Input value={state.region} onChange={(e) => set('region', e.target.value)} />
+        </FormField>
+        <FormField label={t('profile.addressCountry')}>
           <Input
-            id="addr-region"
-            value={state.region}
-            onChange={(e) => set('region', e.target.value)}
-          />
-        </Field>
-        <Field label={t('profile.addressCountry')} htmlFor="addr-country">
-          <Input
-            id="addr-country"
             value={state.country}
             onChange={(e) => set('country', e.target.value.toUpperCase().slice(0, 2))}
             placeholder="DE"
             maxLength={2}
           />
-        </Field>
+        </FormField>
       </div>
 
-      <label className="flex cursor-pointer select-none items-center gap-2.5 text-2sm text-muted-foreground">
-        <Checkbox checked={state.isDefault} onChange={(e) => set('isDefault', e.target.checked)} />
-        <span>{t('profile.addressIsDefault')}</span>
-      </label>
+      <div className="flex items-center gap-3">
+        <Checkbox
+          id={defaultId}
+          checked={state.isDefault}
+          onChange={(e) => set('isDefault', e.target.checked)}
+        />
+        <label htmlFor={defaultId} className="cursor-pointer select-none text-2sm text-foreground">
+          {t('profile.addressIsDefault')}
+        </label>
+      </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/60 pt-4">
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
         <Button type="button" variant="ghost" onClick={onCancel} disabled={submitting}>
-          <X className="size-4" />
           {t('common.cancel')}
         </Button>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              {t('common.saving')}
-            </>
-          ) : (
-            t('profile.saveAddress')
-          )}
+        <Button type="submit" loading={submitting}>
+          {t('profile.saveAddress')}
         </Button>
       </div>
     </form>
   );
 }
 
-// --- Helpers --------------------------------------------------------------
-
 function MembershipRowItem({ row, t }: { row: MembershipRow; t: ReturnType<typeof useT> }) {
   const hasName = !!row.companyName && row.companyName !== row.companySlug;
   return (
-    <li className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex size-9 items-center justify-center rounded-md bg-rust/10 text-rust">
-          <UsersIcon className="size-4" />
+    <li className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+      <div className="min-w-0">
+        <div className="truncate text-2sm font-medium text-foreground">
+          {row.companyName ?? row.companySlug}
         </div>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{row.companyName ?? row.companySlug}</div>
-          {hasName ? (
-            <div className="truncate text-xs text-muted-foreground">{row.companySlug}</div>
-          ) : null}
-        </div>
+        {hasName ? (
+          <div className="truncate text-xs text-muted-foreground">{row.companySlug}</div>
+        ) : null}
       </div>
-      <Pill label={t(`profile.role.${row.role}` as never)} tone="muted" />
+      <Badge variant="secondary">{t(`profile.role.${row.role}` as never)}</Badge>
     </li>
-  );
-}
-
-function Field({
-  label,
-  htmlFor,
-  hint,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {children}
-      {hint ? <span className="text-2xs text-muted-foreground">{hint}</span> : null}
-    </div>
-  );
-}
-
-function Pill({
-  icon: Icon,
-  label,
-  tone = 'muted',
-}: {
-  icon?: React.ComponentType<{ className?: string }>;
-  label: string;
-  tone?: 'muted' | 'rust' | 'positive';
-}) {
-  const cls =
-    tone === 'rust'
-      ? 'bg-rust/12 text-rust ring-rust/25'
-      : tone === 'positive'
-        ? 'bg-success-soft text-success ring-success/20'
-        : 'bg-muted text-muted-foreground ring-border';
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs font-medium ring-1 ring-inset',
-        cls,
-      )}
-    >
-      {Icon ? <Icon className="size-3" /> : null}
-      {label}
-    </span>
-  );
-}
-
-function NativeSelect({
-  id,
-  value,
-  onChange,
-  children,
-}: {
-  id: string;
-  value: string;
-  onChange: (v: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="flex h-9 w-full appearance-none rounded-md border border-input bg-background pl-3 pr-8 text-base shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
-      >
-        {children}
-      </select>
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 16 16"
-        className="pointer-events-none absolute right-3 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
-      >
-        <path
-          d="M4 6 L8 10 L12 6"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
-  );
-}
-
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div
-      role="alert"
-      aria-live="assertive"
-      className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-    >
-      <AlertCircle className="mt-0.5 size-4 shrink-0" />
-      <span>{message}</span>
-    </div>
   );
 }
 

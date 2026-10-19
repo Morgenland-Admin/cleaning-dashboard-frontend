@@ -7,7 +7,6 @@ const STORAGE_KEY = 'reinigungs-portal-theme';
 interface ThemeContextValue {
   theme: Theme;
   setTheme: (theme: Theme) => void;
-  /** Resolved value — "light" or "dark" (system is collapsed via media query). */
   resolvedTheme: 'light' | 'dark';
 }
 

@@ -19,14 +19,18 @@ export class ApiError extends Error {
   }
 }
 
-/** Best-effort human-readable message from any thrown value. */
+/** The backend's machine-readable `code` (e.g. STALE, NOT_READY), if any. */
+export function apiErrorCode(err: unknown): string | null {
+  if (!(err instanceof ApiError) || !err.body || typeof err.body !== 'object') return null;
+  const code = (err.body as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
 export function errMessage(err: unknown): string {
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return String(err);
 }
-
-// --- CSV import (shared by newsletter + customers) -------------------------
 
 export type CsvImportRejectReason =
   | 'invalid_email'
@@ -95,11 +99,9 @@ function safeJson(text: string): unknown {
   }
 }
 
-// --- Global search (⌘K palette) -------------------------------------------
-
 export type SearchKind = 'order' | 'customer' | 'inquiry' | 'contact' | 'invoice' | 'partner';
 
-/** One row in the palette. `href` is a dashboard path, already brand-scoped. */
+/** `href` is a dashboard path, already brand-scoped. */
 export interface SearchHit {
   kind: SearchKind;
   companySlug: CompanySlug;
@@ -112,17 +114,123 @@ export interface SearchHit {
 }
 
 export const searchApi = {
-  /**
-   * Look across every brand the user can see. No `companySlug` header — the
-   * backend derives scope from the caller's memberships.
-   */
+  /** No `X-Company-Slug`: the backend scopes by the caller's memberships. */
   query(q: string, signal?: AbortSignal) {
     const qs = new URLSearchParams({ q }).toString();
     return request<{ hits: SearchHit[]; query: string }>(`/admin/search?${qs}`, { signal });
   },
 };
 
-// --- Contact ---------------------------------------------------------------
+export type EmailKind =
+  | 'password_reset'
+  | 'invite'
+  | 'task_assigned'
+  | 'task_comment'
+  | 'staff_notification'
+  | 'contact_ack'
+  | 'contact_reply'
+  | 'inquiry_ack'
+  | 'quote'
+  | 'order_confirmation'
+  | 'order_status'
+  | 'order_message'
+  | 'payment_request'
+  | 'appointment_confirmed'
+  | 'pickup_scheduling'
+  | 'receipt'
+  | 'invoice'
+  | 'dunning'
+  | 'newsletter_confirm';
+
+/** Our send call's result (Resend accepted it). */
+export type EmailSendStatus = 'sending' | 'sent' | 'failed' | 'skipped' | 'blocked';
+/** Resend's later report via the delivery webhook. */
+export type EmailDeliveryStatus =
+  | 'sent'
+  | 'delivered'
+  | 'delivery_delayed'
+  | 'bounced'
+  | 'complained'
+  | 'failed'
+  | 'suppressed';
+export type EmailRefType = 'order' | 'invoice' | 'inquiry' | 'contact' | 'task';
+export type EmailStatusFilter = 'delivered' | 'opened' | 'problem' | 'not_sent';
+
+export interface EmailLogRow {
+  id: number;
+  /** Null = platform mail with no brand (password reset). */
+  companySlug: CompanySlug | null;
+  companyName: string | null;
+  kind: EmailKind;
+  toAddress: string;
+  subject: string;
+  status: EmailSendStatus;
+  deliveryStatus: EmailDeliveryStatus | null;
+  deliveredAt: string | null;
+  openedAt: string | null;
+  clickedAt: string | null;
+  /** False when the body was not stored (it carried a reset/invite/opt-in link). */
+  hasBody: boolean;
+  attachmentCount: number;
+  refType: EmailRefType | null;
+  refId: number | null;
+  createdAt: string;
+}
+
+export interface EmailLogEvent {
+  type: string;
+  at: string;
+  detail?: string;
+}
+
+export interface EmailLogDetail extends EmailLogRow {
+  fromAddress: string;
+  replyTo: string | null;
+  html: string | null;
+  attachments: Array<{ filename: string; size: number }>;
+  error: string | null;
+  resendId: string | null;
+  events: EmailLogEvent[];
+  sentByName: string | null;
+}
+
+export interface EmailTracking {
+  brands: Array<{ slug: CompanySlug; name: string; connected: boolean }>;
+  /** super_admins only. */
+  system: { connected: boolean } | null;
+}
+
+export const emailsAdminApi = {
+  /** No `X-Company-Slug`: scope is the caller's brands; `brand` narrows ("system" = platform mail). */
+  list(
+    params: {
+      brand?: CompanySlug | 'system';
+      kind?: EmailKind;
+      status?: EmailStatusFilter;
+      q?: string;
+      refType?: EmailRefType;
+      refId?: number;
+      limit?: number;
+      cursor?: string;
+    },
+    signal?: AbortSignal,
+  ) {
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== '') qs.set(key, String(value));
+    }
+    return request<{ emails: EmailLogRow[]; nextCursor: string | null }>(
+      `/admin/emails?${qs.toString()}`,
+      { signal },
+    );
+  },
+  get(id: number, signal?: AbortSignal) {
+    return request<{ email: EmailLogDetail }>(`/admin/emails/${id}`, { signal });
+  },
+  tracking(signal?: AbortSignal) {
+    return request<EmailTracking>('/admin/emails/tracking', { signal });
+  },
+};
 
 export type ContactStatus = 'new' | 'read' | 'replied' | 'archived';
 
@@ -144,7 +252,6 @@ export interface ContactMessage {
   handledAt: string | null;
   repliedAt: string | null;
   internalNotes: string | null;
-  /** Brand-specific extras submitted by the storefront (jsonb). Empty object if unused. */
   metadata: Record<string, unknown>;
   attachments: Array<{ key: string; name: string; size: number; contentType?: string }>;
   ipAddress: string | null;
@@ -164,8 +271,6 @@ export interface ContactSubmitInput {
   consentPrivacy: true;
   consentMarketing?: boolean;
 }
-
-// --- Users / Profile / Settings -------------------------------------------
 
 export type UserAudience = 'admin' | 'partner' | 'customer';
 export type UserAccessLevel = 'super_admin' | 'admin' | 'manager' | 'seo' | 'viewer' | 'none';
@@ -202,12 +307,9 @@ export interface ProfilePatch {
   image?: string | null;
   locale?: string;
   timezone?: string;
-  /** ISO date — `YYYY-MM-DD`. */
   dateOfBirth?: string | null;
   gender?: UserGender | null;
 }
-
-// --- Addresses ------------------------------------------------------------
 
 export type AddressType = 'primary' | 'billing' | 'service' | 'shipping' | 'other';
 
@@ -314,8 +416,6 @@ export const usersApi = {
   },
 };
 
-// --- Partners (admin) -----------------------------------------------------
-
 export type PartnerStatus = 'pending' | 'active' | 'suspended' | 'rejected';
 
 export interface Partner {
@@ -398,16 +498,13 @@ export const partnersAdminApi = {
   },
 };
 
-// --- Service inquiries (admin + public) ----------------------------------
-
 export type InquiryStatus = 'new' | 'in_review' | 'quoted' | 'won' | 'lost';
 
-/** Who owns the callback for an inquiry; set by backend geo-routing. */
+/** 'human' = Hamburg area, 'ai' = warm-callback queue; set by backend geo-routing. */
 export type CallbackOwner = 'human' | 'ai';
 
 export interface ServiceInquiry {
   id: number;
-  /** Customer-facing inquiry number "ANF-2026-000123", derived from id + creation year. */
   inquiryNumber: string;
   customerId: number | null;
   name: string;
@@ -416,7 +513,6 @@ export interface ServiceInquiry {
   phone: string | null;
   service: string | null;
   propertyDetails: string | null;
-  /** ISO `YYYY-MM-DD` or null. */
   preferredDate: string | null;
   budget: string | null;
   message: string;
@@ -424,13 +520,11 @@ export interface ServiceInquiry {
   source: string | null;
   status: InquiryStatus;
   priority: string;
-  /** Service PLZ (where the cleaning happens) — drives callback routing. */
+  /** Service PLZ (where the cleaning happens); drives callback routing. */
   plz: string | null;
-  /** Free-text "Grund des Anrufs" captured by the inbound voice-AI. */
   callReason: string | null;
-  /** 'human' (Hamburg area) | 'ai' (warm-callback queue) | null (legacy). */
+  /** Null = legacy. */
   callbackOwner: CallbackOwner | null;
-  /** User the human callback is assigned to. */
   assignedTo: string | null;
   consentPrivacy: boolean;
   consentMarketing: boolean;
@@ -440,7 +534,6 @@ export interface ServiceInquiry {
   quotedAmount: string | null;
   closedAt: string | null;
   internalNotes: string | null;
-  /** Brand-specific form fields submitted by the storefront. */
   metadata: Record<string, unknown>;
   attachments: Array<{ key: string; name: string; size: number; contentType?: string }>;
   ipAddress: string | null;
@@ -474,17 +567,14 @@ export interface InquiryUpdate {
   quotedAmount?: string | null;
 }
 
-/** Delivery status of a logged email. */
 export type InquiryEmailStatus = 'sent' | 'skipped' | 'failed';
 
-/** A single email sent to a lead from the dashboard (currently offers/quotes). */
 export interface InquiryEmail {
   id: number;
   inquiryId: number;
   kind: string;
   toAddress: string;
   subject: string;
-  /** Rendered HTML body — preview exactly what the customer received. */
   html: string;
   quotedAmount: string | null;
   status: InquiryEmailStatus;
@@ -494,13 +584,11 @@ export interface InquiryEmail {
   createdAt: string;
 }
 
-/** Payload for sending an offer/quote email to a lead. */
 export interface InquiryQuoteInput {
   body: string;
   quotedAmount?: string | null;
 }
 
-/** A human (Hamburg-area) callback as returned by the dashboard queue. */
 export interface HumanCallbackEntry {
   id: number;
   name: string;
@@ -554,7 +642,7 @@ export const inquiriesApi = {
       body: patch,
     });
   },
-  /** Send an offer/quote email to the lead. Flips status to 'quoted' server-side. */
+  /** Flips status to 'quoted' server-side. */
   sendQuote(companySlug: CompanySlug, id: number, input: InquiryQuoteInput) {
     return request<{ ok: true; inquiry: ServiceInquiry }>(`/admin/inquiries/${id}/quote`, {
       method: 'POST',
@@ -562,14 +650,13 @@ export const inquiriesApi = {
       body: input,
     });
   },
-  /** Email history (sent offers) for a lead, newest first. */
   emails(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
     return request<{ emails: InquiryEmail[] }>(`/admin/inquiries/${id}/emails`, {
       companySlug,
       signal,
     });
   },
-  /** Human (Hamburg-area) callbacks for the dashboard. AI-owned leads stay in the AI queue. */
+  /** AI-owned leads stay in the AI queue. */
   humanCallbackQueue(
     companySlug: CompanySlug,
     opts: { limit?: number; assignedTo?: string; includeClosed?: boolean } = {},
@@ -587,14 +674,8 @@ export const inquiriesApi = {
   },
 };
 
-// --- Uploads (admin) ------------------------------------------------------
-
 export const uploadsAdminApi = {
-  /**
-   * Exchange an S3 object key for a short-lived presigned GET URL the browser
-   * can use to render the image. Keys are scoped to the company — passing
-   * another tenant's key will be rejected by the backend with 403.
-   */
+  /** Short-lived presigned GET URL. Keys are company-scoped: another tenant's key gets 403. */
   signDownload(companySlug: CompanySlug, key: string, signal?: AbortSignal) {
     const qs = new URLSearchParams({ key }).toString();
     return request<{ downloadUrl: string; expiresIn: number }>(
@@ -602,19 +683,19 @@ export const uploadsAdminApi = {
       { companySlug, signal },
     );
   },
-  /**
-   * Two-step upload helper: ask the backend for a presigned PUT URL, then
-   * stream the file straight to S3 from the browser. Returns the attachment
-   * record (key + metadata) ready to embed in a chat message or any other
-   * row that references uploads.
-   */
-  async uploadDirect(companySlug: CompanySlug, file: File) {
+  /** Two-step: presigned PUT URL from the backend, then the browser streams the file straight to S3. */
+  async uploadDirect(
+    companySlug: CompanySlug,
+    file: File,
+    opts: { folder?: 'inquiries' | 'receipts' } = {},
+  ) {
     const sign = await request<{ uploadUrl: string; key: string }>('/admin/uploads/sign-upload', {
       method: 'POST',
       body: {
         filename: file.name,
         contentType: file.type || 'application/octet-stream',
         size: file.size,
+        ...(opts.folder ? { folder: opts.folder } : {}),
       },
       companySlug,
     });
@@ -633,8 +714,6 @@ export const uploadsAdminApi = {
   },
 };
 
-// --- Orders (admin) ---------------------------------------------------------
-
 export type OrderStatus =
   | 'pending'
   | 'payment_pending'
@@ -646,9 +725,6 @@ export type OrderStatus =
   | 'delivered'
   | 'completed'
   | 'cancelled'
-  // A partial refund is its own terminal-ish state server-side (see
-  // modules/orders/lib.ts) and is offered as an allowed transition. It was
-  // missing here, so its button rendered with no label at all.
   | 'partially_refunded'
   | 'refunded';
 
@@ -683,13 +759,12 @@ export interface OrderRow {
   internalNotes: string | null;
   stripeSessionId: string | null;
   stripePaymentIntentId: string | null;
-  /** 'stripe' (Checkout) or 'paypal' (native Orders v2 — settles in the PayPal account). */
+  /** PayPal orders settle in the PayPal account, not Stripe. */
   paymentProvider: 'stripe' | 'paypal';
   paypalOrderId: string | null;
   paypalCaptureId: string | null;
-  /** 'upfront' — paid at checkout. 'after_service' — paid after the job. */
+  /** 'upfront' = paid at checkout, 'after_service' = paid after the job. */
   paymentMode: 'upfront' | 'after_service';
-  /** How an after-service order was settled: 'cash' | 'ec_card' | 'credit_card'. */
   paymentMethod: 'cash' | 'ec_card' | 'credit_card' | null;
   paidAt: string | null;
   acceptedAt: string | null;
@@ -705,13 +780,14 @@ export interface OrderRow {
   locale: string;
   source: string | null;
   metadata: {
-    /** Up to 3 proposed on-site slots, "YYYY-MM-DDTHH:mm" (customer- or operator-set). */
+    /** Up to 3 proposed slots, "YYYY-MM-DDTHH:mm" (Berlin wall-clock). */
     preferredSlots?: string[];
-    /** The slot the admin confirmed. */
     confirmedSlot?: string;
-    /** State of the CLEANILO Calendly booking for this order's pickup. */
     calendly?: CalendlyPickupMeta;
-    /** Operator messages sent to the customer from the panel (newest last). */
+    receipt?: {
+      savedAt?: string;
+      history?: Array<{ sentAt: string; sentByName: string | null; totalCents: number }>;
+    };
     messages?: Array<{
       body: string;
       sentByName: string | null;
@@ -725,21 +801,17 @@ export interface OrderRow {
   updatedAt: string;
 }
 
-/**
- * Pickup appointments are booked into the ONE CLEANILO Calendly account for every
- * brand — the single deliberate brand-sharing exception. Calendly syncs the entry
- * to the CLEANILO Google Calendar, so `booked` means it is on that calendar.
- */
+// Pickups book into the one CLEANILO Calendly account for every brand (the only brand-sharing exception);
+// `booked` means it is on the CLEANILO Google Calendar.
 export interface CalendlyPickupMeta {
   status: 'booked' | 'link_sent' | 'cancelled' | 'failed';
-  /** Berlin wall-clock slot ("YYYY-MM-DDTHH:mm") the booking holds. */
+  /** Berlin wall-clock "YYYY-MM-DDTHH:mm". */
   slot?: string | null;
   startTime?: string | null;
   eventUri?: string | null;
   inviteeUri?: string | null;
   cancelUrl?: string | null;
   rescheduleUrl?: string | null;
-  /** Single-use scheduling URL when the customer books themselves. */
   bookingUrl?: string | null;
   source: 'dashboard' | 'webhook';
   error?: string | null;
@@ -747,10 +819,9 @@ export interface CalendlyPickupMeta {
 }
 
 export interface CalendlyConfirmResult {
-  /** False when the server has no Calendly credentials — nothing was attempted. */
+  /** False when the server has no Calendly credentials: nothing was attempted. */
   configured: boolean;
   booked: boolean;
-  /** The time is not free in the CLEANILO calendar — pick another one. */
   slotUnavailable: boolean;
   error: string | null;
 }
@@ -763,6 +834,16 @@ export interface OrderItem {
   quantity: string;
   unitPriceCents: number;
   subtotalCents: number;
+  metadata: {
+    lengthCm?: number;
+    widthCm?: number;
+    tagNumber?: string;
+    condition?: string;
+    photos?: ReceiptPhoto[];
+    /** Per-m² extra belonging to the position before it. */
+    addon?: boolean;
+    [key: string]: unknown;
+  } | null;
 }
 
 export interface OrderStatusLogEntry {
@@ -779,17 +860,11 @@ export interface OrderListResponse {
   nextCursor: string | null;
 }
 
-/**
- * Cross-brand list — same as OrderRow but with companySlug/companyName so the
- * UI can render a brand badge and dispatch detail-view loads back to the
- * right tenant.
- */
 export interface OrderListAllResponse {
   orders: Array<OrderRow & { companySlug: CompanySlug; companyName: string }>;
   nextCursor: null;
 }
 
-/** The order's invoice, if one exists — summary only; full record at /rechnungen/:id. */
 export interface OrderInvoiceSummary {
   id: number;
   number: string | null;
@@ -805,13 +880,99 @@ export interface OrderDetailResponse {
   items: OrderItem[];
   statusLog: OrderStatusLogEntry[];
   allowedNextStatuses: OrderStatus[];
-  /** Null until an invoice is created for this order. */
   invoice: OrderInvoiceSummary | null;
+}
+
+export interface ReceiptPhoto {
+  key: string;
+  name?: string;
+  contentType?: string;
+  size?: number;
+}
+
+/** With both dimensions set the backend prices by area (L × W) and ignores `quantity`; extras take the same area. */
+export interface ReceiptDraftItem {
+  code: string;
+  label: string;
+  quantity: number;
+  quantityLabel?: string;
+  unitPriceCents: number;
+  lengthCm?: number;
+  widthCm?: number;
+  tagNumber?: string;
+  condition?: string;
+  photos: ReceiptPhoto[];
+  addons: Array<{ code: string; label: string; unitPriceCents: number }>;
+}
+
+export interface ReceiptDraft {
+  handover: 'pickup' | 'drop_off';
+  /** Berlin wall-clock "YYYY-MM-DDTHH:mm". */
+  receivedAt: string;
+  pickupFeeCents: number;
+  note?: string;
+  items: ReceiptDraftItem[];
+}
+
+/** 'advance' moves the order to picked_up on send; 'resend' sends a corrected copy. */
+export type ReceiptStatusAction = 'advance' | 'resend';
+
+export interface ReceiptTotals {
+  itemsCents: number;
+  pickupFeeCents: number;
+  minOrderTopUpCents: number;
+  discountCents: number;
+  totalCents: number;
+  paidCents: number;
+  balanceCents: number;
+}
+
+export interface ReceiptContext {
+  draft: ReceiptDraft;
+  /** Null when a receipt does not apply (on-site job, unpaid, delivered …). */
+  statusAction: ReceiptStatusAction | null;
+  paidCents: number;
+  minOrderCents: number;
+  discountCents: number;
+  voucherCode: string | null;
+  /** Set when the order total can no longer change (invoice issued / partner paid). */
+  moneyLockReason: string | null;
+  invoice: { id: number; status: InvoiceStatus; number: string | null } | null;
+  savedAt: string | null;
+  history: Array<{
+    sentAt: string;
+    sentByName: string | null;
+    totalCents: number;
+    statusAction: ReceiptStatusAction;
+  }>;
+}
+
+export interface ReceiptSaveResult {
+  order: OrderRow;
+  totals: ReceiptTotals;
+  deltaCents: number;
+  invoiceDraftStale: boolean;
+}
+
+export interface ReceiptPreview extends Omit<ReceiptSaveResult, 'order'> {
+  to: string;
+  subject: string;
+  html: string;
+  pdfBase64: string;
+  filename: string;
+  statusAction: ReceiptStatusAction;
+  moneyLockReason: string | null;
+}
+
+export interface ReceiptSendResult extends ReceiptSaveResult {
+  /** False when no mail key is configured: nothing was sent. */
+  emailed: boolean;
+  statusChanged: boolean;
 }
 
 export type OrderKind = OrderRow['kind'];
 
-/** A manually-created order (admin). Total is recomputed server-side from items. */
+/** Total is recomputed server-side from items. */
 export interface OrderCreateInput {
   kind: OrderKind;
   customer: { name: string; email: string; phone?: string };
@@ -844,12 +1005,7 @@ export const ordersAdminApi = {
       signal,
     });
   },
-  /**
-   * Cross-brand list for the admin "All companies" view. Doesn't pass
-   * X-Company-Slug; backend aggregates across all active tenant schemas.
-   * Cursor pagination isn't implemented across tenants yet — limit caps the
-   * page at 200, which is enough for current volume.
-   */
+  /** No `X-Company-Slug`: aggregates all active tenants. No cross-tenant cursor yet; `limit` caps at 200. */
   listAllCompanies(opts: { limit?: number; status?: OrderStatus } = {}, signal?: AbortSignal) {
     const qs = new URLSearchParams();
     if (opts.limit) qs.set('limit', String(opts.limit));
@@ -862,19 +1018,39 @@ export const ordersAdminApi = {
   get(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
     return request<OrderDetailResponse>(`/admin/orders/${id}`, { companySlug, signal });
   },
-  /**
-   * Create this order's invoice as a DRAFT, carrying the order's positions.
-   * Never issues — the point is that positions stay editable, so work agreed
-   * after the booking can be added and the customer gets one invoice.
-   * Idempotent: an order that already has one gets it back with created:false.
-   */
+  /** Creates a DRAFT only (never issues) so positions stay editable. Idempotent: an existing invoice returns created:false. */
   createInvoice(companySlug: CompanySlug, id: number) {
     return request<{ invoice: OrderInvoiceSummary; created: boolean }>(
       `/admin/orders/${id}/invoice`,
       { method: 'POST', companySlug, body: {} },
     );
   },
-  /** Create an order manually (offline / after-service). */
+  getReceipt(companySlug: CompanySlug, id: number, signal?: AbortSignal) {
+    return request<ReceiptContext>(`/admin/orders/${id}/receipt`, { companySlug, signal });
+  },
+  /** Writes nothing. */
+  previewReceipt(companySlug: CompanySlug, id: number, draft: ReceiptDraft) {
+    return request<ReceiptPreview>(`/admin/orders/${id}/receipt/preview`, {
+      method: 'POST',
+      body: { draft },
+      companySlug,
+    });
+  },
+  saveReceipt(companySlug: CompanySlug, id: number, draft: ReceiptDraft) {
+    return request<ReceiptSaveResult>(`/admin/orders/${id}/receipt`, {
+      method: 'POST',
+      body: { draft },
+      companySlug,
+    });
+  },
+  /** Saves, emails the receipt with PDF, and moves the order to picked_up. */
+  sendReceipt(companySlug: CompanySlug, id: number, draft: ReceiptDraft) {
+    return request<ReceiptSendResult>(`/admin/orders/${id}/receipt/send`, {
+      method: 'POST',
+      body: { draft },
+      companySlug,
+    });
+  },
   create(companySlug: CompanySlug, input: OrderCreateInput) {
     return request<{ order: OrderRow }>('/admin/orders', {
       method: 'POST',
@@ -900,11 +1076,7 @@ export const ordersAdminApi = {
       companySlug,
     });
   },
-  /**
-   * Confirm one slot. The backend also books it into the CLEANILO Calendly
-   * calendar (shared across brands by design) — `calendly.booked` says whether
-   * that worked, and the order stands either way.
-   */
+  /** Also books the slot into the CLEANILO Calendly; `calendly.booked` says whether that worked, the order stands either way. */
   confirmAppointment(companySlug: CompanySlug, id: number, slot: string) {
     return request<{ order: OrderRow; calendly: CalendlyConfirmResult }>(
       `/admin/orders/${id}/confirm-appointment`,
@@ -915,10 +1087,7 @@ export const ordersAdminApi = {
       },
     );
   },
-  /**
-   * Fallback route: create a single-use CLEANILO scheduling link and (by default)
-   * email it to the customer so they pick the time themselves.
-   */
+  /** Fallback: single-use CLEANILO scheduling link, emailed to the customer by default. */
   sendPickupBookingLink(companySlug: CompanySlug, id: number, send = true) {
     return request<{ order: OrderRow; bookingUrl: string; emailed: boolean }>(
       `/admin/orders/${id}/pickup-booking-link`,
@@ -929,7 +1098,6 @@ export const ordersAdminApi = {
       },
     );
   },
-  /** Operator proposes up to 3 pickup/appointment times ("YYYY-MM-DDTHH:mm") from the panel. */
   proposeSlots(companySlug: CompanySlug, id: number, slots: string[]) {
     return request<{ order: OrderRow }>(`/admin/orders/${id}/propose-slots`, {
       method: 'POST',
@@ -937,7 +1105,6 @@ export const ordersAdminApi = {
       companySlug,
     });
   },
-  /** Send a free-form message to the customer about an order (under the order's brand). */
   sendMessage(companySlug: CompanySlug, id: number, body: string) {
     return request<{ order: OrderRow }>(`/admin/orders/${id}/message`, {
       method: 'POST',
@@ -945,15 +1112,7 @@ export const ordersAdminApi = {
       companySlug,
     });
   },
-  /**
-   * Recovery action: re-fetch the Stripe Checkout Session and reconcile the
-   * order. Used to recover an order stuck in `payment_pending` when the
-   * webhook was missed. `action` describes what the backend did:
-   *   - "marked_paid"      → was unpaid in DB, Stripe says paid → flipped + emails sent
-   *   - "marked_cancelled" → Stripe session expired → flipped to cancelled
-   *   - "still_pending"    → Stripe also says still in flight (SEPA, abandoned, etc.)
-   *   - "noop"             → already paid/cancelled/refunded; nothing to do
-   */
+  /** Recovers an order stuck in `payment_pending` after a missed webhook by re-fetching the Stripe Checkout Session. */
   syncStripe(companySlug: CompanySlug, id: number) {
     return request<{
       order: OrderRow | null;
@@ -964,10 +1123,7 @@ export const ordersAdminApi = {
       companySlug,
     });
   },
-  /**
-   * Record an in-person payment for a "pay after service" order
-   * (Barzahlung / EC-Kartenzahlung). Marks the order paid immediately.
-   */
+  /** In-person payment for a pay-after-service order; marks it paid immediately. */
   recordPayment(companySlug: CompanySlug, id: number, method: 'cash' | 'ec_card') {
     return request<{ order: OrderRow }>(`/admin/orders/${id}/record-payment`, {
       method: 'POST',
@@ -975,10 +1131,7 @@ export const ordersAdminApi = {
       companySlug,
     });
   },
-  /**
-   * Create a Stripe credit-card payment link for an after-service order and
-   * email it to the customer. Returns the link so it can also be shared manually.
-   */
+  /** Stripe card payment link for an after-service order, emailed to the customer and returned for manual sharing. */
   createPaymentLink(companySlug: CompanySlug, id: number) {
     return request<{ checkoutUrl: string | null }>(`/admin/orders/${id}/payment-link`, {
       method: 'POST',
@@ -986,8 +1139,6 @@ export const ordersAdminApi = {
     });
   },
 };
-
-// --- Newsletter (admin) ---------------------------------------------------
 
 export interface NewsletterSubscriber {
   id: number;
@@ -1007,8 +1158,6 @@ export interface NewsletterSubscriber {
   createdAt: string;
   updatedAt: string;
 }
-
-// --- Chat (admin side) -----------------------------------------------------
 
 export interface ChatAttachment {
   key: string;
@@ -1030,7 +1179,7 @@ export interface ChatMessage {
 }
 
 export interface ChatConversation {
-  /** Null until the first message creates the chat_conversations row. */
+  /** Null until the first message creates the conversation row. */
   id: number | null;
   partnerUserId: string;
   partnerCompanyName: string | null;
@@ -1040,9 +1189,7 @@ export interface ChatConversation {
   partnerStatus: string;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
-  /** Backend returns 0 when there's no conversation row. */
   unreadForAdmin: number;
-  /** Conversation creation time (null = no conversation yet). */
   createdAt: string | null;
 }
 
@@ -1109,7 +1256,7 @@ export const newsletterAdminApi = {
       companySlug,
     });
   },
-  /** ALL_68 — bulk CSV import. dryRun:true returns the summary without writing. */
+  /** `dryRun: true` returns the summary without writing. */
   import(
     companySlug: CompanySlug,
     body: { csv: string; dryRun?: boolean; tag?: string; source?: string; attestConsent?: boolean },
@@ -1128,8 +1275,6 @@ export const newsletterAdminApi = {
 export type NewsletterRejectReason = CsvImportRejectReason;
 export type NewsletterImportSummary = CsvImportSummary;
 
-// --- Customers (admin) -----------------------------------------------------
-
 export type LoyaltyTier = 'neukunde' | 'stammkunde' | 'premium';
 
 export type CustomerType = 'private' | 'business';
@@ -1141,19 +1286,16 @@ export type CustomerAddressKind = 'billing' | 'service' | 'shipping';
 export interface Customer {
   id: number;
   email: string;
-  /** Display name — derived server-side from first/last name or the company. */
   name: string | null;
   phone: string | null;
   customerType: CustomerType;
   salutation: CustomerSalutation | null;
   firstName: string | null;
   lastName: string | null;
-  /** ISO date, "YYYY-MM-DD". */
   dateOfBirth: string | null;
   language: CustomerLanguage | null;
   preferredChannel: CustomerChannel | null;
   companyName: string | null;
-  /** USt-IdNr. of the customer (B2B). */
   vatId: string | null;
   taxNumber: string | null;
   customerNumber: string | null;
@@ -1161,7 +1303,7 @@ export interface Customer {
   jobPosition: string | null;
   department: string | null;
   website: string | null;
-  /** Mirror of the default address row — kept in sync by the API. */
+  /** Mirror of the default address row, kept in sync by the API. */
   addressLine1: string | null;
   addressLine2: string | null;
   postalCode: string | null;
@@ -1180,7 +1322,7 @@ export interface Customer {
   updatedAt: string;
 }
 
-/** Every editable field of a customer. Empty strings clear a field server-side. */
+/** Empty strings clear a field server-side. */
 export interface CustomerProfileInput {
   name?: string | null;
   phone?: string | null;
@@ -1290,7 +1432,6 @@ export interface CustomerListParams {
   cursor?: string | null;
   tier?: LoyaltyTier;
   email?: string;
-  /** Free text — matches id, email, name, company, customer number and phone. */
   q?: string;
 }
 
@@ -1363,7 +1504,6 @@ export const customersAdminApi = {
       body,
     });
   },
-  /** Promote an address to the customer's default (mirrored onto the customer row). */
   setDefaultAddress(companySlug: CompanySlug, id: number, addressId: number) {
     return request<{ addresses: CustomerAddress[] }>(
       `/admin/customers/${id}/addresses/${addressId}/default`,
@@ -1376,7 +1516,7 @@ export const customersAdminApi = {
       companySlug,
     });
   },
-  /** Bulk CSV import. dryRun:true returns the summary without writing. */
+  /** `dryRun: true` returns the summary without writing. */
   import(
     companySlug: CompanySlug,
     body: { csv: string; dryRun?: boolean; marketingOptIn?: boolean },
@@ -1398,8 +1538,6 @@ export interface ContactReply {
   emailMessageId: string | null;
   createdAt: string;
 }
-
-// --- Companies (admin: create + list) -------------------------------------
 
 export interface CompanyRow {
   slug: string;
@@ -1446,30 +1584,18 @@ export interface CompanyListRow {
   country: string | null;
   vatId: string | null;
   registrationNumber: string | null;
-  /** Betriebsnummer — printed in the invoice sender block + legal footer. */
   businessId: string | null;
-  /** Rechtsform, e.g. "GbR". */
   legalForm: string | null;
-  /** Geschäftsführer, comma-separated. */
   managingDirectors: string | null;
-  /** Handwerkskammer. */
   chamber: string | null;
   logoUrl: string | null;
   primaryColor: string | null;
-  /**
-   * Per-brand mail sign-off (seed-owned, read-only over the API). Only the
-   * fields the dashboard shows are typed here — the mail templates render the
-   * full block.
-   */
+  /** Seed-owned, read-only over the API; only the fields the dashboard shows are typed. */
   emailSignature: { signOff?: string | null; signatory?: string | null } | null;
   senderEmail: string | null;
   senderName: string | null;
   storefrontOrigin: string | null;
-  /**
-   * Whether a paid order's automatic invoice issues + emails itself right away.
-   * Off = it stops at a draft, so positions agreed after the booking can be
-   * added before the invoice is finalised.
-   */
+  /** Off = a paid order's automatic invoice stops at a draft instead of issuing and emailing. */
   autoIssueInvoices: boolean;
   isActive: boolean;
   role: string;
@@ -1529,8 +1655,6 @@ export const companiesAdminApi = {
   },
 };
 
-// --- Dashboard summary -----------------------------------------------------
-
 export interface DashboardBrandStats {
   slug: string;
   name: string;
@@ -1562,8 +1686,6 @@ export const dashboardAdminApi = {
   },
 };
 
-// --- Notifications (bell) --------------------------------------------------
-
 export type NotificationKind = 'contact' | 'inquiry';
 export interface NotificationItem {
   id: string;
@@ -1592,15 +1714,13 @@ export const notificationsAdminApi = {
   },
 };
 
-// --- Invites (admin: create; storefront: lookup + accept) -----------------
-
 export interface InviteCreateInput {
   email: string;
   companySlug: string;
   role?: 'owner' | 'admin' | 'manager' | 'viewer' | 'partner';
   audience?: 'admin' | 'partner';
   accessLevel?: UserAccessLevel;
-  /** Pre-fill the partner profile on accept (only honoured when audience=partner). */
+  /** Only honoured when audience=partner. */
   partner?: {
     companyName: string;
     contactPhone?: string;
@@ -1647,7 +1767,6 @@ export const invitesPublicApi = {
   },
 };
 
-// --- AI text assistant (Claude) -------------------------------------------
 // Backend loads the source record by refId; we send kind + id (+ draft/instruction).
 
 export type AiAssistKind =
@@ -1660,31 +1779,27 @@ export type AiAssistKind =
 export interface AiAssistInput {
   kind: AiAssistKind;
   refId: number;
-  current?: string; // refine instead of restart
-  instruction?: string; // free-text steering, takes priority
-  fresh?: boolean; // ignore `current`, write from scratch
+  current?: string;
+  instruction?: string; // takes priority
+  fresh?: boolean; // ignores `current`
 }
 
-/** One service position extracted from inquiry/offer text by Claude. */
 export interface ExtractedOfferItem {
   label: string;
   quantity: number;
-  /** Gross unit price in euros, or null when the text names no price. */
+  /** Gross, in euros; null when the text names no price. */
   unitPriceGross: number | null;
 }
 
-/** One editable assistant prompt for the active brand. */
 export interface AiPrompt {
   kind: AiAssistKind;
-  /** Current instruction text — the brand's override, or the default. */
   body: string;
-  /** Shipped default, for the reset button. */
   defaultBody: string;
   /** Appended on every call; not editable. */
   lockedRules: string;
   isCustom: boolean;
   updatedAt: string | null;
-  /** Brand name that replaces {{brand}} at call time. */
+  /** Replaces {{brand}} at call time. */
   brand: string;
 }
 
@@ -1697,7 +1812,6 @@ export const aiApi = {
       signal,
     });
   },
-  /** Extract offer line items from an inquiry's request + drafted offer text. */
   extractOfferItems(
     companySlug: CompanySlug,
     refId: number,
@@ -1711,18 +1825,16 @@ export const aiApi = {
       signal,
     });
   },
-  /** All editable prompts for the active brand (defaults included). */
   prompts(companySlug: CompanySlug, signal?: AbortSignal) {
     return request<{ prompts: AiPrompt[] }>('/admin/ai/prompts', { companySlug, signal });
   },
-  /** Save an edited prompt. Saving the unchanged default clears the override. */
+  /** Saving the unchanged default clears the override. */
   savePrompt(companySlug: CompanySlug, kind: AiAssistKind, body: string) {
     return request<{ kind: AiAssistKind; isCustom: boolean; body: string }>(
       `/admin/ai/prompts/${kind}`,
       { method: 'PATCH', companySlug, body: { body } },
     );
   },
-  /** Drop the override and fall back to the shipped default. */
   resetPrompt(companySlug: CompanySlug, kind: AiAssistKind) {
     return request<{ kind: AiAssistKind; isCustom: boolean; body: string }>(
       `/admin/ai/prompts/${kind}`,
@@ -1783,9 +1895,7 @@ export const contactApi = {
   },
 };
 
-// --- Catalog / Pricing -----------------------------------------------------
-// The brand's price book — services + tiers + addons. Read-only here; edits
-// live in `cleaning-dashboard-backend/src/lib/price-books/<slug>.ts`.
+// Read-only here; edits live in backend `src/lib/price-books/<slug>.ts`.
 
 export type CatalogServiceKind =
   | 'teppichreinigung'
@@ -1798,20 +1908,15 @@ export type CatalogUnit = 'qm' | 'lfdm' | 'stueck' | 'bracket';
 export interface CatalogTier {
   code: string;
   label: string;
-  /**
-   * Für Bracket-Services (unit: 'bracket') sind die Preise tier × bracket;
-   * `unitPriceCents` ist dann `0` und sollte ignoriert werden. Stattdessen
-   * `brackets[].pricesCents[tierCode]` auf dem Service lesen.
-   */
+  /** Bracket services (unit: 'bracket'): `0` and to be ignored; read `brackets[].pricesCents[tierCode]` instead. */
   unitPriceCents: number;
-  /** Optionale Card-Subtitle (z. B. "Mit Fleckenbehandlung & Imprägnierung"). */
   description?: string;
 }
 
 export interface CatalogBracket {
   code: string;
   label: string;
-  /** Preis je Tier-Code in Cents — `null` ⇒ "auf Anfrage". */
+  /** Cents per tier code; null = "auf Anfrage". */
   pricesCents: Record<string, number | null>;
 }
 
@@ -1820,9 +1925,7 @@ export interface CatalogService {
   label: string;
   unit: CatalogUnit;
   tiers: CatalogTier[];
-  /** Nur gesetzt für `unit: 'bracket'`. */
   brackets?: CatalogBracket[];
-  /** Service-specific config — minOrderCents, anfahrtCents, thresholds, … */
   options: Record<string, unknown>;
 }
 
@@ -1834,7 +1937,6 @@ export interface CatalogResponse {
 }
 
 export const catalogApi = {
-  /** Fetch the brand's price book. Cheap, deterministic — no rate-limit concerns. */
   forBrand(companySlug: CompanySlug, signal?: AbortSignal) {
     return request<CatalogResponse>('/storefront/catalog/', {
       companySlug,
@@ -1842,8 +1944,6 @@ export const catalogApi = {
     });
   },
 };
-
-// --- Web Push subscriptions -----------------------------------------------
 
 export interface PushStatus {
   configured: boolean;
@@ -1881,8 +1981,6 @@ export const pushAdminApi = {
     });
   },
 };
-
-// --- Tasks (ALL_103) -------------------------------------------------------
 
 export type TaskKind =
   | 'contact_review'
@@ -1962,9 +2060,9 @@ export interface TaskPatchInput {
   title?: string;
   body?: string | null;
   priority?: TaskPriority;
-  /** ISO date string, or null to clear. */
+  /** Null clears. */
   dueAt?: string | null;
-  /** User id, or null to unassign. */
+  /** Null unassigns. */
   assigneeUserId?: string | null;
 }
 
@@ -2036,8 +2134,6 @@ export const tasksAdminApi = {
   },
 };
 
-// --- Exports (ALL_74) ------------------------------------------------------
-
 export type ExportKind = 'orders' | 'inquiries' | 'contacts' | 'newsletter' | 'customers';
 
 export type ExportStatus = 'pending' | 'processing' | 'done' | 'failed' | 'cancelled';
@@ -2093,8 +2189,6 @@ export const exportsAdminApi = {
   },
 };
 
-// --- Order cancellation (ALL_06) -------------------------------------------
-
 export interface CancellationDecision {
   allowed: boolean;
   mode: 'full' | 'partial' | 'denied';
@@ -2136,20 +2230,16 @@ export const ordersCancellationApi = {
   },
 };
 
-// --- Invoices (admin) -------------------------------------------------------
-
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'void';
 export type InvoiceTaxRate = 0 | 7 | 19;
-/** How the invoice is settled — drives the payment text + bank block. */
+/** Drives the payment text + bank block. */
 export type InvoicePaymentMethod = 'transfer' | 'card' | 'cash';
 
 export interface InvoiceLineItem {
   label: string;
-  /** Second line under the label on the invoice, e.g. "Premiumreinigung". */
   note?: string | null;
   quantity: number;
   unitPriceCents: number;
-  /** Render as a bold package/section header line on the invoice. */
   isPackage?: boolean;
 }
 
@@ -2158,13 +2248,10 @@ export interface InvoiceRow {
   number: string | null;
   orderId: number | null;
   partnerId: number | null;
-  /** Logical link to the billed customer record. */
   customerId: number | null;
   customerType: 'b2c' | 'b2b';
   recipientName: string;
-  /** B2B: company line printed above the recipient name. */
   recipientCompany: string | null;
-  /** B2B: USt-IdNr. of the recipient. */
   recipientVatId: string | null;
   recipientEmail: string | null;
   recipientAddressLine1: string | null;
@@ -2172,9 +2259,8 @@ export interface InvoiceRow {
   recipientPostalCode: string | null;
   recipientCity: string | null;
   recipientCountry: string | null;
-  /** Betreff line under the invoice headline. */
   subject: string | null;
-  /** "YYYY-MM-DD" Leistungsdatum (§14 UStG) — required before issuing. */
+  /** Leistungsdatum (§14 UStG), "YYYY-MM-DD"; required before issuing. */
   serviceDate: string | null;
   serviceDateEnd: string | null;
   status: InvoiceStatus;
@@ -2184,10 +2270,7 @@ export interface InvoiceRow {
   taxCents: number;
   totalCents: number;
   lineItems: InvoiceLineItem[];
-  /**
-   * Paketrechnung: the positions are scope of work only — no per-line price is
-   * stored or printed, and `subtotalCents` holds the one agreed package price.
-   */
+  /** Paketrechnung: positions are scope only, no per-line price stored or printed; `subtotalCents` holds the agreed package price. */
   packageMode: boolean;
   paymentTermsDays: number;
   paymentMethod: InvoicePaymentMethod;
@@ -2200,11 +2283,10 @@ export interface InvoiceRow {
   notes: string | null;
   /** §35a EStG: the invoice covers a Handwerkerleistung (deductible labour). */
   craftsmanService: boolean;
-  /** Gross (VAT-inclusive) labour share in cents. */
+  /** Gross (VAT-inclusive) labour share. */
   laborGrossCents: number | null;
-  /** VAT contained in the labour share, in cents. */
   laborVatCents: number | null;
-  /** The §35a sentence as printed — frozen server-side, read-only here. */
+  /** The §35a sentence as printed; frozen server-side, read-only here. */
   craftsmanNote: string | null;
   createdAt: string;
   updatedAt: string;
@@ -2227,9 +2309,8 @@ export interface InvoiceCreateInput {
   serviceDate?: string | null;
   serviceDateEnd?: string | null;
   lineItems: InvoiceLineItem[];
-  /** Paketrechnung — positions without prices; requires `packageNetCents`. */
   packageMode?: boolean;
-  /** The agreed net package price in cents; becomes the invoice subtotal. */
+  /** Agreed net package price in cents; becomes the invoice subtotal. */
   packageNetCents?: number;
   taxRatePercent?: InvoiceTaxRate;
   paymentTermsDays?: number;
@@ -2255,9 +2336,7 @@ export interface InvoiceUpdateInput {
   serviceDate?: string | null;
   serviceDateEnd?: string | null;
   lineItems?: InvoiceLineItem[];
-  /** Paketrechnung — positions without prices (see `packageNetCents`). */
   packageMode?: boolean;
-  /** The agreed net package price in cents; becomes the invoice subtotal. */
   packageNetCents?: number;
   taxRatePercent?: InvoiceTaxRate;
   paymentTermsDays?: number;
@@ -2325,7 +2404,7 @@ export const invoicesAdminApi = {
       { method: 'POST', companySlug, body: {} },
     );
   },
-  /** Issue a draft without emailing it (offline / print flow). */
+  /** Issues a draft without emailing it (print flow). */
   issue(companySlug: CompanySlug, id: number) {
     return request<{ invoice: InvoiceRow }>(`/admin/invoices/${id}/issue`, {
       method: 'POST',
@@ -2353,7 +2432,6 @@ export const invoicesAdminApi = {
       signal,
     });
   },
-  /** Fetch the rendered invoice PDF as a Blob (for preview + download). */
   async pdf(companySlug: CompanySlug, id: number, signal?: AbortSignal): Promise<Blob> {
     const res = await fetch(`${API_BASE}/admin/invoices/${id}/pdf`, {
       headers: { Accept: 'application/pdf', 'X-Company-Slug': companySlug },
@@ -2374,8 +2452,6 @@ export const invoicesAdminApi = {
     return res.blob();
   },
 };
-
-// --- Subscriptions (admin) ---------------------------------------------------
 
 export type SubscriptionStatus = 'active' | 'paused' | 'past_due' | 'cancelled';
 
@@ -2468,8 +2544,6 @@ export const subscriptionsAdminApi = {
   },
 };
 
-// --- Reviews (admin) ----------------------------------------------------------
-
 export type ReviewStatus = 'new' | 'published' | 'flagged' | 'hidden';
 
 export interface ReviewRow {
@@ -2540,8 +2614,6 @@ export const reviewsAdminApi = {
   },
 };
 
-// --- SEO / Blog pages (admin) ----------------------------------------------
-
 export type SeoPageType = 'service' | 'city' | 'blog';
 export type SeoPageStatus = 'draft' | 'live' | 'protected';
 
@@ -2559,11 +2631,62 @@ export interface SeoPageRow {
   bodyHtml: string | null;
   schemaJsonld: Record<string, unknown> | unknown[] | null;
   faq: Array<{ question: string; answer: string }>;
+  meta: SeoPageMeta;
   status: SeoPageStatus;
   gscPosition: string | null;
   source: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Editorial/SEO settings; empty values are dropped by the server. */
+export interface SeoPageMeta {
+  excerpt?: string;
+  noindex?: boolean;
+  canonicalUrl?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  focusKeyphrase?: string;
+  imageAlt?: string;
+  imageCaption?: string;
+}
+
+export type BlogSort = 'updated' | 'created' | 'published' | 'title';
+
+export interface BlogListParams {
+  q?: string;
+  status?: SeoPageStatus;
+  attention?: boolean;
+  sort?: BlogSort;
+  offset?: number;
+  limit?: number;
+}
+
+export interface BlogListItem {
+  id: number;
+  path: string;
+  title: string | null;
+  metaTitle: string | null;
+  metaDescription: string | null;
+  status: SeoPageStatus;
+  gscPosition: string | null;
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
+  image: string | null;
+  datePublished: string | null;
+  hasTitle: boolean;
+  hasBody: boolean;
+  noindex: boolean;
+}
+
+export interface BlogListCounts {
+  all: number;
+  draft: number;
+  live: number;
+  protected: number;
+  attention: number;
 }
 
 export interface SeoPageListParams {
@@ -2585,19 +2708,23 @@ export interface SeoPagePatch {
   bodyHtml?: string;
   schemaJsonld?: SeoPageJsonLd;
   faq?: Array<{ question: string; answer: string }>;
+  meta?: SeoPageMeta;
+  /** The updatedAt this client last saw; the server answers 409 STALE if the row moved on. */
+  expectedUpdatedAt?: string;
 }
 
-export interface SeoPageCreate extends SeoPagePatch {
+export interface SeoPageCreate extends Omit<SeoPagePatch, 'expectedUpdatedAt'> {
   type: SeoPageType;
   path: string;
   source?: string;
 }
 
-/**
- * Sign + stream an image to the public S3 prefix. Returns its permanent public
- * URL — used for blog featured images and images inside the article body.
- */
-export async function uploadPublicImage(companySlug: CompanySlug, file: File): Promise<string> {
+/** Signs + streams to the public S3 prefix; returns the permanent public URL (blog images). */
+export async function uploadPublicImage(
+  companySlug: CompanySlug,
+  file: File,
+  onProgress?: (fraction: number) => void,
+): Promise<string> {
   const contentType = file.type || 'application/octet-stream';
   const sign = await request<{ uploadUrl: string; key: string; publicUrl: string }>(
     '/admin/uploads/sign-public-image',
@@ -2607,12 +2734,21 @@ export async function uploadPublicImage(companySlug: CompanySlug, file: File): P
       body: { filename: file.name, contentType, size: file.size },
     },
   );
-  const put = await fetch(sign.uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: file,
+  // XHR, not fetch: fetch has no upload progress events.
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', sign.uploadUrl);
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(e.loaded / e.total);
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Upload failed (${xhr.status})`));
+    xhr.onerror = () => reject(new Error('Upload failed (network error)'));
+    xhr.send(file);
   });
-  if (!put.ok) throw new Error(`Upload failed (${put.status})`);
   return sign.publicUrl;
 }
 
@@ -2646,24 +2782,38 @@ export const seoPagesAdminApi = {
       body: patch,
     });
   },
-  setFeaturedImage(companySlug: CompanySlug, id: number, imageUrl: string) {
-    return request<{ page: SeoPageRow }>(`/admin/seo-pages/${id}/featured-image`, {
-      method: 'PATCH',
-      companySlug,
-      body: { imageUrl },
-    });
-  },
   remove(companySlug: CompanySlug, id: number) {
     return request<void>(`/admin/seo-pages/${id}`, { method: 'DELETE', companySlug });
   },
-  /** Upload a public image, then store its URL as the featured image. */
-  async uploadFeaturedImage(companySlug: CompanySlug, id: number, file: File) {
-    const publicUrl = await uploadPublicImage(companySlug, file);
-    return seoPagesAdminApi.setFeaturedImage(companySlug, id, publicUrl);
+  listPosts(companySlug: CompanySlug, params: BlogListParams = {}, signal?: AbortSignal) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q);
+    if (params.status) qs.set('status', params.status);
+    if (params.attention) qs.set('attention', '1');
+    if (params.sort) qs.set('sort', params.sort);
+    if (params.offset) qs.set('offset', String(params.offset));
+    if (params.limit) qs.set('limit', String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<{ posts: BlogListItem[]; total: number; counts: BlogListCounts }>(
+      `/admin/seo-pages/posts${suffix}`,
+      { companySlug, signal },
+    );
+  },
+  checkPath(companySlug: CompanySlug, path: string, excludeId?: number, signal?: AbortSignal) {
+    const qs = new URLSearchParams({ path });
+    if (excludeId) qs.set('excludeId', String(excludeId));
+    return request<{ valid: boolean; available: boolean; suggestion: string | null }>(
+      `/admin/seo-pages/check-path?${qs.toString()}`,
+      { companySlug, signal },
+    );
+  },
+  duplicate(companySlug: CompanySlug, id: number) {
+    return request<{ page: SeoPageRow }>(`/admin/seo-pages/${id}/duplicate`, {
+      method: 'POST',
+      companySlug,
+    });
   },
 };
-
-// --- Price adjustments (record-only pricing log) ---------------------------
 
 export type PriceAdjustmentScope = 'global' | 'service' | 'zone';
 
@@ -2713,8 +2863,6 @@ export const priceAdjustmentsAdminApi = {
     });
   },
 };
-
-// --- City status (expansion / SEO rollout tracker) -------------------------
 
 export type CityStatusValue = 'locked' | 'soft_launch' | 'active' | 'scaling';
 

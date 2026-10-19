@@ -11,3 +11,6 @@ coverage/
 .idea/
 .vscode/
 *.tsbuildinfo
+
+# Local development notes (audits, QA checklists)
+docs/

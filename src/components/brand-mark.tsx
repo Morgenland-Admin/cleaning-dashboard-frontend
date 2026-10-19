@@ -2,7 +2,6 @@ import { cn } from '@/lib/utils';
 
 import type { Project } from '@/contexts/project-context';
 
-/** Brand avatar: logo if uploaded, else 2-letter mark on brand color or gradient. */
 export function BrandMark({
   brand,
   size = 'sm',
@@ -65,12 +64,17 @@ export function BrandMark({
   );
 }
 
-/** Mark + short name inline. */
-export function BrandChip({ brand }: { brand: Project }) {
+/** Which brand a row belongs to, in cross-brand lists. */
+export function BrandChip({ brand, className }: { brand: Project; className?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <BrandMark brand={brand} size="sm" />
-      <span className="text-xs">{brand.shortName}</span>
+    <span
+      className={cn(
+        'inline-flex max-w-full shrink-0 items-center gap-1 rounded-sm border border-border bg-card py-px pl-0.5 pr-1.5 text-2xs font-medium text-muted-foreground',
+        className,
+      )}
+    >
+      <BrandMark brand={brand} size="xs" />
+      <span className="truncate">{brand.shortName}</span>
     </span>
   );
 }

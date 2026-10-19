@@ -30,10 +30,7 @@ export function App() {
         defaultOptions: {
           queries: {
             staleTime: 30_000,
-            // Installed as a PWA, this app gets left open for hours and then
-            // returned to. Refetching on focus is what makes coming back show
-            // current orders instead of yesterday's; `staleTime` keeps it from
-            // firing on every incidental tab switch.
+            // Installed PWA stays open for hours; refetch on focus so returning shows current orders.
             refetchOnWindowFocus: true,
             retry: (failureCount, error) => {
               if (error instanceof ApiError) {

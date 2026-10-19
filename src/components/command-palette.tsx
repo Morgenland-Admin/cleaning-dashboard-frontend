@@ -13,7 +13,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { BrandMark } from '@/components/brand-mark';
+import { BrandChip } from '@/components/brand-mark';
+import { ErrorState } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useProject } from '@/contexts/project-context';
 import { useT } from '@/i18n';
@@ -29,8 +30,27 @@ const KIND_ICON: Record<SearchKind, LucideIcon> = {
   partner: Store,
 };
 
-/** Minimum term the backend accepts — mirrored here so we don't fire dead requests. */
+/** Mirrors the backend's minimum term length so no dead requests are fired. */
 const MIN_QUERY = 2;
+
+function hrefFor(hit: SearchHit): string {
+  switch (hit.kind) {
+    case 'order':
+      return `/auftraege/${hit.id}`;
+    case 'customer':
+      return `/customers/${hit.id}`;
+    case 'inquiry':
+      return `/inquiries/${hit.companySlug}/${hit.id}`;
+    case 'contact':
+      return `/contacts/${hit.companySlug}/${hit.id}`;
+    case 'invoice':
+      return `/rechnungen/${hit.id}`;
+    case 'partner':
+      return `/partner/${hit.id}`;
+    default:
+      return hit.href;
+  }
+}
 
 export function CommandPalette({
   open,
@@ -47,9 +67,6 @@ export function CommandPalette({
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
 
-  // Typing is fast; the query fans out across brands. Debounce so a 12-character
-  // term costs one request, not twelve. The highlight resets here rather than in
-  // an effect watching `debounced` — same moment, one render less.
   useEffect(() => {
     const id = window.setTimeout(() => {
       setDebounced(term.trim());
@@ -58,8 +75,6 @@ export function CommandPalette({
     return () => window.clearTimeout(id);
   }, [term]);
 
-  // A palette should never reopen showing the last person's search. Reset on the
-  // close itself, not in an effect reacting to `open`.
   function handleOpenChange(next: boolean) {
     if (!next) {
       setTerm('');
@@ -70,26 +85,22 @@ export function CommandPalette({
   }
 
   const enabled = debounced.length >= MIN_QUERY;
-  const { data, isFetching } = useQuery({
+  const { data, isFetching, error, refetch } = useQuery({
     queryKey: ['global-search', debounced] as const,
     enabled,
     queryFn: ({ signal }) => searchApi.query(debounced, signal),
-    // Results go stale the moment anything changes, but within one palette
-    // session repeated terms should not re-hit the API.
     staleTime: 15_000,
   });
 
   const hits = useMemo(() => data?.hits ?? [], [data]);
-  // Narrowing the term can shrink the list under a stale index.
   const activeIndex = hits.length === 0 ? 0 : Math.min(active, hits.length - 1);
   const brandFor = (slug: string) => projects.find((p) => p.companySlug === slug);
 
   function go(hit: SearchHit) {
-    // The target page reads the active brand from context, so switch first —
-    // otherwise a cross-brand hit lands on the right route with the wrong tenant.
+    // Switch brand first: the target page reads the active brand from context.
     setBrandView(hit.companySlug);
     handleOpenChange(false);
-    navigate(hit.href);
+    navigate(hrefFor(hit));
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
@@ -107,7 +118,6 @@ export function CommandPalette({
     }
   }
 
-  // Keep the highlighted row in view when navigating by keyboard.
   useEffect(() => {
     const el = listRef.current?.children[activeIndex];
     el?.scrollIntoView({ block: 'nearest' });
@@ -126,9 +136,7 @@ export function CommandPalette({
         <div className="flex items-center gap-2 border-b px-3">
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <input
-            // A command palette that does not put the caret in its field is
-            // broken. Focus has to enter the modal anyway, and this is the one
-            // control in it.
+            // Focus has to enter the modal; this is its one control.
             // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             type="text"
@@ -144,21 +152,34 @@ export function CommandPalette({
             className="h-12 w-full bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
           />
           {isFetching ? (
-            <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+            <Loader2
+              className="size-4 shrink-0 animate-spin text-muted-foreground"
+              aria-hidden="true"
+            />
           ) : null}
         </div>
 
         <div className="max-h-[min(60svh,26rem)] overflow-y-auto overscroll-contain">
           {!enabled ? (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+            <p className="px-4 py-6 text-center text-2sm text-muted-foreground">
               {t('search.hint')}
             </p>
+          ) : error && !isFetching ? (
+            <div className="p-3">
+              <ErrorState title={t('search.failed')} error={error} onRetry={() => void refetch()} />
+            </div>
           ) : hits.length === 0 && !isFetching ? (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+            <p role="status" className="px-4 py-6 text-center text-2sm text-muted-foreground">
               {t('search.empty')}
             </p>
           ) : (
-            <ul id="search-hits" role="listbox" aria-label={t('search.title')} ref={listRef}>
+            <ul
+              id="search-hits"
+              role="listbox"
+              aria-label={t('search.title')}
+              ref={listRef}
+              className="p-1"
+            >
               {hits.map((hit, index) => {
                 const Icon = KIND_ICON[hit.kind];
                 const brand = brandFor(hit.companySlug);
@@ -172,15 +193,17 @@ export function CommandPalette({
                       onMouseEnter={() => setActive(index)}
                       onClick={() => go(hit)}
                       className={cn(
-                        'flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors',
-                        index === activeIndex ? 'bg-muted' : 'hover:bg-muted/60',
+                        'flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors duration-fast',
+                        index === activeIndex ? 'bg-accent' : 'hover:bg-accent/60',
                       )}
                     >
                       <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                       <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          <span className="truncate text-sm font-medium">{hit.title}</span>
-                          <span className="shrink-0 text-2xs uppercase tracking-wide text-muted-foreground">
+                        <span className="flex items-baseline gap-2">
+                          <span className="truncate text-2sm font-medium text-foreground">
+                            {hit.title}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
                             {t(`search.kind.${hit.kind}` as never)}
                           </span>
                         </span>
@@ -196,7 +219,7 @@ export function CommandPalette({
                             {hit.meta}
                           </span>
                         ) : null}
-                        {brand ? <BrandMark brand={brand} size="xs" /> : null}
+                        {brand ? <BrandChip brand={brand} /> : null}
                       </span>
                     </button>
                   </li>
@@ -206,7 +229,7 @@ export function CommandPalette({
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t px-3 py-2 text-2xs text-muted-foreground">
+        <div className="flex items-center justify-between gap-3 border-t px-3 py-2 text-2xs text-muted-foreground">
           <span>{t('search.footerNav')}</span>
           <span>{t('search.footerScope')}</span>
         </div>
@@ -215,12 +238,7 @@ export function CommandPalette({
   );
 }
 
-/**
- * Global ⌘K / Ctrl-K binding.
- *
- * Ignores the shortcut while the user is typing in a field, so ⌘K inside a
- * textarea does not yank them out of a half-written reply.
- */
+/** Global ⌘K / Ctrl-K; ignored while typing in a field. */
 export function useCommandPaletteShortcut(onOpen: () => void) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

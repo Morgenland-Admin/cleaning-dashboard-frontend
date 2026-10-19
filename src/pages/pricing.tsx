@@ -1,26 +1,25 @@
 import { useQueries } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  Hammer,
-  Info,
-  Loader2,
-  Package,
-  RefreshCcw,
-  Sofa,
-  Sparkles,
-  SprayCan,
-  Tag,
-} from 'lucide-react';
-import { useMemo } from 'react';
+import { Hammer, Package, Sofa, Sparkles, SprayCan, Tag, type LucideIcon } from 'lucide-react';
+import { Fragment, useMemo } from 'react';
 
 import { BrandMark } from '@/components/brand-mark';
-import { PageHeading } from '@/components/page-heading';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { useProject, type Project } from '@/contexts/project-context';
-import { useT } from '@/i18n';
+import { CountPill } from '@/components/count-pill';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
+import { SectionCard } from '@/components/section';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import {
-  type ApiError,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useProject, type Project } from '@/contexts/project-context';
+import { useT, type DictKey } from '@/i18n';
+import {
   type CatalogBracket,
   catalogApi,
   type CatalogResponse,
@@ -28,35 +27,26 @@ import {
   type CatalogTier,
 } from '@/lib/api';
 import { usePageTitle } from '@/lib/use-page-title';
+import { formatCurrency } from '@/lib/utils';
 
-const SERVICE_ICONS: Record<CatalogService['kind'], React.ComponentType<{ className?: string }>> = {
+const SERVICE_ICONS: Record<CatalogService['kind'], LucideIcon> = {
   teppichreinigung: SprayCan,
   teppichreparatur: Hammer,
   polsterreinigung: Sofa,
   teppichbodenreinigung: Package,
 };
 
-function formatEurCents(cents: number, locale: string, currency: string): string {
-  return (cents / 100).toLocaleString(locale, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-  });
+/** The catalog is in cents; formatCurrency takes euros. */
+function formatCents(cents: number, locale: string, currency: string): string {
+  return formatCurrency(cents / 100, currency, locale);
 }
 
-function unitSuffix(unit: CatalogService['unit']): string {
-  switch (unit) {
-    case 'qm':
-      return '/m²';
-    case 'lfdm':
-      return '/lfdm';
-    case 'stueck':
-      return '';
-    case 'bracket':
-      // Festpreis pro Auftrag — keine Einheit hinten.
-      return '';
-  }
-}
+const UNIT_SUFFIX: Record<CatalogService['unit'], DictKey | null> = {
+  qm: 'pricing.suffix.qm',
+  lfdm: 'pricing.suffix.lfdm',
+  stueck: null,
+  bracket: null,
+};
 
 export function PricingPage() {
   const t = useT();
@@ -78,138 +68,187 @@ export function PricingPage() {
 
   const isLoading = catalogs.every((q) => q.isLoading);
   const isFetching = catalogs.some((q) => q.isFetching);
-  const firstError = catalogs.find((q) => q.error)?.error as ApiError | Error | undefined;
 
   function refetchAll() {
-    catalogs.forEach((q) => q.refetch());
+    catalogs.forEach((q) => void q.refetch());
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-6xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+    <PageContainer>
       <PageHeading
         title={t('pricing.title')}
         subtitle={isAllBrands ? t('pricing.subtitleAllBrands') : t('pricing.subtitleSingle')}
-        actions={
-          <Button variant="outline" size="sm" onClick={refetchAll} disabled={isFetching}>
-            {isFetching ? (
-              <Loader2 className="mr-1.5 size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <RefreshCcw className="mr-1.5 size-4" aria-hidden="true" />
-            )}
-            {t('common.refresh')}
-          </Button>
-        }
+        actions={<RefreshButton onClick={refetchAll} fetching={isFetching} />}
       />
 
-      <ReadOnlyNotice text={t('pricing.readOnlyNotice')} />
+      <div className="flex flex-col gap-6">
+        <Alert tone="info">{t('pricing.readOnlyNotice')}</Alert>
 
-      {isLoading ? (
-        <LoadingState label={t('common.loading')} />
-      ) : firstError ? (
-        <ErrorState title={t('common.error')} message={firstError.message} />
-      ) : (
-        <div className="flex flex-col gap-12">
-          {brands.map((brand, i) => {
-            const data = catalogs[i]?.data;
-            if (!data) return null;
-            return <BrandSection key={brand.companySlug} brand={brand} catalog={data} />;
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReadOnlyNotice({ text }: { text: string }) {
-  return (
-    <div
-      role="note"
-      className="flex items-start gap-3 rounded-lg border border-rust/20 bg-rust-soft/40 px-4 py-3"
-    >
-      <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-rust/15 text-rust">
-        <Info className="size-3" aria-hidden="true" />
-      </span>
-      <p className="text-xs leading-relaxed text-foreground/80">{text}</p>
-    </div>
+        {isLoading ? (
+          <LoadingState />
+        ) : (
+          brands.map((brand, i) => {
+            const q = catalogs[i];
+            if (!q) return null;
+            if (q.error) {
+              return (
+                <ErrorState
+                  key={brand.companySlug}
+                  title={t('pricing.loadFailedBrand', { brand: brand.name })}
+                  error={q.error}
+                  onRetry={() => void q.refetch()}
+                  retrying={q.isFetching}
+                />
+              );
+            }
+            if (!q.data) {
+              return (
+                <LoadingState
+                  key={brand.companySlug}
+                  inline
+                  label={t('pricing.brandSection', { brand: brand.name })}
+                />
+              );
+            }
+            return <BrandSection key={brand.companySlug} brand={brand} catalog={q.data} />;
+          })
+        )}
+      </div>
+    </PageContainer>
   );
 }
 
 function BrandSection({ brand, catalog }: { brand: Project; catalog: CatalogResponse }) {
   const t = useT();
   const totalTiers = catalog.services.reduce((n, s) => n + s.tiers.length, 0);
+  const listed = catalog.services.filter((s) => s.unit !== 'bracket' || !s.brackets);
+  const matrices = catalog.services.filter((s) => s.unit === 'bracket' && s.brackets);
+  const { locale } = brand;
+  const { currency } = catalog;
 
   return (
-    <section
-      aria-label={t('pricing.brandSection', { brand: brand.name })}
-      className="flex flex-col gap-5"
+    <SectionCard
+      title={
+        <span className="flex items-center gap-2">
+          <BrandMark brand={brand} size="sm" />
+          {brand.name}
+        </span>
+      }
+      description={[
+        brand.domain,
+        `${catalog.services.length} ${t('pricing.statServices')}`,
+        `${totalTiers} ${t('pricing.statTiers')}`,
+        `${catalog.addons.length} ${t('pricing.statAddons')}`,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+      bodyClassName="p-0 sm:p-0"
     >
-      <header className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-          <div className="flex min-w-0 items-center gap-4">
-            <BrandMark brand={brand} size="lg" />
-            <div className="min-w-0">
-              <h2 className="font-serif text-2xl leading-tight text-foreground">{brand.name}</h2>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{brand.domain}</p>
-            </div>
-          </div>
-
-          <dl className="grid grid-cols-3 gap-x-6 gap-y-1 rounded-lg border border-border/60 bg-background/60 px-4 py-2.5">
-            <Stat icon={Tag} label={t('pricing.statServices')} value={catalog.services.length} />
-            <Stat icon={Package} label={t('pricing.statTiers')} value={totalTiers} />
-            <Stat icon={Sparkles} label={t('pricing.statAddons')} value={catalog.addons.length} />
-          </dl>
-        </div>
-      </header>
-
       {catalog.services.length === 0 ? (
-        <EmptyServices label={t('pricing.noServices')} />
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {catalog.services.map((svc) => (
-            <ServiceCard
-              key={svc.kind}
-              service={svc}
-              locale={brand.locale}
-              currency={catalog.currency}
-            />
-          ))}
+        <EmptyState size="sm" icon={<Tag aria-hidden="true" />} message={t('pricing.noServices')} />
+      ) : null}
+
+      {listed.length > 0 ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[40%]">{t('pricing.colService')}</TableHead>
+              <TableHead>{t('pricing.colTier')}</TableHead>
+              <TableHead className="text-right">{t('pricing.colPrice')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {listed.map((service) => (
+              <Fragment key={service.kind}>
+                {service.tiers.map((tier, i) => (
+                  <TableRow key={tier.code} className="hover:bg-transparent">
+                    {i === 0 ? (
+                      <TableCell
+                        rowSpan={service.tiers.length}
+                        className="border-r border-border align-top"
+                      >
+                        <ServiceSummary service={service} locale={locale} currency={currency} />
+                      </TableCell>
+                    ) : null}
+                    <TableCell>
+                      <span className="font-medium text-foreground">{tier.label}</span>
+                      <span className="ml-2 font-mono text-2xs text-muted-foreground">
+                        {tier.code}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Price
+                        cents={tier.unitPriceCents}
+                        unit={service.unit}
+                        locale={locale}
+                        currency={currency}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </Fragment>
+            ))}
+          </TableBody>
+        </Table>
+      ) : null}
+
+      {matrices.map((service) => (
+        <div key={service.kind} className="border-t border-border first:border-t-0">
+          <div className="px-4 py-3 sm:px-5">
+            <ServiceSummary service={service} locale={locale} currency={currency} />
+          </div>
+          <BracketMatrix
+            tiers={service.tiers}
+            brackets={service.brackets!}
+            locale={locale}
+            currency={currency}
+          />
         </div>
-      )}
+      ))}
 
-      {catalog.addons.length > 0 && (
-        <AddonsStrip
-          addons={catalog.addons}
-          locale={brand.locale}
-          currency={catalog.currency}
-          title={t('pricing.addons.title')}
-          subtitle={t('pricing.addons.subtitle')}
-        />
-      )}
-    </section>
+      {catalog.addons.length > 0 ? (
+        <div className="border-t border-border first:border-t-0">
+          <div className="flex items-start gap-2 px-4 py-3 sm:px-5">
+            <Sparkles className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-2sm font-semibold text-foreground">
+                {t('pricing.addons.title')}
+              </h3>
+              <p className="text-xs text-muted-foreground">{t('pricing.addons.subtitle')}</p>
+            </div>
+            <CountPill>{catalog.addons.length}</CountPill>
+          </div>
+          <AddonsTable addons={catalog.addons} locale={locale} currency={currency} />
+        </div>
+      ) : null}
+    </SectionCard>
   );
 }
 
-function Stat({
-  icon: Icon,
-  label,
-  value,
+function Price({
+  cents,
+  unit,
+  locale,
+  currency,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: number;
+  cents: number;
+  unit: CatalogService['unit'];
+  locale: string;
+  currency: string;
 }) {
+  const t = useT();
+  const suffix = UNIT_SUFFIX[unit];
   return (
-    <div className="flex flex-col items-center gap-0.5 text-center">
-      <div className="flex items-baseline gap-1.5">
-        <Icon className="size-3 text-muted-foreground" aria-hidden="true" />
-        <span className="font-mono text-lg font-medium tabular-nums text-foreground">{value}</span>
-      </div>
-      <dt className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</dt>
-    </div>
+    <span className="whitespace-nowrap">
+      <span className="font-semibold tabular-nums text-foreground">
+        {formatCents(cents, locale, currency)}
+      </span>
+      {suffix ? <span className="ml-0.5 text-xs text-muted-foreground">{t(suffix)}</span> : null}
+    </span>
   );
 }
 
-function ServiceCard({
+function ServiceSummary({
   service,
   locale,
   currency,
@@ -229,125 +268,81 @@ function ServiceCard({
     typeof opts.freePickupSqmThreshold === 'number' ? opts.freePickupSqmThreshold : null;
   const dropOffLabel = typeof opts.dropOffLabel === 'string' ? opts.dropOffLabel : null;
 
-  const isBracket = service.unit === 'bracket';
+  const fromPrice =
+    service.unit === 'bracket'
+      ? Math.min(
+          ...(service.brackets ?? []).flatMap((b) =>
+            Object.values(b.pricesCents).filter((v): v is number => typeof v === 'number'),
+          ),
+        )
+      : Math.min(...service.tiers.map((tier) => tier.unitPriceCents));
 
-  // "ab"-Preis: bei Bracket-Services aus der Matrix (kleinster non-null Wert),
-  // sonst aus der Tier-Liste.
-  const fromPrice = isBracket
-    ? Math.min(
-        ...(service.brackets ?? []).flatMap((b) =>
-          Object.values(b.pricesCents).filter((v): v is number => typeof v === 'number'),
-        ),
-      )
-    : Math.min(...service.tiers.map((t) => t.unitPriceCents));
+  const hasOptions =
+    minOrderCents !== null ||
+    minOnsiteCents !== null ||
+    anfahrtCents !== null ||
+    freeSqmThreshold !== null ||
+    !!dropOffLabel;
 
   return (
-    <div
-      className={`group flex flex-col overflow-hidden rounded-xl border border-border bg-card transition-shadow hover:shadow-sm ${
-        isBracket ? 'md:col-span-2' : ''
-      }`}
-    >
-      <div className="flex items-start gap-3 border-b border-border/70 p-4">
-        <span
-          className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-rust-soft/60 text-rust ring-1 ring-rust/15"
-          aria-hidden="true"
-        >
-          <Icon className="size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="font-serif text-lg leading-tight text-foreground">{service.label}</h3>
-          <p className="mt-0.5 text-2xs text-muted-foreground">
-            {t(`pricing.unit.${service.unit}` as never)}
+    <div className="flex min-w-0 items-start gap-2.5">
+      <span
+        className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary"
+        aria-hidden="true"
+      >
+        <Icon className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div>
+          <h3 className="text-2sm font-semibold leading-5 text-foreground">{service.label}</h3>
+          <p className="text-xs text-muted-foreground">
+            {t(`pricing.unit.${service.unit}` as DictKey)}
+            {Number.isFinite(fromPrice) ? (
+              <>
+                {' · '}
+                {t('pricing.fromLabel')}{' '}
+                <Price cents={fromPrice} unit={service.unit} locale={locale} currency={currency} />
+              </>
+            ) : null}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-3xs uppercase tracking-wider text-muted-foreground">
-            {t('pricing.fromLabel')}
-          </p>
-          <p className="font-serif text-base tabular-nums text-foreground">
-            {Number.isFinite(fromPrice) ? formatEurCents(fromPrice, locale, currency) : '—'}
-            <span className="ml-0.5 text-3xs text-muted-foreground">
-              {unitSuffix(service.unit)}
-            </span>
-          </p>
-        </div>
+        {hasOptions ? (
+          <div className="flex flex-wrap gap-1">
+            {minOrderCents !== null && (
+              <OptionPill
+                label={t('pricing.options.minOrder')}
+                value={formatCents(minOrderCents, locale, currency)}
+              />
+            )}
+            {minOnsiteCents !== null && (
+              <OptionPill
+                label={t('pricing.options.minOnsite')}
+                value={formatCents(minOnsiteCents, locale, currency)}
+              />
+            )}
+            {anfahrtCents !== null && (
+              <OptionPill
+                label={t('pricing.options.anfahrt')}
+                value={formatCents(anfahrtCents, locale, currency)}
+              />
+            )}
+            {freeSqmThreshold !== null && (
+              <OptionPill
+                label={t('pricing.options.freePickup')}
+                value={t('pricing.options.freePickupValue', { n: freeSqmThreshold })}
+              />
+            )}
+            {dropOffLabel && (
+              <OptionPill label={t('pricing.options.dropOff')} value={dropOffLabel} />
+            )}
+          </div>
+        ) : null}
       </div>
-
-      {isBracket && service.brackets ? (
-        <BracketMatrix
-          tiers={service.tiers}
-          brackets={service.brackets}
-          locale={locale}
-          currency={currency}
-        />
-      ) : (
-        <ul className="flex-1 divide-y divide-border/60">
-          {service.tiers.map((tier) => (
-            <li
-              key={tier.code}
-              className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-rust-soft/30"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">{tier.label}</p>
-                <p className="mt-0.5 truncate font-mono text-3xs uppercase tracking-wider text-muted-foreground">
-                  {tier.code}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <span className="font-serif text-base tabular-nums text-foreground">
-                  {formatEurCents(tier.unitPriceCents, locale, currency)}
-                </span>
-                <span className="ml-0.5 text-3xs text-muted-foreground">
-                  {unitSuffix(service.unit)}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {(minOrderCents !== null ||
-        minOnsiteCents !== null ||
-        anfahrtCents !== null ||
-        freeSqmThreshold !== null ||
-        dropOffLabel) && (
-        <div className="flex flex-wrap gap-1.5 border-t border-border/70 bg-muted/30 px-4 py-3">
-          {minOrderCents !== null && (
-            <OptionPill
-              label={t('pricing.options.minOrder')}
-              value={formatEurCents(minOrderCents, locale, currency)}
-            />
-          )}
-          {minOnsiteCents !== null && (
-            <OptionPill
-              label={t('pricing.options.minOnsite')}
-              value={formatEurCents(minOnsiteCents, locale, currency)}
-            />
-          )}
-          {anfahrtCents !== null && (
-            <OptionPill
-              label={t('pricing.options.anfahrt')}
-              value={formatEurCents(anfahrtCents, locale, currency)}
-            />
-          )}
-          {freeSqmThreshold !== null && (
-            <OptionPill
-              label={t('pricing.options.freePickup')}
-              value={`≥ ${freeSqmThreshold} m²`}
-            />
-          )}
-          {dropOffLabel && <OptionPill label={t('pricing.options.dropOff')} value={dropOffLabel} />}
-        </div>
-      )}
     </div>
   );
 }
 
-/**
- * Bracket-Matrix für Festpreis-Services (z. B. Teppichbodenreinigung).
- * Zeilen = Brackets (bis 30 m², bis 50 m², …, ab 150 m²), Spalten = Tiers
- * (Basis / Standard / Premium). `null` ⇒ "auf Anfrage".
- */
+// Bracket matrix for fixed-price services; a null cell means "auf Anfrage".
 function BracketMatrix({
   tiers,
   brackets,
@@ -359,155 +354,91 @@ function BracketMatrix({
   locale: string;
   currency: string;
 }) {
+  const t = useT();
   return (
-    <div className="flex-1 overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border/70 bg-muted/30 text-3xs uppercase tracking-wider text-muted-foreground">
-            <th className="px-4 py-2 text-left font-medium">Fläche</th>
-            {tiers.map((tier) => (
-              <th key={tier.code} className="px-3 py-2 text-right font-medium">
-                <span className="font-serif text-xs normal-case tracking-normal text-foreground">
-                  {tier.label}
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('pricing.area')}</TableHead>
+          {tiers.map((tier) => (
+            <TableHead key={tier.code} className="h-auto py-2 text-right align-top">
+              <span className="text-foreground">{tier.label}</span>
+              {tier.description ? (
+                <span className="ml-auto mt-0.5 block max-w-[12rem] whitespace-normal font-normal">
+                  {tier.description}
                 </span>
-                {tier.description ? (
-                  <p className="mt-0.5 max-w-[12rem] text-right text-3xs normal-case tracking-normal text-muted-foreground">
-                    {tier.description}
-                  </p>
-                ) : null}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border/60">
-          {brackets.map((bracket) => (
-            <tr key={bracket.code} className="transition-colors hover:bg-rust-soft/30">
-              <th scope="row" className="px-4 py-2.5 text-left text-sm font-medium text-foreground">
-                {bracket.label}
-                <p className="mt-0.5 font-mono text-3xs uppercase tracking-wider text-muted-foreground">
-                  {bracket.code}
-                </p>
-              </th>
-              {tiers.map((tier) => {
-                const cents = bracket.pricesCents[tier.code];
-                return (
-                  <td
-                    key={tier.code}
-                    className="px-3 py-2.5 text-right font-serif text-base tabular-nums text-foreground"
-                  >
-                    {cents == null ? (
-                      <span className="text-2xs italic text-muted-foreground">auf Anfrage</span>
-                    ) : (
-                      formatEurCents(cents, locale, currency)
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
+              ) : null}
+            </TableHead>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {brackets.map((bracket) => (
+          <TableRow key={bracket.code}>
+            <TableCell>
+              <span className="font-medium text-foreground">{bracket.label}</span>
+              <span className="ml-2 font-mono text-2xs text-muted-foreground">{bracket.code}</span>
+            </TableCell>
+            {tiers.map((tier) => {
+              const cents = bracket.pricesCents[tier.code];
+              return (
+                <TableCell key={tier.code} className="text-right tabular-nums">
+                  {cents == null ? (
+                    <span className="text-xs text-muted-foreground">{t('pricing.onRequest')}</span>
+                  ) : (
+                    <span className="font-semibold text-foreground">
+                      {formatCents(cents, locale, currency)}
+                    </span>
+                  )}
+                </TableCell>
+              );
+            })}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function AddonsTable({
+  addons,
+  locale,
+  currency,
+}: {
+  addons: CatalogTier[];
+  locale: string;
+  currency: string;
+}) {
+  const t = useT();
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('pricing.colAddon')}</TableHead>
+          <TableHead>{t('pricing.colCode')}</TableHead>
+          <TableHead className="text-right">{t('pricing.colPrice')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {addons.map((a) => (
+          <TableRow key={a.code}>
+            <TableCell className="font-medium text-foreground">{a.label}</TableCell>
+            <TableCell className="font-mono text-2xs text-muted-foreground">{a.code}</TableCell>
+            <TableCell className="text-right">
+              <Price cents={a.unitPriceCents} unit="qm" locale={locale} currency={currency} />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
 function OptionPill({ label, value }: { label: string; value: string }) {
   return (
-    <span className="inline-flex items-baseline gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-2xs">
+    <span className="inline-flex items-baseline gap-1 rounded-sm border border-border bg-card px-1.5 py-px text-2xs">
       <span className="text-muted-foreground">{label}</span>
       <span className="font-medium tabular-nums text-foreground">{value}</span>
     </span>
-  );
-}
-
-function AddonsStrip({
-  addons,
-  locale,
-  currency,
-  title,
-  subtitle,
-}: {
-  addons: CatalogTier[];
-  locale: string;
-  currency: string;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex items-center gap-3 border-b border-border/70 px-4 py-3">
-        <span
-          className="inline-flex size-8 items-center justify-center rounded-lg bg-rust-soft/60 text-rust ring-1 ring-rust/15"
-          aria-hidden="true"
-        >
-          <Sparkles className="size-4" />
-        </span>
-        <div className="min-w-0">
-          <h3 className="font-serif text-base leading-tight text-foreground">{title}</h3>
-          <p className="mt-0.5 text-2xs text-muted-foreground">{subtitle}</p>
-        </div>
-        <Badge variant="outline" className="ml-auto font-mono text-3xs">
-          {addons.length}
-        </Badge>
-      </div>
-      <ul className="grid divide-y divide-border/60 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        {addons.map((a) => (
-          <li
-            key={a.code}
-            className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-rust-soft/30"
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-foreground">{a.label}</p>
-              <p className="mt-0.5 truncate font-mono text-3xs uppercase tracking-wider text-muted-foreground">
-                {a.code}
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <span className="font-serif text-base tabular-nums text-foreground">
-                {formatEurCents(a.unitPriceCents, locale, currency)}
-              </span>
-              <span className="ml-0.5 text-3xs text-muted-foreground">/m²</span>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function EmptyServices({ label }: { label: string }) {
-  return (
-    <div className="rounded-xl border border-dashed border-border bg-card/40 p-8 text-center">
-      <Tag className="mx-auto mb-2 size-6 text-muted-foreground/50" aria-hidden="true" />
-      <p className="text-sm text-muted-foreground">{label}</p>
-    </div>
-  );
-}
-
-function LoadingState({ label }: { label: string }) {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex items-center gap-2 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground"
-    >
-      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-      {label}
-    </div>
-  );
-}
-
-function ErrorState({ title, message }: { title: string; message: string }) {
-  return (
-    <div
-      role="alert"
-      className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
-    >
-      <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <div>
-        <p className="font-medium">{title}</p>
-        <p className="mt-1 text-xs opacity-90">{message}</p>
-      </div>
-    </div>
   );
 }

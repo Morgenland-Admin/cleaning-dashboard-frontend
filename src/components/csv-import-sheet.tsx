@@ -1,6 +1,10 @@
-import { AlertCircle, Check, Loader2, Upload, X } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { Check, FileText, Upload, X } from 'lucide-react';
+import { useId, useState, type ReactNode } from 'react';
 
+import { KeyValue, KeyValueList } from '@/components/key-value';
+import { SectionLabel } from '@/components/section';
+import { StatTile } from '@/components/stat-tile';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -25,12 +29,7 @@ const REASONS: CsvImportRejectReason[] = [
 
 type T = ReturnType<typeof useT>;
 
-/**
- * CSV import sheet shared by the newsletter and customers pages. Reads its
- * labels from `${i18nPrefix}.import*` keys, so both modules reuse the same
- * key shape. The two pages differ only in the import API, sample href, and an
- * optional brand chip in the header.
- */
+/** Shared by the newsletter and customers pages; labels come from `${i18nPrefix}.import*` keys. */
 export function CsvImportSheet({
   companySlug,
   brandName,
@@ -58,15 +57,17 @@ export function CsvImportSheet({
   disabled?: boolean;
   disabledTitle?: string;
   /**
-   * When set, renders a required consent-attestation checkbox (UWG §7) and
-   * forwards `attestConsent` to `importFn`. Apply is blocked until it's ticked.
-   * Used by the newsletter import so admins can mark rows as confirmed.
+   * Renders a required consent-attestation checkbox (UWG §7) and forwards `attestConsent`;
+   * Apply stays blocked until it is ticked.
    */
   requireConsentAttestation?: boolean;
 }) {
   const t = useT();
   const { bcp47 } = useLocale();
   const k = (suffix: string) => `${i18nPrefix}.${suffix}` as never;
+  const ids = useId();
+  const dropTitleId = `${ids}-drop-title`;
+  const dropHintId = `${ids}-drop-hint`;
 
   const [open, setOpen] = useState(false);
   const [fileText, setFileText] = useState('');
@@ -139,11 +140,14 @@ export function CsvImportSheet({
         title={disabledTitle}
         className={triggerClassName}
       >
-        <Upload className="size-3.5" aria-hidden="true" />
+        <Upload aria-hidden="true" />
         {t(k('import'))}
       </Button>
     );
   }
+
+  const title = t(k('importTitle'));
+  const subtitle = t(k('importSubtitle'), { brand: brandName });
 
   return (
     <>
@@ -153,7 +157,7 @@ export function CsvImportSheet({
         className={triggerClassName}
         onClick={() => setOpen(true)}
       >
-        <Upload className="size-3.5" aria-hidden="true" />
+        <Upload aria-hidden="true" />
         {t(k('import'))}
       </Button>
 
@@ -169,12 +173,16 @@ export function CsvImportSheet({
           variant="content"
           className="flex flex-col gap-6 overflow-y-auto sm:max-w-lg"
         >
-          <div className="flex flex-col gap-2">
-            {headerChip}
-            <SheetTitle className="font-serif text-xl tracking-tight">
-              {t(k('importTitle'))}
-            </SheetTitle>
-            <SheetDescription>{t(k('importSubtitle'), { brand: brandName })}</SheetDescription>
+          {/* Title/description stay sr-only to name the dialog; the visible copy is aria-hidden so it
+              is not read twice. */}
+          <SheetTitle>{title}</SheetTitle>
+          <SheetDescription>{subtitle}</SheetDescription>
+          <div className="flex flex-col gap-2 pr-10">
+            {headerChip ? <div className="flex">{headerChip}</div> : null}
+            <div aria-hidden="true" className="space-y-1">
+              <p className="text-base font-semibold text-foreground">{title}</p>
+              <p className="text-2sm text-muted-foreground">{subtitle}</p>
+            </div>
           </div>
 
           {!fileName ? (
@@ -191,38 +199,42 @@ export function CsvImportSheet({
                 if (f) void readFile(f);
               }}
               className={cn(
-                'group flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed bg-card/50 px-6 py-10 text-center transition-colors',
+                'group flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2',
                 dragOver
-                  ? 'border-rust bg-rust-soft/30'
-                  : 'border-border hover:border-foreground/30 hover:bg-card',
+                  ? 'border-primary bg-primary-soft'
+                  : 'border-border-strong bg-card hover:bg-accent/60',
               )}
             >
               <span
                 className={cn(
-                  'inline-flex size-12 items-center justify-center rounded-full ring-1 transition-colors',
-                  dragOver
-                    ? 'bg-rust text-primary-foreground ring-rust'
-                    : 'bg-rust-soft/60 text-rust ring-rust/20',
+                  'inline-flex size-12 items-center justify-center rounded-full transition-colors',
+                  dragOver ? 'bg-primary text-primary-foreground' : 'bg-primary-soft text-primary',
                 )}
                 aria-hidden="true"
               >
                 <Upload className="size-5" />
               </span>
               <div>
-                <p className="text-sm font-medium text-foreground">{t(k('dropzoneTitle'))}</p>
-                <p className="mt-1 text-2xs text-muted-foreground">{t(k('dropzoneHint'))}</p>
+                <p id={dropTitleId} className="text-sm font-medium text-foreground">
+                  {t(k('dropzoneTitle'))}
+                </p>
+                <p id={dropHintId} className="mt-1 text-xs text-muted-foreground">
+                  {t(k('dropzoneHint'))}
+                </p>
               </div>
               <a
                 href={sampleHref}
                 download
                 onClick={(e) => e.stopPropagation()}
-                className="text-2xs text-rust underline-offset-2 hover:underline"
+                className="rounded-sm text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {t(k('importSampleLink'))}
               </a>
               <input
                 type="file"
                 accept=".csv,text/csv,text/plain"
+                aria-labelledby={dropTitleId}
+                aria-describedby={dropHintId}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) void readFile(f);
@@ -232,39 +244,29 @@ export function CsvImportSheet({
             </label>
           ) : (
             <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
-              <span className="inline-flex size-10 items-center justify-center rounded-md bg-rust-soft/60 text-rust ring-1 ring-rust/15">
-                <Upload className="size-4" />
+              <span
+                className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary"
+                aria-hidden="true"
+              >
+                <FileText className="size-4" />
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{fileName}</p>
-                <p className="text-2xs tabular-nums text-muted-foreground">
+                <p className="text-xs tabular-nums text-muted-foreground">
                   {(fileText.length / 1024).toLocaleString(bcp47, { maximumFractionDigits: 1 })} KB
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={reset}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="size-3.5" />
+              <Button variant="ghost" size="sm" onClick={reset}>
+                <X aria-hidden="true" />
                 {t('common.cancel')}
               </Button>
             </div>
           )}
 
-          {error ? (
-            <div
-              role="alert"
-              className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive"
-            >
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              <span>{error}</span>
-            </div>
-          ) : null}
+          {error ? <Alert tone="destructive">{error}</Alert> : null}
 
           {(preview || done) && (
-            <ImportSummaryCard
+            <ImportSummary
               summary={done ?? preview!}
               isFinal={!!done}
               i18nPrefix={i18nPrefix}
@@ -276,14 +278,14 @@ export function CsvImportSheet({
             {done ? (
               <SheetClose asChild>
                 <Button>
-                  <Check className="size-4" />
+                  <Check aria-hidden="true" />
                   {t('common.close')}
                 </Button>
               </SheetClose>
             ) : (
               <>
                 {requireConsentAttestation ? (
-                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3 text-xs leading-snug text-muted-foreground">
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3 text-2sm leading-5 text-foreground">
                     <Checkbox
                       checked={attested}
                       onChange={(e) => setAttested(e.target.checked)}
@@ -297,9 +299,9 @@ export function CsvImportSheet({
                     variant="outline"
                     className="flex-1"
                     disabled={!fileText || busy !== false}
+                    loading={busy === 'preview'}
                     onClick={runPreview}
                   >
-                    {busy === 'preview' ? <Loader2 className="size-3.5 animate-spin" /> : null}
                     {t(k('importPreview'))}
                   </Button>
                   <Button
@@ -307,6 +309,7 @@ export function CsvImportSheet({
                     disabled={
                       !preview || busy !== false || (requireConsentAttestation && !attested)
                     }
+                    loading={busy === 'apply'}
                     title={
                       requireConsentAttestation && !attested
                         ? t(k('importConsentRequired'))
@@ -314,7 +317,6 @@ export function CsvImportSheet({
                     }
                     onClick={apply}
                   >
-                    {busy === 'apply' ? <Loader2 className="size-3.5 animate-spin" /> : null}
                     {t(k('importApply'), { n: preview ? preview.parsedRows - preview.skipped : 0 })}
                   </Button>
                 </div>
@@ -327,7 +329,7 @@ export function CsvImportSheet({
   );
 }
 
-function ImportSummaryCard({
+function ImportSummary({
   summary,
   isFinal,
   i18nPrefix,
@@ -339,57 +341,55 @@ function ImportSummaryCard({
   t: T;
 }) {
   const k = (suffix: string) => `${i18nPrefix}.${suffix}` as never;
+  const reasonLabel = (reason: CsvImportRejectReason | undefined) =>
+    reason && REASONS.includes(reason) ? t(k(`importReason.${reason}`)) : (reason ?? '');
+  const reasons = REASONS.filter((r) => summary.byReason[r] > 0);
+
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <p className="text-2xs uppercase tracking-wider text-muted-foreground">
-        {isFinal ? t(k('importDone')) : t(k('importDryRun'))}
-      </p>
-      <div className="mt-2 grid grid-cols-3 gap-3 border-b border-border pb-3">
-        <Stat label={t(k('importStat.parsed'))} value={summary.parsedRows} />
-        <Stat label={t(k('importStat.imported'))} value={summary.imported} tone="good" />
-        <Stat label={t(k('importStat.skipped'))} value={summary.skipped} tone="warn" />
+    <section className="flex flex-col gap-3" aria-live="polite">
+      <SectionLabel>{isFinal ? t(k('importDone')) : t(k('importDryRun'))}</SectionLabel>
+      <div className="grid grid-cols-3 gap-2">
+        <StatTile size="sm" label={t(k('importStat.parsed'))} value={summary.parsedRows} />
+        <StatTile
+          size="sm"
+          label={t(k('importStat.imported'))}
+          value={summary.imported}
+          tone="success"
+        />
+        <StatTile
+          size="sm"
+          label={t(k('importStat.skipped'))}
+          value={summary.skipped}
+          tone={summary.skipped > 0 ? 'attention' : 'default'}
+        />
       </div>
-      <ul className="mt-3 flex flex-col gap-1 text-xs">
-        {REASONS.filter((r) => summary.byReason[r] > 0).map((r) => (
-          <li key={r} className="flex items-center justify-between gap-3 text-muted-foreground">
-            <span>{t(k(`importReason.${r}`))}</span>
-            <span className="font-mono tabular-nums text-foreground">{summary.byReason[r]}</span>
-          </li>
-        ))}
-      </ul>
+      {reasons.length > 0 ? (
+        <KeyValueList className="rounded-lg border border-border bg-card px-3 py-2.5">
+          {reasons.map((r) => (
+            <KeyValue
+              key={r}
+              label={t(k(`importReason.${r}`))}
+              value={<span className="tabular-nums">{summary.byReason[r]}</span>}
+            />
+          ))}
+        </KeyValueList>
+      ) : null}
       {summary.sampleRejects.length > 0 ? (
-        <details className="mt-3 text-2xs">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+        <details className="text-xs">
+          <summary className="cursor-pointer rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {t(k('importShowRejects'), { n: summary.sampleRejects.length })}
           </summary>
-          <ul className="mt-2 flex flex-col gap-0.5 font-mono text-2xs text-muted-foreground">
+          <ul className="mt-2 flex flex-col gap-0.5 text-xs text-muted-foreground">
             {summary.sampleRejects.map((r, i) => (
               <li key={i} className="truncate">
-                <span className="text-foreground/70">L{r.line}:</span> {r.email}{' '}
-                <span className="text-rust">[{r.reject}]</span>
+                <span className="tabular-nums text-foreground">L{r.line}:</span>{' '}
+                <span className="font-mono">{r.email}</span>
+                {r.reject ? <span> · {reasonLabel(r.reject)}</span> : null}
               </li>
             ))}
           </ul>
         </details>
       ) : null}
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: number;
-  tone?: 'neutral' | 'good' | 'warn';
-}) {
-  const cls = tone === 'good' ? 'text-success' : tone === 'warn' ? 'text-rust' : 'text-foreground';
-  return (
-    <div className="flex flex-col items-start gap-0.5">
-      <span className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</span>
-      <span className={cn('font-mono text-lg font-medium tabular-nums', cls)}>{value}</span>
-    </div>
+    </section>
   );
 }

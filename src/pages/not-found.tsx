@@ -1,25 +1,54 @@
 import { Compass } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import { Button } from '@/components/ui/button';
+import { useT } from '@/i18n';
+import { usePageTitle } from '@/lib/use-page-title';
+
 export function NotFoundPage() {
+  const t = useT();
+  usePageTitle(t('errors.notFoundTitle'));
   return (
-    <div className="mx-auto flex min-h-[60vh] w-full max-w-[640px] flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-rust/15 text-rust">
-        <Compass className="size-6" aria-hidden="true" />
-      </div>
-      <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-        Seite nicht gefunden
-      </h1>
-      <p className="text-sm text-muted-foreground">
-        Diese Adresse existiert nicht (mehr). Vielleicht wurde sie umbenannt oder der Link ist
-        veraltet.
-      </p>
-      <Link
-        to="/"
-        className="mt-2 inline-flex items-center rounded-full bg-rust px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-rust/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rust"
+    <ErrorScreen
+      icon={<Compass aria-hidden="true" />}
+      title={t('errors.notFoundTitle')}
+      body={t('errors.notFoundBody')}
+      actions={
+        <Button asChild>
+          <Link to="/">{t('errors.backToOverview')}</Link>
+        </Button>
+      }
+    />
+  );
+}
+
+export function ErrorScreen({
+  icon,
+  title,
+  body,
+  actions,
+  tone = 'muted',
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  actions: React.ReactNode;
+  tone?: 'muted' | 'destructive';
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 py-16 text-center sm:py-24">
+      <span
+        className={
+          tone === 'destructive'
+            ? 'flex size-10 items-center justify-center rounded-lg bg-destructive-soft text-destructive [&_svg]:size-5'
+            : 'flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-5'
+        }
       >
-        Zurück zur Übersicht
-      </Link>
+        {icon}
+      </span>
+      <h1 className="text-title font-semibold text-foreground">{title}</h1>
+      <p className="break-words text-2sm text-muted-foreground">{body}</p>
+      <div className="mt-2 flex flex-wrap justify-center gap-2">{actions}</div>
     </div>
   );
 }

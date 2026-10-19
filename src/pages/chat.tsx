@@ -1,15 +1,18 @@
 import { useQueries } from '@tanstack/react-query';
-import { AlertCircle, ArrowLeft, Loader2, MessageSquare } from 'lucide-react';
+import { ArrowLeft, MessageSquare } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { BrandMark } from '@/components/brand-mark';
+import { BrandChip } from '@/components/brand-mark';
 import { ChatPanel } from '@/components/chat-panel';
-import { EmptyState } from '@/components/empty-state';
+import { CountPill } from '@/components/count-pill';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { ErrorState } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { useProject, type CompanySlug, type Project } from '@/contexts/project-context';
 import { useLocale } from '@/i18n';
 import { chatAdminApi, type ChatConversation } from '@/lib/api';
 import { usePageTitle } from '@/lib/use-page-title';
-import { formatDateTime } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 
 type ConvRow = ChatConversation & { brand: Project };
 
@@ -32,19 +35,13 @@ export function ChatPage() {
   });
 
   const isLoading = queries.some((q) => q.isLoading);
+  const isFetching = queries.some((q) => q.isFetching);
   const firstError = queries.find((q) => q.error)?.error as Error | undefined;
 
-  // `useQueries` hands back a fresh array every render, so it cannot be a
-  // dependency without defeating the memo. This key changes exactly when one of
-  // the queries actually resolves new data, which is the thing we care about.
+  // `useQueries` returns a fresh array every render; this key changes only when a query resolves new data.
   const queriesUpdatedKey = queries.map((q) => q.dataUpdatedAt).join('|');
   const conversations = useMemo<ConvRow[]>(() => {
-    // Keyed by brand + partner, because that pair is what a row *means* here —
-    // one thread with one partner — and what `rowKey` addresses. The backend can
-    // hand back two conversation rows for the same partner (cleanilo has a
-    // duplicate today; `chat_conversations` has no unique index on
-    // partner_user_id), which rendered two identical rows sharing a React key.
-    // Both opened the same thread, so the later row simply wins.
+    // Dedupe by brand + partner: the backend can return two rows for one partner (no unique index); the later wins.
     const byKey = new Map<string, ConvRow>();
     queries.forEach((q, i) => {
       const brand = brandList[i];
@@ -69,11 +66,10 @@ export function ChatPage() {
   useEffect(() => {
     if (selectedKey) return;
     if (typeof window === 'undefined') return;
+    // Two-pane layout starts at `md` here (not `lg` like the inboxes); the shell below is built around it.
     const isDesktop = window.matchMedia('(min-width: 768px)').matches;
     if (!isDesktop) return;
-    // Which conversation is first is not knowable until the queries resolve,
-    // so the desktop default has to be applied after data arrives. The
-    // `selectedKey` guard makes it one-shot: it cannot loop or fight a choice.
+    // The first conversation is only known once the queries resolve; the `selectedKey` guard keeps this one-shot.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (conversations.length > 0) setSelectedKey(rowKey(conversations[0]!));
   }, [conversations, selectedKey]);
@@ -84,31 +80,46 @@ export function ChatPage() {
   );
 
   const showThreadOnMobile = !!selected;
+  const subtitle = isAllBrands
+    ? t('chat.subtitleAllBrandsList', { n: brandList.length })
+    : t('chat.subtitleForBrand', { brand: activeProject.name });
 
   return (
     <ChatShell>
-      <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[320px_1fr] lg:grid-cols-[360px_1fr]">
+      {/* Compact bar instead of PageHeading (chat is full-bleed); still the route's one <h1>. */}
+      <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-4">
+        {selected ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setSelectedKey(null)}
+            aria-label={t('chat.backToList')}
+            className="md:hidden"
+          >
+            <ArrowLeft aria-hidden="true" />
+          </Button>
+        ) : null}
+        <h1 className="text-base font-semibold leading-6 text-foreground">{t('chat.pageTitle')}</h1>
+        <p className="min-w-0 truncate text-xs text-muted-foreground">{subtitle}</p>
+      </header>
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[320px_1fr] lg:grid-cols-[360px_1fr]">
         <aside
           aria-label={t('chat.conversationsLabel')}
-          className={
-            'flex min-h-0 flex-col border-border bg-card md:border-r ' +
-            (showThreadOnMobile ? 'hidden md:flex' : 'flex')
-          }
+          className={cn(
+            'min-h-0 flex-col border-border bg-card md:flex md:border-r',
+            showThreadOnMobile ? 'hidden' : 'flex',
+          )}
         >
-          <header className="shrink-0 border-b border-border px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {t('chat.conversationsHeading')}
-            </p>
-            <p className="mt-0.5 truncate text-2xs text-muted-foreground">
-              {isAllBrands
-                ? t('chat.subtitleAllBrandsList', { n: brandList.length })
-                : t('chat.subtitleForBrand', { brand: activeProject.name })}
-            </p>
-          </header>
+          <h2 className="shrink-0 border-b border-border px-4 py-2 text-xs font-medium text-muted-foreground">
+            {t('chat.conversationsHeading')}
+          </h2>
           <ConversationList
             conversations={conversations}
             isLoading={isLoading}
             error={firstError ?? null}
+            onRetry={() => queries.forEach((q) => void q.refetch())}
+            retrying={isFetching}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
             showBrand={isAllBrands}
@@ -119,42 +130,25 @@ export function ChatPage() {
 
         <section
           aria-label={t('chat.activeThreadLabel')}
-          className={
-            'min-h-0 ' + (showThreadOnMobile ? 'flex flex-col' : 'hidden md:flex md:flex-col')
-          }
+          className={cn('min-h-0 flex-col md:flex', showThreadOnMobile ? 'flex' : 'hidden')}
         >
           {selected ? (
-            <>
-              <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background/40 px-2 py-1.5 md:hidden">
-                <button
-                  type="button"
-                  onClick={() => setSelectedKey(null)}
-                  aria-label={t('chat.backToList')}
-                  className="inline-flex size-9 items-center justify-center rounded-md text-foreground/80 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <ArrowLeft className="size-4" aria-hidden="true" />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1">
-                <ChatPanel
-                  key={`${selected.brand.companySlug}:${selected.partnerUserId}`}
-                  companySlug={selected.brand.companySlug as CompanySlug}
-                  partnerUserId={selected.partnerUserId}
-                  partnerName={
-                    selected.partnerCompanyName ??
-                    selected.partnerName ??
-                    selected.partnerEmail ??
-                    t('chat.unknownPartner')
-                  }
-                />
-              </div>
-            </>
+            <div className="min-h-0 flex-1">
+              <ChatPanel
+                key={`${selected.brand.companySlug}:${selected.partnerUserId}`}
+                companySlug={selected.brand.companySlug as CompanySlug}
+                partnerUserId={selected.partnerUserId}
+                partnerName={
+                  selected.partnerCompanyName ??
+                  selected.partnerName ??
+                  selected.partnerEmail ??
+                  t('chat.unknownPartner')
+                }
+              />
+            </div>
           ) : (
             <div className="flex h-full items-center justify-center p-6">
-              <EmptyState
-                icon={<MessageSquare className="size-6" aria-hidden="true" />}
-                message={t('chat.pickConversation')}
-              />
+              <EmptyState icon={<MessageSquare />} message={t('chat.pickConversation')} />
             </div>
           )}
         </section>
@@ -163,13 +157,13 @@ export function ChatPage() {
   );
 }
 
-// Fills viewport below header; 100svh prevents iOS URL bar from clipping composer.
+// Fills the viewport below the app header (h-14) and above the phone bottom nav; 100svh so the iOS URL bar never clips the composer.
 function ChatShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="chat-shell flex w-full flex-col overflow-hidden bg-card">
       <style>{`
-        .chat-shell { height: calc(100svh - 4rem - 5.5rem - env(safe-area-inset-bottom)); }
-        @media (min-width: 1024px) { .chat-shell { height: calc(100svh - 4rem); } }
+        .chat-shell { height: calc(100svh - 3.5rem - 5.5rem - env(safe-area-inset-bottom)); }
+        @media (min-width: 1024px) { .chat-shell { height: calc(100svh - 3.5rem); } }
       `}</style>
       <div className="flex h-full min-h-0 flex-1 flex-col">{children}</div>
     </div>
@@ -180,6 +174,8 @@ function ConversationList({
   conversations,
   isLoading,
   error,
+  onRetry,
+  retrying,
   selectedKey,
   onSelect,
   showBrand,
@@ -189,6 +185,8 @@ function ConversationList({
   conversations: ConvRow[];
   isLoading: boolean;
   error: Error | null;
+  onRetry: () => void;
+  retrying: boolean;
   selectedKey: string | null;
   onSelect: (key: string) => void;
   showBrand: boolean;
@@ -196,37 +194,17 @@ function ConversationList({
   t: ReturnType<typeof useLocale>['t'];
 }) {
   if (isLoading) {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="flex items-center gap-2 px-4 py-6 text-sm text-muted-foreground"
-      >
-        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        <span>{t('chat.loadingConversations')}</span>
-      </div>
-    );
+    return <LoadingState inline label={t('chat.loadingConversations')} className="px-4" />;
   }
   if (error) {
     return (
-      <div
-        role="alert"
-        className="m-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-      >
-        <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <span>{error.message}</span>
+      <div className="p-4">
+        <ErrorState error={error} onRetry={onRetry} retrying={retrying} />
       </div>
     );
   }
   if (conversations.length === 0) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          icon={<MessageSquare className="size-6" aria-hidden="true" />}
-          message={t('chat.noPartners')}
-        />
-      </div>
-    );
+    return <EmptyState icon={<MessageSquare />} message={t('chat.noPartners')} />;
   }
   return (
     <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
@@ -265,53 +243,61 @@ function ConversationRow({
 }) {
   const title =
     conv.partnerCompanyName ?? conv.partnerName ?? conv.partnerEmail ?? t('chat.unknownPartner');
+  const unread = conv.unreadForAdmin > 0;
   return (
     <li>
       <button
         type="button"
         onClick={onSelect}
         aria-current={active ? 'true' : undefined}
-        className={
-          'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors focus-visible:bg-muted/40 focus-visible:outline-none ' +
-          (active ? 'bg-muted/40' : 'hover:bg-muted/25')
-        }
+        className={cn(
+          'flex w-full flex-col gap-0.5 px-4 py-2.5 text-left transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+          active ? 'bg-primary-soft' : 'hover:bg-accent/60',
+        )}
       >
-        <span
-          aria-hidden="true"
-          className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-rust/10 text-rust"
-        >
-          <MessageSquare className="size-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm font-medium">{title}</p>
-            {conv.lastMessageAt ? (
-              <time
-                dateTime={conv.lastMessageAt}
-                className="shrink-0 text-3xs tabular-nums text-muted-foreground"
-              >
-                {formatDateTime(conv.lastMessageAt, bcp47)}
-              </time>
-            ) : null}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1.5">
-            {showBrand ? (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background/40 px-1.5 py-0.5 text-3xs font-medium text-muted-foreground">
-                <BrandMark brand={conv.brand} size="xs" />
-                <span className="uppercase tracking-wide">{conv.brand.shortName}</span>
-              </span>
-            ) : null}
-            <p className="truncate text-xs text-muted-foreground">
-              {conv.lastMessagePreview ?? t('chat.noMessagesYet')}
-            </p>
-          </div>
-        </div>
-        {conv.unreadForAdmin > 0 ? (
+        <span className="flex items-center gap-2">
           <span
-            aria-label={t('chat.unreadCount', { n: conv.unreadForAdmin })}
-            className="ml-1 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rust px-1.5 text-3xs font-semibold text-primary-foreground"
+            aria-hidden="true"
+            className={cn(
+              'size-1.5 shrink-0 rounded-full',
+              unread ? 'bg-highlight' : 'bg-transparent',
+            )}
+          />
+          <span
+            className={cn(
+              'min-w-0 truncate text-2sm text-foreground',
+              unread ? 'font-semibold' : 'font-medium',
+            )}
           >
-            {conv.unreadForAdmin > 99 ? '99+' : conv.unreadForAdmin}
+            {title}
+          </span>
+          {conv.lastMessageAt ? (
+            <time
+              dateTime={conv.lastMessageAt}
+              className="ml-auto shrink-0 text-2xs tabular-nums text-muted-foreground"
+            >
+              {formatDateTime(conv.lastMessageAt, bcp47)}
+            </time>
+          ) : null}
+        </span>
+        <span className="flex items-center gap-2 pl-3.5">
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {conv.lastMessagePreview ?? t('chat.noMessagesYet')}
+          </span>
+          {unread ? (
+            <>
+              <CountPill tone="solid">
+                <span aria-hidden="true">
+                  {conv.unreadForAdmin > 99 ? '99+' : conv.unreadForAdmin}
+                </span>
+              </CountPill>
+              <span className="sr-only">{t('chat.unreadCount', { n: conv.unreadForAdmin })}</span>
+            </>
+          ) : null}
+        </span>
+        {showBrand ? (
+          <span className="pl-3.5 pt-0.5">
+            <BrandChip brand={conv.brand} />
           </span>
         ) : null}
       </button>

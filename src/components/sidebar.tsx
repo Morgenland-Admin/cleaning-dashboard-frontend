@@ -1,171 +1,310 @@
-import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   AtSign,
   Briefcase,
   Building2,
   CheckSquare,
-  ChevronUp,
   ClipboardList,
   Database,
   LayoutGrid,
-  LogOut,
   Mail,
   MapPin,
   MessageSquare,
   Newspaper,
+  PanelLeftClose,
+  PanelLeftOpen,
   Percent,
   PhoneCall,
   Receipt,
   RefreshCcw,
-  Settings as SettingsIcon,
+  Send,
   Star,
   Tag,
-  User,
   UserRound,
   Users,
 } from 'lucide-react';
-import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useCallback, useState } from 'react';
+import { NavLink, useMatch } from 'react-router-dom';
 
 import { BrandFilter } from '@/components/brand-filter';
 import { BrandBlock } from '@/components/brand-logo';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useProject } from '@/contexts/project-context';
 import { useT, type DictKey } from '@/i18n';
 import { seoMayOpen, useIsSeoOnly } from '@/lib/access';
 import { chatAdminApi } from '@/lib/api';
-import { authClient, useSession } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
 
 type NavItem = {
   to: string;
   labelKey: DictKey;
   icon: React.ComponentType<{ className?: string }>;
-  badge?: { value: string; tone?: 'neutral' | 'rust' };
   end?: boolean;
+  live?: 'chat';
 };
 
-const primaryNav: NavItem[] = [
-  { to: '/', labelKey: 'nav.overview', icon: LayoutGrid, end: true },
-  { to: '/customers', labelKey: 'nav.customers', icon: UserRound },
-  { to: '/auftraege', labelKey: 'nav.auftraege', icon: Briefcase },
-  { to: '/rechnungen', labelKey: 'nav.invoices', icon: Receipt },
-  { to: '/abos', labelKey: 'nav.subscriptions', icon: RefreshCcw },
-  { to: '/inquiries', labelKey: 'nav.inquiries', icon: ClipboardList },
-  { to: '/callbacks', labelKey: 'nav.callbacks', icon: PhoneCall },
-  { to: '/contacts', labelKey: 'nav.contacts', icon: Mail },
-  { to: '/bewertungen', labelKey: 'nav.reviews', icon: Star },
-  { to: '/blog', labelKey: 'nav.blog', icon: Newspaper },
-  { to: '/newsletter', labelKey: 'nav.newsletter', icon: AtSign },
-  { to: '/partner', labelKey: 'nav.partner', icon: Users },
-  // /chat is rendered separately so it can show a live unread badge.
-  { to: '/tasks', labelKey: 'nav.tasks', icon: CheckSquare },
-  { to: '/exports', labelKey: 'nav.exports', icon: Database },
-  { to: '/pricing', labelKey: 'nav.pricing', icon: Tag },
-  { to: '/preis-anpassungen', labelKey: 'nav.priceAdjustments', icon: Percent },
-  { to: '/staedte', labelKey: 'nav.cityStatus', icon: MapPin },
-  { to: '/companies', labelKey: 'nav.companies', icon: Building2 },
+type NavGroup = { labelKey?: DictKey; items: NavItem[] };
+
+const NAV: NavGroup[] = [
+  { items: [{ to: '/', labelKey: 'nav.overview', icon: LayoutGrid, end: true }] },
+  {
+    labelKey: 'nav.groupOperations',
+    items: [
+      { to: '/auftraege', labelKey: 'nav.auftraege', icon: Briefcase },
+      { to: '/inquiries', labelKey: 'nav.inquiries', icon: ClipboardList },
+      { to: '/callbacks', labelKey: 'nav.callbacks', icon: PhoneCall },
+      { to: '/contacts', labelKey: 'nav.contacts', icon: Mail },
+      { to: '/tasks', labelKey: 'nav.tasks', icon: CheckSquare },
+      { to: '/chat', labelKey: 'nav.chat', icon: MessageSquare, live: 'chat' },
+    ],
+  },
+  {
+    labelKey: 'nav.groupCustomers',
+    items: [
+      { to: '/customers', labelKey: 'nav.customers', icon: UserRound },
+      { to: '/rechnungen', labelKey: 'nav.invoices', icon: Receipt },
+      { to: '/abos', labelKey: 'nav.subscriptions', icon: RefreshCcw },
+    ],
+  },
+  {
+    labelKey: 'nav.groupMarketing',
+    items: [
+      { to: '/bewertungen', labelKey: 'nav.reviews', icon: Star },
+      { to: '/blog', labelKey: 'nav.blog', icon: Newspaper },
+      { to: '/newsletter', labelKey: 'nav.newsletter', icon: AtSign },
+      { to: '/emails', labelKey: 'nav.emails', icon: Send },
+    ],
+  },
+  {
+    labelKey: 'nav.groupPlatform',
+    items: [
+      { to: '/partner', labelKey: 'nav.partner', icon: Users },
+      { to: '/pricing', labelKey: 'nav.pricing', icon: Tag },
+      { to: '/preis-anpassungen', labelKey: 'nav.priceAdjustments', icon: Percent },
+      { to: '/staedte', labelKey: 'nav.cityStatus', icon: MapPin },
+      { to: '/exports', labelKey: 'nav.exports', icon: Database },
+      { to: '/companies', labelKey: 'nav.companies', icon: Building2 },
+    ],
+  },
 ];
 
+const COLLAPSED_KEY = 'reinigungs-portal-sidebar-collapsed';
+
+function readCollapsed() {
+  try {
+    return window.localStorage.getItem(COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+// Below lg the same body renders inside the header's sheet.
 export function Sidebar() {
+  const [collapsed, setCollapsedState] = useState(readCollapsed);
+  const setCollapsed = useCallback((next: boolean) => {
+    setCollapsedState(next);
+    try {
+      window.localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
+    } catch {
+      // Private mode: storage is unavailable, the choice just does not persist.
+    }
+  }, []);
+
   return (
-    <aside className="sticky top-0 hidden h-svh w-72 shrink-0 flex-col gap-4 self-start border-r border-sidebar-border bg-sidebar p-4 text-sidebar-foreground lg:flex">
-      <SidebarBody />
+    <aside
+      data-collapsed={collapsed || undefined}
+      className={cn(
+        'sticky top-0 hidden h-svh shrink-0 flex-col self-start border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-base lg:flex',
+        collapsed ? 'w-16' : 'w-60',
+      )}
+    >
+      <SidebarBody collapsed={collapsed} onToggleCollapsed={() => setCollapsed(!collapsed)} />
     </aside>
   );
 }
 
 interface SidebarBodyProps {
   onNavigate?: () => void;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
-export function SidebarBody({ onNavigate }: SidebarBodyProps = {}) {
+export function SidebarBody({
+  onNavigate,
+  collapsed = false,
+  onToggleCollapsed,
+}: SidebarBodyProps) {
   const t = useT();
   const seoOnly = useIsSeoOnly();
-  const nav = seoOnly ? primaryNav.filter((item) => seoMayOpen(item.to)) : primaryNav;
-  return (
-    <>
-      <BrandBlock className="px-1 pt-1" />
+  const groups = NAV.map((g) => ({
+    ...g,
+    items: g.items.filter((item) => (seoOnly ? seoMayOpen(item.to) && item.live !== 'chat' : true)),
+  })).filter((g) => g.items.length > 0);
 
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain">
-        <SectionLabel>{t('nav.section')}</SectionLabel>
-        <nav className="flex flex-col gap-0.5">
-          {nav.map((item) => (
-            <span key={item.to} className="contents">
-              {item.to === '/companies' && !seoOnly ? (
-                <ChatNavEntry onNavigate={onNavigate} t={t} />
-              ) : null}
-              <NavItem item={item} onNavigate={onNavigate} t={t} />
-            </span>
-          ))}
-        </nav>
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3 py-3">
+      <div
+        className={cn(
+          'flex items-center gap-2',
+          collapsed ? 'flex-col px-3' : 'justify-between pl-4 pr-2',
+        )}
+      >
+        <BrandBlock compact={collapsed} size={28} />
+        {onToggleCollapsed ? (
+          <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapsed} t={t} />
+        ) : null}
       </div>
 
-      <BrandFilter />
+      <div className={collapsed ? 'flex justify-center px-3' : 'px-3'}>
+        <BrandFilter collapsed={collapsed} />
+      </div>
 
-      <UserCard onNavigate={onNavigate} />
-    </>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-2 pb-1 pt-1 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-      {children}
+      <nav
+        aria-label={t('a11y.mainNavigation')}
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-3 pb-2"
+      >
+        {groups.map((group, i) => (
+          <div key={group.labelKey ?? i} className="flex flex-col gap-px">
+            {group.labelKey ? (
+              collapsed ? (
+                <div className="mx-auto mb-1 h-px w-6 bg-sidebar-border" aria-hidden="true" />
+              ) : (
+                <div className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">
+                  {t(group.labelKey)}
+                </div>
+              )
+            ) : null}
+            {group.items.map((item) =>
+              item.live === 'chat' ? (
+                <ChatNavEntry
+                  key={item.to}
+                  item={item}
+                  collapsed={collapsed}
+                  onNavigate={onNavigate}
+                  t={t}
+                />
+              ) : (
+                <NavItemLink
+                  key={item.to}
+                  item={item}
+                  collapsed={collapsed}
+                  onNavigate={onNavigate}
+                  t={t}
+                />
+              ),
+            )}
+          </div>
+        ))}
+      </nav>
     </div>
   );
 }
 
-function NavItem({
+function CollapseToggle({
+  collapsed,
+  onToggle,
+  t,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+  t: (key: DictKey) => string;
+}) {
+  const label = collapsed ? t('nav.expand') : t('nav.collapse');
+  const Icon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={label}
+          aria-expanded={!collapsed}
+          className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Icon className="size-4" aria-hidden="true" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function NavItemLink({
   item,
+  collapsed,
   onNavigate,
+  badge,
   t,
 }: {
   item: NavItem;
+  collapsed: boolean;
   onNavigate?: () => void;
+  badge?: string;
   t: (key: DictKey) => string;
 }) {
-  const { to, labelKey, icon: Icon, end, badge } = item;
-  return (
+  const { to, labelKey, icon: Icon, end } = item;
+  const label = t(labelKey);
+  // Active state from the router, not NavLink's className function: Radix Slot
+  // (TooltipTrigger asChild) stringifies it into every branch's classes.
+  const isActive = !!useMatch({ path: to, end: !!end });
+  const link = (
     <NavLink
       to={to}
       end={end}
       onClick={onNavigate}
-      className={({ isActive }) =>
-        cn(
-          'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-2sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
-          isActive
-            ? 'bg-rust/[0.10] text-rust before:absolute before:-left-0.5 before:bottom-1.5 before:top-1.5 before:w-0.5 before:rounded-full before:bg-rust hover:bg-rust/[0.14]'
-            : 'text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-        )
-      }
+      className={cn(
+        'group relative flex h-10 items-center gap-2.5 rounded-md text-2sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:h-8',
+        collapsed ? 'mx-auto w-10 justify-center' : 'px-2.5',
+        isActive
+          ? 'bg-sidebar-active text-foreground shadow-sm ring-1 ring-sidebar-border'
+          : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+      )}
     >
-      <Icon className="size-4 shrink-0 opacity-90" aria-hidden="true" />
-      <span className="flex-1 truncate">{t(labelKey)}</span>
+      <Icon
+        className={cn(
+          'size-4 shrink-0',
+          isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground',
+        )}
+        aria-hidden="true"
+      />
+      {collapsed ? (
+        <span className="sr-only">{label}</span>
+      ) : (
+        <span className="flex-1 truncate">{label}</span>
+      )}
       {badge ? (
-        <span
-          className={cn(
-            'flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-3xs font-semibold tabular-nums',
-            badge.tone === 'rust'
-              ? 'bg-rust text-primary-foreground'
-              : 'bg-sidebar-border text-sidebar-foreground/80',
-          )}
-        >
-          {badge.value}
-        </span>
+        collapsed ? (
+          <span
+            className="absolute right-1.5 top-1.5 size-2 rounded-full bg-highlight ring-2 ring-sidebar"
+            aria-hidden="true"
+          />
+        ) : (
+          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-highlight px-1 text-3xs font-semibold tabular-nums text-highlight-foreground">
+            {badge}
+          </span>
+        )
       ) : null}
+      {badge && collapsed ? <span className="sr-only">({badge})</span> : null}
     </NavLink>
+  );
+  if (!collapsed) return link;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipContent side="right">
+        {label}
+        {badge ? ` (${badge})` : ''}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
-function ChatNavEntry({ onNavigate, t }: { onNavigate?: () => void; t: (key: DictKey) => string }) {
+function ChatNavEntry(props: {
+  item: NavItem;
+  collapsed: boolean;
+  onNavigate?: () => void;
+  t: (key: DictKey) => string;
+}) {
   const { activeProject, isAllBrands } = useProject();
   const slug = isAllBrands ? null : activeProject.companySlug;
   const query = useQuery({
@@ -179,88 +318,10 @@ function ChatNavEntry({ onNavigate, t }: { onNavigate?: () => void; t: (key: Dic
   const unread =
     query.data?.conversations.reduce((sum, c) => sum + (c.unreadForAdmin ?? 0), 0) ?? 0;
 
-  const item: NavItem = {
-    to: '/chat',
-    labelKey: 'nav.chat',
-    icon: MessageSquare,
-    badge: unread > 0 ? { value: unread > 99 ? '99+' : String(unread), tone: 'rust' } : undefined,
-  };
-  return <NavItem item={item} onNavigate={onNavigate} t={t} />;
-}
-
-function UserCard({ onNavigate }: { onNavigate?: () => void }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { data } = useSession();
-  const t = useT();
-  const [signingOut, setSigningOut] = useState(false);
-
-  const user = data?.user;
-  const name = user?.name?.trim() || user?.email || '—';
-  const email = user?.email ?? '';
-  const initials = (name === '—' ? '??' : name.slice(0, 2)).toUpperCase();
-
-  async function onSignOut() {
-    setSigningOut(true);
-    // Clear cache before signOut so a slow/failing call can't leak previous user's queries.
-    queryClient.clear();
-    try {
-      await authClient.signOut();
-    } finally {
-      setSigningOut(false);
-      onNavigate?.();
-      navigate('/login', { replace: true });
-    }
-  }
-
-  function go(path: string) {
-    onNavigate?.();
-    navigate(path);
-  }
-
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label={t('header.accountMenu')}
-          className="group flex w-full items-center gap-2.5 rounded-xl border border-sidebar-border bg-sidebar-accent/40 p-2.5 text-left transition-colors hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Avatar className="size-9 shrink-0 ring-2 ring-background">
-            {user?.image ? <AvatarImage src={user.image} alt={name} /> : null}
-            <AvatarFallback className="bg-rust/15 text-xs font-semibold uppercase text-rust">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="truncate text-2sm font-semibold">{name}</span>
-            <span className="truncate text-2xs text-muted-foreground">{email}</span>
-          </div>
-          <ChevronUp className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="end" className="w-60">
-        <DropdownMenuItem onSelect={() => go('/profile')}>
-          <User className="size-4" />
-          {t('user.profile')}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => go('/settings')}>
-          <SettingsIcon className="size-4" />
-          {t('user.settings')}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={signingOut}
-          onSelect={(e) => {
-            e.preventDefault();
-            void onSignOut();
-          }}
-          className="text-destructive focus:text-destructive"
-        >
-          <LogOut className="size-4" />
-          {signingOut ? t('user.signingOut') : t('user.signOut')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <NavItemLink
+      {...props}
+      badge={unread > 0 ? (unread > 99 ? '99+' : String(unread)) : undefined}
+    />
   );
 }

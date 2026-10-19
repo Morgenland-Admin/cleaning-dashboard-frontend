@@ -1,11 +1,27 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, RefreshCcw } from 'lucide-react';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+
+import { Button } from '@/components/ui/button';
 
 interface State {
   error: Error | null;
 }
 
-/** Catches render errors that escape React Router's errorElement. */
+// Wraps ThemeProvider and LocaleProvider, so no context exists here: the copy is a
+// static pair picked from <html lang>.
+const COPY = {
+  de: {
+    title: 'Anwendung konnte nicht geladen werden',
+    fallback: 'Ein unerwarteter Fehler ist aufgetreten.',
+    reload: 'Neu laden',
+  },
+  en: {
+    title: 'The app could not be loaded',
+    fallback: 'An unexpected error occurred.',
+    reload: 'Reload',
+  },
+} as const;
+
 export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   state: State = { error: null };
 
@@ -21,27 +37,24 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
 
   render(): ReactNode {
     if (!this.state.error) return this.props.children;
+    const lang = typeof document !== 'undefined' ? document.documentElement.lang : 'de';
+    const copy = lang === 'en' ? COPY.en : COPY.de;
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
-        <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-destructive/15 text-destructive">
-            <AlertTriangle className="size-6" aria-hidden="true" />
-          </div>
-          <h1 className="font-serif text-2xl font-semibold tracking-tight">
-            Anwendung konnte nicht geladen werden
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {this.state.error.message || 'Ein unerwarteter Fehler ist aufgetreten.'}
+      <main className="flex min-h-svh items-center justify-center bg-background p-6 text-foreground">
+        <div className="flex w-full max-w-md flex-col items-center gap-3 text-center">
+          <span className="flex size-10 items-center justify-center rounded-lg bg-destructive-soft text-destructive">
+            <AlertTriangle className="size-5" aria-hidden="true" />
+          </span>
+          <h1 className="text-title font-semibold">{copy.title}</h1>
+          <p className="break-words text-2sm text-muted-foreground">
+            {this.state.error.message || copy.fallback}
           </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="mt-2 inline-flex items-center rounded-full bg-rust px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-rust/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rust"
-          >
-            Neu laden
-          </button>
+          <Button type="button" className="mt-2" onClick={() => window.location.reload()}>
+            <RefreshCcw aria-hidden="true" />
+            {copy.reload}
+          </Button>
         </div>
-      </div>
+      </main>
     );
   }
 }

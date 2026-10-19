@@ -6,25 +6,30 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement> & {
     /**
-     * Replaces the wrapper classes (default `w-full overflow-x-auto`). Pass
-     * `"w-full"` when an ancestor is the scroll container: the default wrapper
-     * is a scrollport in both axes — `overflow-x: auto` forces the computed
-     * `overflow-y` to `auto` too — which would anchor a sticky `<thead>` to
-     * itself instead of to that ancestor. The ancestor then scrolls both axes.
+     * Replaces the default wrapper; pass `"w-full"` when an ancestor is the scroll container,
+     * or a sticky <thead> anchors to the wrapper instead.
      */
     containerClassName?: string;
   }
 >(({ className, containerClassName, ...props }, ref) => (
   <div className={containerClassName ?? 'w-full overflow-x-auto'}>
-    <table ref={ref} className={cn('w-full text-sm', className)} {...props} />
+    <table ref={ref} className={cn('w-full text-2sm', className)} {...props} />
   </div>
 ));
 Table.displayName = 'Table';
 
 const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
-  React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => <thead ref={ref} className={className} {...props} />);
+  React.HTMLAttributes<HTMLTableSectionElement> & {
+    sticky?: boolean;
+  }
+>(({ className, sticky, ...props }, ref) => (
+  <thead
+    ref={ref}
+    className={cn(sticky && '[&_th]:sticky [&_th]:top-0 [&_th]:z-10', className)}
+    {...props}
+  />
+));
 TableHeader.displayName = 'TableHeader';
 
 const TableBody = React.forwardRef<
@@ -37,7 +42,14 @@ TableBody.displayName = 'TableBody';
 
 const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>(
   ({ className, ...props }, ref) => (
-    <tr ref={ref} className={cn('transition-colors hover:bg-muted/40', className)} {...props} />
+    <tr
+      ref={ref}
+      className={cn(
+        'transition-colors hover:bg-accent/60 data-[state=selected]:bg-primary-soft [thead_&]:hover:bg-transparent',
+        className,
+      )}
+      {...props}
+    />
   ),
 );
 TableRow.displayName = 'TableRow';
@@ -49,7 +61,10 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     scope={scope}
-    className={cn('px-4 py-3 text-left align-middle font-medium text-muted-foreground', className)}
+    className={cn(
+      'h-9 whitespace-nowrap border-b border-border bg-muted px-3 text-left align-middle text-xs font-medium text-muted-foreground first:pl-4 last:pr-4',
+      className,
+    )}
     {...props}
   />
 ));
@@ -59,7 +74,11 @@ const TableCell = React.forwardRef<
   HTMLTableCellElement,
   React.TdHTMLAttributes<HTMLTableCellElement>
 >(({ className, ...props }, ref) => (
-  <td ref={ref} className={cn('px-4 py-3 align-middle', className)} {...props} />
+  <td
+    ref={ref}
+    className={cn('px-3 py-2.5 align-middle first:pl-4 last:pr-4', className)}
+    {...props}
+  />
 ));
 TableCell.displayName = 'TableCell';
 

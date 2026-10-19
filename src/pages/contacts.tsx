@@ -1,62 +1,36 @@
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
-import {
-  AlertCircle,
-  Archive,
-  Check,
-  CheckCheck,
-  Globe,
-  Inbox,
-  Loader2,
-  Mail,
-  MailOpen,
-  Phone,
-  RefreshCcw,
-  Reply,
-  Send,
-  X,
-} from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteQuery, useQueries } from '@tanstack/react-query';
+import { Inbox, Paperclip } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 
-import { AttachmentGallery } from '@/components/attachment-gallery';
-import { BrandMark } from '@/components/brand-mark';
-import { ClaudeChatBox } from '@/components/claude-chat-box';
-import { ConfirmDialog } from '@/components/confirm-dialog';
-import { CountPill } from '@/components/count-pill';
-import { DetailPane, useSelectedBrandRef } from '@/components/detail-pane';
+import { BrandChip } from '@/components/brand-mark';
+import { EmptyState, LoadingState } from '@/components/empty-state';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
+import { ErrorState } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useProject, type CompanySlug, type Project } from '@/contexts/project-context';
 import { useLocale, useT } from '@/i18n';
-import {
-  contactApi,
-  type ContactMessage,
-  type ContactReply,
-  type ContactStatus,
-  ApiError,
-} from '@/lib/api';
-import { useClaudeAssist } from '@/lib/use-claude-assist';
+import { contactApi, type ContactMessage, type ContactStatus, ApiError } from '@/lib/api';
 import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
-import { cn, formatDateTime, formatShortDate } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 
 type Row = ContactMessage & { _brand: Project };
+type Filter = ContactStatus | 'all';
+type LinkState = { from: string; ids: { slug: CompanySlug; id: number }[] };
 
-const statusVariant: Record<
-  ContactStatus,
-  'default' | 'info' | 'success' | 'secondary' | 'warning'
-> = {
+const STATUS_VARIANT: Record<ContactStatus, 'info' | 'success' | 'secondary' | 'warning'> = {
   new: 'info',
   read: 'warning',
   replied: 'success',
@@ -70,23 +44,53 @@ const STATUS_LABEL_KEY: Record<ContactStatus, string> = {
   archived: 'contacts.statusArchived',
 };
 
+const FILTERS: Filter[] = ['all', 'new', 'read', 'replied', 'archived'];
+
+const PAGE_SIZE = 50;
+
+const ROW_LINK =
+  'rounded-sm after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring';
+
+function contactPath(slug: CompanySlug, id: number): string {
+  return `/contacts/${encodeURIComponent(slug)}/${id}`;
+}
+
+function listError(error: unknown, t: ReturnType<typeof useT>): Error | null {
+  if (!error) return null;
+  if (error instanceof ApiError) {
+    if (error.status === 401) return new Error(t('contacts.errUnauthorized'));
+    if (error.status === 403) return new Error(t('contacts.errForbidden'));
+    return error;
+  }
+  return new Error(t('contacts.errGeneric'));
+}
+
 export function ContactsPage() {
   const { activeProject, projects, isAllBrands } = useProject();
-  const queryClient = useQueryClient();
   const t = useT();
   const { bcp47 } = useLocale();
   usePageTitle(t('contacts.title'));
-  const [tab, setTab] = useState<ContactStatus | 'all'>('all');
-  // Selection lives in the URL: reload-safe, linkable, and the phone's back
-  // gesture closes the detail sheet instead of leaving the page.
-  const [selected, setSelected] = useSelectedBrandRef<CompanySlug>('contact');
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // The inbox list scrolls inside its own box so it can grow to hundreds of
-  // rows without pushing the sticky detail panel out of reach.
+  const statusParam = searchParams.get('status') as Filter | null;
+  const tab: Filter = statusParam && FILTERS.includes(statusParam) ? statusParam : 'all';
+  const setTab = useCallback(
+    (next: Filter) =>
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (next === 'all') p.delete('status');
+          else p.set('status', next);
+          return p;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
+
   const listScrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
-
-  const PAGE_SIZE = 50;
 
   const singleInfinite = useInfiniteQuery({
     queryKey: ['contacts-infinite', activeProject.companySlug] as const,
@@ -140,23 +144,12 @@ export function ContactsPage() {
     return messages.filter((m) => m.status === tab);
   }, [messages, tab]);
 
-  // Switching tab or brand shows a different list — start it at the top.
   useEffect(() => {
     listScrollRef.current?.scrollTo({ top: 0 });
   }, [tab, activeProject.companySlug, isAllBrands]);
 
-  const selectedRow = useMemo(
-    () =>
-      selected
-        ? (messages.find(
-            (m) => m.id === selected.id && m._brand.companySlug === selected.companySlug,
-          ) ?? null)
-        : null,
-    [messages, selected],
-  );
-
   const counts = useMemo(() => {
-    const c: Record<ContactStatus | 'all', number> = {
+    const c: Record<Filter, number> = {
       all: messages.length,
       new: 0,
       read: 0,
@@ -167,67 +160,35 @@ export function ContactsPage() {
     return c;
   }, [messages]);
 
-  const statusMutation = useMutation({
-    mutationFn: (vars: { companySlug: CompanySlug; id: number; status: ContactStatus }) =>
-      contactApi.updateStatus(vars.companySlug, vars.id, vars.status),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['contacts-infinite'] });
-      void queryClient.invalidateQueries({ queryKey: ['contacts'] });
-    },
-  });
+  const linkState = useMemo<LinkState>(
+    () => ({
+      from: location.search,
+      ids: filtered.map((m) => ({ slug: m._brand.companySlug, id: m.id })),
+    }),
+    [filtered, location.search],
+  );
 
-  const detailKey = selected
-    ? (['contact-detail', selected.companySlug, selected.id] as const)
-    : null;
-
-  const detailQuery = useQuery({
-    queryKey: detailKey ?? ['contact-detail', 'none'],
-    queryFn: ({ signal }) => contactApi.get(selected!.companySlug, selected!.id, signal),
-    enabled: !!selected,
-  });
-
-  const replyMutation = useMutation({
-    mutationFn: (vars: { companySlug: CompanySlug; id: number; body: string }) =>
-      contactApi.reply(vars.companySlug, vars.id, vars.body),
-    onSuccess: ({ reply, message }, vars) => {
-      queryClient.setQueryData<{ messages: ContactMessage[] } | undefined>(
-        ['contacts', vars.companySlug],
-        (prev) =>
-          prev
-            ? {
-                messages: prev.messages.map((m) => (m.id === message.id ? message : m)),
-              }
-            : prev,
-      );
-      queryClient.setQueryData<{
-        message: ContactMessage | null;
-        replies: ContactReply[];
-      }>(['contact-detail', vars.companySlug, vars.id], (prev) => ({
-        message,
-        replies: [...(prev?.replies ?? []), reply],
-      }));
-      void queryClient.invalidateQueries({ queryKey: ['contacts-infinite'] });
-      void queryClient.invalidateQueries({ queryKey: ['contacts'] });
-    },
-  });
+  // Legacy `?contact=<slug>:<id>` links (dashboard, emails, notifications) redirect to the record page.
+  const legacy = searchParams.get('contact');
+  const legacyMatch = legacy ? /^(?:([a-z0-9_-]{2,63}):)?(\d+)$/.exec(legacy) : null;
+  if (legacyMatch) {
+    const [, slug, id] = legacyMatch;
+    return (
+      <Navigate
+        replace
+        to={contactPath((slug as CompanySlug | undefined) ?? activeProject.companySlug, Number(id))}
+      />
+    );
+  }
 
   function refreshAll() {
     if (isAllBrands) multi.forEach((q) => q.refetch());
     else void singleInfinite.refetch();
   }
 
-  const errorMessage =
-    firstError instanceof ApiError
-      ? firstError.status === 401
-        ? t('contacts.errUnauthorized')
-        : firstError.status === 403
-          ? t('contacts.errForbidden')
-          : firstError.message
-      : firstError
-        ? t('contacts.errGeneric')
-        : null;
+  const error = listError(firstError, t);
 
-  const STATUS_TABS: { value: ContactStatus | 'all'; label: string }[] = [
+  const STATUS_TABS: { value: Filter; label: string }[] = [
     { value: 'all', label: t('contacts.tabAll') },
     { value: 'new', label: t('contacts.tabNew') },
     { value: 'read', label: t('contacts.tabRead') },
@@ -235,737 +196,224 @@ export function ContactsPage() {
     { value: 'archived', label: t('contacts.tabArchived') },
   ];
 
+  const brandLabel = isAllBrands ? t('brandFilter.allBrands') : activeProject.name;
+
+  const sentinel = !isAllBrands ? (
+    <InfiniteScrollSentinel
+      hasMore={!!singleInfinite.hasNextPage}
+      isLoading={singleInfinite.isFetchingNextPage}
+      onIntersect={loadMore}
+      // Root only when the box scrolls (lg+); otherwise the sentinel stays inside it and loads every page.
+      rootRef={isDesktop ? listScrollRef : undefined}
+    />
+  ) : null;
+
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{isAllBrands ? t('brandFilter.allBrands') : activeProject.name}</span>
-          <span>/</span>
-          <span className="text-foreground">{t('contacts.breadcrumb')}</span>
-        </div>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-              {t('contacts.title')}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {t('contacts.subtitle', {
-                brand: isAllBrands ? t('brandFilter.allBrands') : activeProject.name,
-              })}
+    <PageContainer width="full">
+      <PageHeading
+        breadcrumb={[{ label: brandLabel }, { label: t('contacts.breadcrumb') }]}
+        title={t('contacts.title')}
+        subtitle={t('contacts.subtitle', { brand: brandLabel })}
+        actions={<RefreshButton onClick={refreshAll} fetching={isFetching} />}
+      />
+
+      <div className="flex flex-col gap-4">
+        <SegmentedControl
+          value={tab}
+          onValueChange={setTab}
+          label={t('contacts.statusFilter')}
+          overflow="scroll"
+          className="w-fit"
+          options={STATUS_TABS.map((s) => ({ ...s, count: counts[s.value] }))}
+        />
+
+        {error ? <ErrorState error={error} onRetry={refreshAll} retrying={isFetching} /> : null}
+
+        {isLoading ? (
+          <div className="rounded-lg border border-border bg-card">
+            <LoadingState label={t('contacts.inboxLoading')} />
+          </div>
+        ) : filtered.length === 0 ? (
+          error ? null : (
+            <EmptyState variant="dashed" icon={<Inbox />} message={t('contacts.inboxEmpty')} />
+          )
+        ) : (
+          <>
+            <p className="sr-only" aria-live="polite">
+              {filtered.length}{' '}
+              {filtered.length === 1 ? t('contacts.messageSingular') : t('contacts.messagePlural')}
             </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={refreshAll} disabled={isFetching}>
-              <RefreshCcw className={cn('size-3.5', isFetching && 'animate-spin')} />
-              {t('contacts.refresh')}
-            </Button>
-          </div>
-        </div>
-      </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as ContactStatus | 'all')}>
-        <TabsList>
-          {STATUS_TABS.map((tabItem) => {
-            const active = tab === tabItem.value;
-            return (
-              <TabsTrigger key={tabItem.value} value={tabItem.value} className="gap-1.5">
-                {tabItem.label}
-                <CountPill tone={active ? 'accent' : 'muted'}>{counts[tabItem.value]}</CountPill>
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-      </Tabs>
+            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card md:hidden">
+              {filtered.map((m) => (
+                <ContactMobileRow
+                  key={`${m._brand.id}:${m.id}`}
+                  row={m}
+                  showBrand={isAllBrands}
+                  linkState={linkState}
+                  bcp47={bcp47}
+                  t={t}
+                />
+              ))}
+            </ul>
 
-      {errorMessage ? (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-        >
-          <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <span>{errorMessage}</span>
-        </div>
-      ) : null}
-
-      <div className={cn('grid grid-cols-1 gap-4', selectedRow && 'lg:grid-cols-5')}>
-        <Card className={cn('overflow-hidden', selectedRow && 'lg:col-span-2')}>
-          <CardHeader className="flex flex-row items-start justify-between space-y-0">
-            <div>
-              <CardTitle>{t('contacts.inboxTitle')}</CardTitle>
-              <CardDescription>
-                {filtered.length}{' '}
-                {filtered.length === 1
-                  ? t('contacts.messageSingular')
-                  : t('contacts.messagePlural')}
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent
-            ref={listScrollRef}
-            className="p-0 lg:max-h-[calc(100svh-15rem)] lg:overflow-y-auto lg:overscroll-contain"
-          >
-            {isLoading ? (
-              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                {t('contacts.inboxLoading')}
-              </div>
-            ) : filtered.length === 0 ? (
-              <EmptyState message={t('contacts.inboxEmpty')} />
-            ) : (
-              <div className="divide-y">
-                {filtered.map((m) => {
-                  const isSelected =
-                    selected?.id === m.id && selected?.companySlug === m._brand.companySlug;
-                  return (
-                    <button
+            {/* The box is the scroll container, so the sticky header anchors to it; the Table's own wrapper must not scroll. */}
+            <div
+              ref={listScrollRef}
+              className="hidden overflow-x-auto rounded-lg border border-border bg-card md:block lg:max-h-[calc(100svh-17rem)] lg:overflow-auto lg:overscroll-contain"
+            >
+              <Table containerClassName="w-full">
+                <TableHeader sticky>
+                  <TableRow>
+                    <TableHead className="w-36">{t('contacts.colReceived')}</TableHead>
+                    <TableHead>{t('contacts.colSender')}</TableHead>
+                    <TableHead>{t('contacts.colSubject')}</TableHead>
+                    {isAllBrands ? <TableHead>{t('contacts.colBrand')}</TableHead> : null}
+                    <TableHead>{t('contacts.colStatus')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((m) => (
+                    <ContactTableRow
                       key={`${m._brand.id}:${m.id}`}
-                      type="button"
-                      onClick={() =>
-                        setSelected({
-                          companySlug: m._brand.companySlug,
-                          id: m.id,
-                        })
-                      }
-                      className={cn(
-                        'flex w-full flex-col gap-1 px-4 py-3 text-left transition-colors hover:bg-muted/40 sm:px-5',
-                        isSelected && 'bg-muted/60',
-                        m.status === 'new' && 'border-l-2 border-l-info',
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          className={cn(
-                            'truncate text-2sm font-medium',
-                            m.status === 'new' && 'font-semibold',
-                          )}
-                        >
-                          {m.name}
-                        </span>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          <BrandChip brand={m._brand} />
-                          <Badge variant={statusVariant[m.status]}>
-                            {t(STATUS_LABEL_KEY[m.status] as never)}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="truncate text-2xs text-muted-foreground">{m.email}</div>
-                      <div className="flex items-center justify-between gap-2 text-2sm">
-                        <span className="truncate text-muted-foreground">
-                          {m.subject ? (
-                            <span className="text-foreground/80">{m.subject} · </span>
-                          ) : null}
-                          {m.message}
-                        </span>
-                        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
-                          {formatRelative(m.createdAt, t, bcp47)}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {!isAllBrands ? (
-              <InfiniteScrollSentinel
-                hasMore={!!singleInfinite.hasNextPage}
-                isLoading={singleInfinite.isFetchingNextPage}
-                onIntersect={loadMore}
-                // Only a root when that box actually scrolls (lg+); otherwise the
-                // sentinel sits inside it forever and pages in the whole list.
-                rootRef={isDesktop ? listScrollRef : undefined}
-              />
-            ) : null}
+                      row={m}
+                      showBrand={isAllBrands}
+                      linkState={linkState}
+                      bcp47={bcp47}
+                      t={t}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+              {isDesktop ? sentinel : null}
+            </div>
+            {isDesktop ? null : sentinel}
+
             {allBrandsHasMore ? (
-              <div className="border-t border-border/60 px-4 py-3 text-center text-xs text-muted-foreground">
+              <p className="text-center text-xs text-muted-foreground">
                 {t('common.allBrandsHasMore')}
-              </div>
+              </p>
             ) : null}
-          </CardContent>
-        </Card>
-
-        <DetailPane
-          open={!!selectedRow}
-          onClose={() => setSelected(null)}
-          title={t('contacts.title')}
-          // The panel below owns its own sticky scroll on desktop.
-          desktopSticky={false}
-          className="lg:col-span-3"
-        >
-          {selectedRow ? (
-            <DetailPanel
-              key={`${selectedRow._brand.id}:${selectedRow.id}`}
-              message={detailQuery.data?.message ?? selectedRow}
-              brand={selectedRow._brand}
-              replies={detailQuery.data?.replies ?? []}
-              repliesLoading={detailQuery.isLoading}
-              t={t}
-              bcp47={bcp47}
-              showBrand={true}
-              onClose={() => setSelected(null)}
-              onStatusChange={(status) =>
-                statusMutation.mutate({
-                  companySlug: selectedRow._brand.companySlug,
-                  id: selectedRow.id,
-                  status,
-                })
-              }
-              onSendReply={(body) =>
-                replyMutation.mutateAsync({
-                  companySlug: selectedRow._brand.companySlug,
-                  id: selectedRow.id,
-                  body,
-                })
-              }
-              isUpdating={statusMutation.isPending}
-              isReplying={replyMutation.isPending}
-              replyError={
-                replyMutation.error instanceof ApiError
-                  ? replyMutation.error.message
-                  : replyMutation.error
-                    ? t('contacts.replyFailed')
-                    : null
-              }
-            />
-          ) : null}
-        </DetailPane>
-      </div>
-    </div>
-  );
-}
-
-function DetailPanel({
-  message,
-  brand,
-  replies,
-  repliesLoading,
-  t,
-  bcp47,
-  showBrand,
-  onClose,
-  onStatusChange,
-  onSendReply,
-  isUpdating,
-  isReplying,
-  replyError,
-}: {
-  message: ContactMessage | Row;
-  brand: Project;
-  replies: ContactReply[];
-  repliesLoading: boolean;
-  t: ReturnType<typeof useT>;
-  bcp47: string;
-  showBrand: boolean;
-  onClose: () => void;
-  onStatusChange: (status: ContactStatus) => void;
-  onSendReply: (body: string) => Promise<unknown>;
-  isUpdating: boolean;
-  isReplying: boolean;
-  replyError: string | null;
-}) {
-  return (
-    <Card className="lg:sticky lg:top-20 lg:max-h-[calc(100svh-6rem)] lg:overflow-y-auto lg:overscroll-contain">
-      <header className="flex flex-col gap-3 border-b border-border/70 bg-muted/30 px-4 py-4 sm:flex-row sm:items-start sm:gap-4 sm:px-5">
-        <Avatar className="size-10 shrink-0" aria-hidden="true">
-          <AvatarFallback className="bg-rust/15 text-xs font-semibold uppercase text-rust">
-            {initialsOf(message.name)}
-          </AvatarFallback>
-        </Avatar>
-
-        <div className="min-w-0 flex-1">
-          <h2 className="font-serif text-lg font-semibold tracking-tight">
-            {message.subject || t('contacts.detailNoSubject')}
-          </h2>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground/85">{message.name}</span>
-            <span aria-hidden="true">·</span>
-            <a href={`mailto:${message.email}`} className="truncate text-primary hover:underline">
-              {message.email}
-            </a>
-            <span aria-hidden="true">·</span>
-            <time dateTime={message.createdAt} className="tabular-nums">
-              {formatDateTime(message.createdAt, bcp47)}
-            </time>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <Badge variant={statusVariant[message.status]}>
-              {t(STATUS_LABEL_KEY[message.status] as never)}
-            </Badge>
-            {showBrand ? <BrandChip brand={brand} /> : null}
-            {message.phone ? (
-              <a
-                href={`tel:${message.phone}`}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-2xs text-foreground/80 hover:bg-muted"
-              >
-                <Phone className="size-3" />
-                {message.phone}
-              </a>
-            ) : null}
-            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-2xs text-muted-foreground">
-              <Globe className="size-3" />
-              {message.locale.toUpperCase()}
-            </span>
-            {message.consentMarketing ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success-soft px-2 py-0.5 text-2xs font-medium text-success">
-                <Check className="size-3" />
-                {t('contacts.detailMarketing')}
-              </span>
-            ) : null}
-            {message.source ? (
-              <span className="rounded-full border border-border bg-card px-2 py-0.5 text-2xs text-muted-foreground">
-                {message.source}
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2 self-start sm:gap-0.5 sm:self-center">
-          <ToolbarButton
-            onClick={() => onStatusChange('read')}
-            disabled={isUpdating || message.status === 'read'}
-            icon={MailOpen}
-            label={t('contacts.actionMarkRead')}
-            active={message.status === 'read'}
-          />
-          <ToolbarButton
-            onClick={() => onStatusChange('replied')}
-            disabled={isUpdating || message.status === 'replied'}
-            icon={Reply}
-            label={t('contacts.actionMarkReplied')}
-            active={message.status === 'replied'}
-          />
-          <ToolbarButton
-            onClick={() => onStatusChange('archived')}
-            disabled={isUpdating || message.status === 'archived'}
-            icon={Archive}
-            label={t('contacts.actionArchive')}
-            active={message.status === 'archived'}
-          />
-          {message.status !== 'new' ? (
-            <ToolbarButton
-              onClick={() => onStatusChange('new')}
-              disabled={isUpdating}
-              icon={CheckCheck}
-              label={t('contacts.actionReset')}
-            />
-          ) : null}
-          <ToolbarButton onClick={onClose} icon={X} label={t('common.close')} />
-        </div>
-      </header>
-
-      <div className="flex flex-col gap-4 px-4 py-5 sm:px-5">
-        <h3 className="sr-only">{t('contacts.conversationTitle')}</h3>
-
-        <ThreadItem
-          name={message.name}
-          subtitle={t('contacts.originalMessage')}
-          timestamp={formatDateTime(message.createdAt, bcp47)}
-          body={message.message}
-          tone="incoming"
-        />
-
-        {message.attachments.length > 0 ? (
-          <div className="ml-11">
-            <AttachmentGallery companySlug={brand.companySlug} attachments={message.attachments} />
-          </div>
-        ) : null}
-
-        {message.metadata && Object.keys(message.metadata).length > 0 ? (
-          <div className="ml-11">
-            <ContactMetadataBlock
-              metadata={message.metadata}
-              label={t('contacts.metadataTitle')}
-              t={t}
-            />
-          </div>
-        ) : null}
-
-        {repliesLoading && replies.length === 0 ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
-            {t('contacts.inboxLoading')}
-          </div>
-        ) : null}
-
-        {replies.map((r) => (
-          <ThreadItem
-            key={r.id}
-            name={r.sentByName ?? t('contacts.replyFromAdmin')}
-            subtitle={t('contacts.replyFromAdmin')}
-            timestamp={formatDateTime(r.createdAt, bcp47)}
-            body={r.body}
-            tone="outgoing"
-          />
-        ))}
-      </div>
-
-      <div className="border-t border-border/70 bg-muted/20 px-4 py-4 sm:px-5">
-        <ReplyComposer
-          to={message.email}
-          companySlug={brand.companySlug}
-          contactId={message.id}
-          onSend={onSendReply}
-          isSending={isReplying}
-          error={replyError}
-          t={t}
-        />
-      </div>
-    </Card>
-  );
-}
-
-function ToolbarButton({
-  onClick,
-  disabled,
-  icon: Icon,
-  label,
-  active,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          onClick={onClick}
-          disabled={disabled}
-          aria-label={label}
-          className={cn(
-            'inline-flex size-9 items-center justify-center rounded-md text-foreground/70 transition-colors',
-            'hover:bg-muted hover:text-foreground',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground/70',
-            active && 'bg-rust/10 text-rust hover:bg-rust/15 hover:text-rust',
-          )}
-        >
-          <Icon className="size-4" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function ThreadItem({
-  name,
-  subtitle,
-  timestamp,
-  body,
-  tone,
-}: {
-  name: string;
-  subtitle: string;
-  timestamp: string;
-  body: string;
-  tone: 'incoming' | 'outgoing';
-}) {
-  const isOutgoing = tone === 'outgoing';
-  return (
-    <article className="flex items-start gap-3">
-      <Avatar className="size-8 shrink-0" aria-hidden="true">
-        <AvatarFallback
-          className={cn(
-            'text-2xs font-semibold uppercase',
-            isOutgoing ? 'bg-rust/15 text-rust' : 'bg-muted text-foreground/70',
-          )}
-        >
-          {initialsOf(name)}
-        </AvatarFallback>
-      </Avatar>
-      <div
-        className={cn(
-          'min-w-0 flex-1 rounded-2xl border px-4 py-3',
-          isOutgoing ? 'border-rust/20 bg-rust/[0.04]' : 'border-border bg-background',
+          </>
         )}
-      >
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="truncate text-2sm font-semibold">{name}</span>
-            <span className="hidden text-2xs text-muted-foreground sm:inline">{subtitle}</span>
-          </div>
-          <time className="shrink-0 text-2xs tabular-nums text-muted-foreground">{timestamp}</time>
-        </div>
-        <p className="mt-1.5 whitespace-pre-wrap text-2sm leading-relaxed text-foreground/90">
-          {body}
-        </p>
       </div>
-    </article>
+    </PageContainer>
   );
 }
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '??';
-  if (parts.length === 1) return (parts[0] ?? '?').slice(0, 2).toUpperCase();
-  return ((parts[0]?.[0] ?? '') + (parts[parts.length - 1]?.[0] ?? '')).toUpperCase();
+function NewDot({ show }: { show: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn('size-1.5 shrink-0 rounded-full', show ? 'bg-highlight' : 'bg-transparent')}
+    />
+  );
 }
 
-function ReplyComposer({
-  to,
-  companySlug,
-  contactId,
-  onSend,
-  isSending,
-  error,
+function ContactTableRow({
+  row: m,
+  showBrand,
+  linkState,
+  bcp47,
   t,
 }: {
-  to: string;
-  companySlug: CompanySlug;
-  contactId: number;
-  onSend: (body: string) => Promise<unknown>;
-  isSending: boolean;
-  error: string | null;
+  row: Row;
+  showBrand: boolean;
+  linkState: LinkState;
+  bcp47: string;
   t: ReturnType<typeof useT>;
 }) {
-  const [body, setBody] = useState('');
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [justSent, setJustSent] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const sentTimerRef = useRef<number | null>(null);
-
-  const assist = useClaudeAssist({
-    kind: 'contact_reply',
-    companySlug,
-    refId: contactId,
-    getCurrent: () => body,
-    apply: (text) => {
-      setBody(text);
-      setLocalError(null);
-      setJustSent(false);
-    },
-    updatedLabel: t('ai.updated'),
-  });
-
-  useEffect(() => {
-    return () => {
-      if (sentTimerRef.current !== null) {
-        window.clearTimeout(sentTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Both the button and ⌘↵ ask first — the mail leaves immediately once sent.
-  function requestSend() {
-    if (!body.trim()) {
-      setLocalError(t('contacts.replyEmpty'));
-      return;
-    }
-    setLocalError(null);
-    setConfirmOpen(true);
-  }
-
-  async function handleSend() {
-    setLocalError(null);
-    try {
-      await onSend(body);
-      setConfirmOpen(false);
-      setBody('');
-      setJustSent(true);
-      if (sentTimerRef.current !== null) window.clearTimeout(sentTimerRef.current);
-      sentTimerRef.current = window.setTimeout(() => setJustSent(false), 2400);
-    } catch {
-      /* error surfaced via the prop */
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // ⌘/Ctrl + Enter → send
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      requestSend();
-    }
-  }
-
-  const shownError = localError ?? error;
-
+  const isNew = m.status === 'new';
   return (
-    <div className="group overflow-hidden rounded-2xl border border-border bg-card transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
-      <Textarea
-        rows={8}
-        value={body}
-        onChange={(e) => {
-          setBody(e.target.value);
-          if (localError) setLocalError(null);
-          if (justSent) setJustSent(false);
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder={t('contacts.replyPlaceholder')}
-        disabled={isSending}
-        aria-label={t('contacts.replyPlaceholder')}
-        className="min-h-[180px] resize-none border-0 bg-transparent px-3.5 py-3 text-base leading-relaxed shadow-none focus-visible:ring-0 sm:text-2sm"
-      />
-      {shownError ? (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-start gap-1.5 px-3.5 pb-2 text-xs text-destructive"
-        >
-          <AlertCircle className="mt-0.5 size-3 shrink-0" />
-          <span>{shownError}</span>
-        </div>
-      ) : null}
-      {justSent ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className="flex items-center gap-1.5 px-3.5 pb-2 text-xs text-success"
-        >
-          <Check className="size-3.5" />
-          <span>{t('contacts.replySentToast')}</span>
-        </div>
-      ) : null}
-      <ClaudeChatBox
-        editablePrompt={{ kind: 'contact_reply', companySlug }}
-        busy={assist.busy}
-        history={assist.history}
-        placeholder={t('ai.placeholder')}
-        idleHint={body.trim() ? t('ai.idleRefine') : t('ai.idleFresh')}
-        busyHint={t('ai.writing')}
-        sendLabel={t('ai.send')}
-        quickActions={[
-          {
-            label: t('ai.draftReply'),
-            run: () => assist.run(undefined, t('ai.draftReply'), { fresh: true }),
-          },
-          {
-            label: t('ai.shorter'),
-            run: () => assist.run('Deutlich kürzer formulieren.', t('ai.shorter')),
-          },
-          {
-            label: t('ai.friendlier'),
-            run: () => assist.run('Wärmer und freundlicher formulieren.', t('ai.friendlier')),
-          },
-        ]}
-        onSend={(instruction) => assist.run(instruction, instruction)}
-      />
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3.5 py-2">
-        <span className="flex items-center gap-1.5 truncate text-2xs text-muted-foreground">
-          <Mail className="size-3" />
-          <span>
-            {t('contacts.replyEmailLabel')}{' '}
-            <span className="font-medium text-foreground/80">{to}</span>
-          </span>
+    <TableRow className={cn('relative', isNew && 'font-semibold')}>
+      <TableCell className="whitespace-nowrap py-2">
+        <span className="flex items-center gap-2">
+          <NewDot show={isNew} />
+          <time dateTime={m.createdAt} className="tabular-nums text-muted-foreground">
+            {formatDateTime(m.createdAt, bcp47, { dateStyle: 'short', timeStyle: 'short' })}
+          </time>
         </span>
-        <div className="flex items-center gap-2">
-          <kbd className="hidden items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-3xs text-muted-foreground sm:inline-flex">
-            ⌘↩
-          </kbd>
-          <Button size="sm" onClick={requestSend} disabled={isSending || body.trim() === ''}>
-            {isSending ? (
-              <>
-                <Loader2 className="size-3.5 animate-spin" />
-                {t('contacts.replySending')}
-              </>
-            ) : (
-              <>
-                <Send className="size-3.5" />
-                {t('contacts.replySend')}
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title={t('contacts.confirmSendReplyTitle')}
-        description={t('contacts.confirmSendReplyBody', { to })}
-        confirmLabel={t('contacts.replySend')}
-        onConfirm={() => void handleSend()}
-        isPending={isSending}
-      />
-    </div>
+      </TableCell>
+      <TableCell className="max-w-[16rem] py-2">
+        <Link
+          to={contactPath(m._brand.companySlug, m.id)}
+          state={linkState}
+          title={t('contacts.openDetail')}
+          className={cn(
+            'block truncate text-foreground hover:underline',
+            isNew ? 'font-semibold' : 'font-medium',
+            ROW_LINK,
+          )}
+        >
+          {m.name}
+        </Link>
+        <p className="truncate text-xs font-normal text-muted-foreground">{m.email}</p>
+      </TableCell>
+      <TableCell className="max-w-[28rem] py-2">
+        <p className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{m.subject || t('contacts.detailNoSubject')}</span>
+          {m.attachments.length > 0 ? (
+            <Paperclip className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          ) : null}
+        </p>
+        <p className="truncate text-xs font-normal text-muted-foreground">{m.message}</p>
+      </TableCell>
+      {showBrand ? (
+        <TableCell className="py-2">
+          <BrandChip brand={m._brand} />
+        </TableCell>
+      ) : null}
+      <TableCell className="py-2">
+        <Badge variant={STATUS_VARIANT[m.status]}>{t(STATUS_LABEL_KEY[m.status] as never)}</Badge>
+      </TableCell>
+    </TableRow>
   );
 }
 
-function BrandChip({ brand }: { brand: Project }) {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-1.5 py-0.5">
-      <BrandMark brand={brand} size="xs" />
-      <span className="text-3xs font-medium uppercase tracking-wide text-muted-foreground">
-        {brand.shortName}
-      </span>
-    </span>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex h-48 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-      <Inbox className="size-6 opacity-50" />
-      <span>{message}</span>
-    </div>
-  );
-}
-
-function ContactMetadataBlock({
-  metadata,
-  label,
+function ContactMobileRow({
+  row: m,
+  showBrand,
+  linkState,
+  bcp47,
   t,
 }: {
-  metadata: Record<string, unknown>;
-  label: string;
+  row: Row;
+  showBrand: boolean;
+  linkState: LinkState;
+  bcp47: string;
   t: ReturnType<typeof useT>;
 }) {
-  const entries = Object.entries(metadata).filter(
-    ([, v]) => v !== null && v !== undefined && v !== '',
-  );
-  if (entries.length === 0) return null;
+  const isNew = m.status === 'new';
   return (
-    <div>
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
+    <li className="relative space-y-0.5 px-4 py-2.5 transition-colors duration-fast hover:bg-accent/60">
+      <div className="flex items-center gap-2">
+        <NewDot show={isNew} />
+        <Link
+          to={contactPath(m._brand.companySlug, m.id)}
+          state={linkState}
+          className={cn(
+            'min-w-0 truncate text-2sm text-foreground',
+            isNew ? 'font-semibold' : 'font-medium',
+            ROW_LINK,
+          )}
+        >
+          {m.name}
+        </Link>
+        <time
+          dateTime={m.createdAt}
+          className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground"
+        >
+          {formatDateTime(m.createdAt, bcp47, { dateStyle: 'short', timeStyle: 'short' })}
+        </time>
       </div>
-      <dl className="grid grid-cols-1 gap-2 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2">
-        {entries.map(([k, v]) => (
-          <div key={k} className="flex flex-col gap-0.5">
-            <dt className="text-xs text-muted-foreground">{prettyMetaLabel(k)}</dt>
-            <dd className="break-words text-sm">{formatMetaValue(v, t)}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
+      <p className="truncate pl-3.5 text-xs text-muted-foreground">
+        {m.subject ? `${m.subject} · ` : ''}
+        {m.message}
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5 pl-3.5 pt-0.5">
+        {showBrand ? <BrandChip brand={m._brand} /> : null}
+        <Badge variant={STATUS_VARIANT[m.status]}>{t(STATUS_LABEL_KEY[m.status] as never)}</Badge>
+      </div>
+    </li>
   );
-}
-
-function prettyMetaLabel(key: string): string {
-  return key
-    .replace(/[_-]+/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^./, (c) => c.toUpperCase());
-}
-
-function formatMetaValue(v: unknown, t: ReturnType<typeof useT>): string {
-  if (v === null || v === undefined) return '—';
-  if (typeof v === 'boolean') return v ? t('common.yes') : t('common.no');
-  if (typeof v === 'number') return v.toLocaleString();
-  if (Array.isArray(v)) return v.map((item) => formatMetaValue(item, t)).join(', ');
-  if (typeof v === 'object') {
-    try {
-      return JSON.stringify(v);
-    } catch {
-      return String(v);
-    }
-  }
-  return String(v);
-}
-
-function formatRelative(iso: string, t: ReturnType<typeof useT>, bcp47: string) {
-  const date = new Date(iso);
-  const diff = Date.now() - date.getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return t('contacts.timeNow');
-  if (minutes < 60) return t('contacts.timeMinutes', { n: minutes });
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return t('contacts.timeHours', { n: hours });
-  const days = Math.floor(hours / 24);
-  if (days < 7) return t('contacts.timeDays', { n: days });
-  return formatShortDate(date, bcp47);
 }

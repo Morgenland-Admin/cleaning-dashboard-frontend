@@ -11,31 +11,20 @@ export default {
       },
     },
     extend: {
-      /*
-       * Type scale. The app had invented 241 one-off `text-[Npx]` classes across
-       * 37 files — six different sizes between 10px and 16px, none of them
-       * enumerable or greppable. These are those sizes, named, with line-heights
-       * that actually pair with them. `2xs` is one step under `xs`, `2sm` one
-       * step under `sm`; `xs`, `sm` and up keep Tailwind's defaults.
-       *
-       * Nothing outside this scale should appear in a className. If a new size
-       * seems necessary, add it here so it is shared.
-       */
+      // Type scale: nothing outside it in a className (`pnpm run check:tokens` enforces it).
       fontSize: {
-        '3xs': ['0.625rem', { lineHeight: '0.875rem' }], // 10px — micro labels, counters
-        '2xs': ['0.6875rem', { lineHeight: '1rem' }], //    11px — metadata, captions
-        xs: ['0.75rem', { lineHeight: '1rem' }], //          12px
-        '2sm': ['0.8125rem', { lineHeight: '1.125rem' }], // 13px — dense rows, nav, tabs
-        // Editorial display sizes for the serif page heroes. Line-height and
-        // tracking are baked in, so a hero is one class instead of three.
-        // Collapsed from five hand-written sizes (28/30/34/36/44) to three.
-        'display-sm': ['1.875rem', { lineHeight: '1.1', letterSpacing: '-0.025em' }], //  30px
-        'display-md': ['2.25rem', { lineHeight: '1.08', letterSpacing: '-0.025em' }], //  36px
-        'display-lg': ['2.75rem', { lineHeight: '1.05', letterSpacing: '-0.025em' }], //  44px
+        '3xs': ['0.625rem', { lineHeight: '0.875rem' }], // counters only
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }],
+        xs: ['0.75rem', { lineHeight: '1rem' }],
+        '2sm': ['0.8125rem', { lineHeight: '1.25rem' }],
+        sm: ['0.875rem', { lineHeight: '1.375rem' }],
+        base: ['1rem', { lineHeight: '1.5rem' }], // mobile inputs: iOS zooms anything smaller
+        title: ['1.375rem', { lineHeight: '1.75rem', letterSpacing: '-0.012em' }], // page h1
+        metric: ['1.625rem', { lineHeight: '2rem', letterSpacing: '-0.02em' }], // KPI value
       },
       fontFamily: {
         sans: [
-          'Inter',
+          'IBM Plex Sans Variable',
           'ui-sans-serif',
           'system-ui',
           '-apple-system',
@@ -43,10 +32,10 @@ export default {
           'Roboto',
           'sans-serif',
         ],
-        serif: ['Source Serif 4', 'Source Serif Pro', 'Georgia', 'serif'],
       },
       colors: {
         border: 'hsl(var(--border))',
+        'border-strong': 'hsl(var(--border-strong))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
         background: 'hsl(var(--background))',
@@ -54,6 +43,12 @@ export default {
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
+          soft: 'hsl(var(--primary-soft))',
+          'on-ink': 'hsl(var(--primary-on-ink))',
+        },
+        highlight: {
+          DEFAULT: 'hsl(var(--highlight))',
+          foreground: 'hsl(var(--highlight-foreground))',
         },
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
@@ -62,6 +57,7 @@ export default {
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
+          soft: 'hsl(var(--destructive-soft))',
         },
         muted: {
           DEFAULT: 'hsl(var(--muted))',
@@ -79,23 +75,16 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
-        rust: {
-          DEFAULT: 'hsl(var(--rust))',
-          soft: 'hsl(var(--rust-soft))',
-          text: 'hsl(var(--rust-text))',
-          /* For the theme-invariant ink surface — see `ink` / `parchment`. */
-          'on-ink': 'hsl(var(--rust-on-ink))',
-        },
         claude: {
           DEFAULT: 'hsl(var(--claude))',
           soft: 'hsl(var(--claude-soft))',
         },
-        /* Star ratings. Semantically data, not a status — kept out of warning. */
+        // Star ratings are data, not a status: keep out of warning.
         rating: 'hsl(var(--rating))',
-        /* Theme-invariant. For surfaces painted a fixed brand colour (the login
-           showcase panel, brand wordmarks) that must not flip with the theme. */
+        // Theme-invariant: fixed-colour surfaces (login panel, brand wordmarks) must not flip with the theme.
         ink: 'hsl(var(--ink))',
         parchment: 'hsl(var(--parchment))',
+        overlay: 'hsl(var(--overlay))',
         success: {
           DEFAULT: 'hsl(var(--success))',
           foreground: 'hsl(var(--success-foreground))',
@@ -118,14 +107,66 @@ export default {
           'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
           accent: 'hsl(var(--sidebar-accent))',
           'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
+          active: 'hsl(var(--sidebar-active))',
           border: 'hsl(var(--sidebar-border))',
           ring: 'hsl(var(--sidebar-ring))',
         },
       },
+      // `bg-primary` is the ink fill, but `text-primary`, `border-primary` and `ring-primary` resolve to rust.
+      textColor: {
+        primary: {
+          DEFAULT: 'hsl(var(--primary-text))',
+          foreground: 'hsl(var(--primary-foreground))',
+          soft: 'hsl(var(--primary-soft))',
+          'on-ink': 'hsl(var(--primary-on-ink))',
+        },
+      },
+      borderColor: {
+        primary: {
+          DEFAULT: 'hsl(var(--highlight))',
+          foreground: 'hsl(var(--primary-foreground))',
+          soft: 'hsl(var(--primary-soft))',
+        },
+      },
+      ringColor: {
+        primary: {
+          DEFAULT: 'hsl(var(--highlight))',
+          foreground: 'hsl(var(--primary-foreground))',
+          soft: 'hsl(var(--primary-soft))',
+        },
+      },
+      // The smaller the thing, the tighter the corner; nothing rounder than 2xl except `full`.
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        md: 'calc(var(--radius) - 2px)',
+        lg: 'var(--radius)',
+        xl: 'calc(var(--radius) + 2px)',
+        '2xl': 'calc(var(--radius) + 4px)',
+      },
+      // Panels are separated by border, not shadow; shadows are for floating things (chip, menu, dialog).
+      boxShadow: {
+        xs: '0 1px 0 0 hsl(var(--shadow) / 0.04)',
+        sm: '0 1px 2px 0 hsl(var(--shadow) / 0.06)',
+        DEFAULT: '0 1px 3px 0 hsl(var(--shadow) / 0.08), 0 1px 2px -1px hsl(var(--shadow) / 0.06)',
+        md: '0 6px 16px -4px hsl(var(--shadow) / 0.12), 0 2px 4px -2px hsl(var(--shadow) / 0.06)',
+        lg: '0 16px 40px -8px hsl(var(--shadow) / 0.20), 0 4px 10px -4px hsl(var(--shadow) / 0.08)',
+        xl: '0 24px 56px -12px hsl(var(--shadow) / 0.28)',
+      },
+      // Radix content uses z-50; anything that must sit above a dialog is a toast.
+      zIndex: {
+        header: '30',
+        overlay: '50',
+        toast: '100',
+      },
+      transitionDuration: {
+        DEFAULT: '120ms',
+        fast: '120ms',
+        base: '180ms',
+        slow: '260ms',
+      },
+      transitionTimingFunction: {
+        DEFAULT: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+        out: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
       },
       keyframes: {
         'accordion-down': {
@@ -140,18 +181,11 @@ export default {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.4' },
         },
-        // Editorial fade-up — used on /pricing for staggered section reveals.
-        // Translates from 8px below to rest, fades opacity 0 → 1.
-        'fade-up': {
-          from: { opacity: '0', transform: 'translateY(8px)' },
-          to: { opacity: '1', transform: 'translateY(0)' },
-        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
         'pulse-dot': 'pulse-dot 1.6s ease-in-out infinite',
-        'fade-up': 'fade-up 700ms ease-out both',
       },
     },
   },

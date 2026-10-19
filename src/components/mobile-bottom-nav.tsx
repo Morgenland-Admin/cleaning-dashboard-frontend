@@ -30,7 +30,7 @@ const TABS: Tab[] = [
   { to: '/profile', labelKey: 'mobileNav.profile', icon: User },
 ];
 
-/** The `seo` level's pages (see lib/access.ts) — no orders/inquiries/contacts. */
+/** The `seo` level's pages (see lib/access.ts). */
 const SEO_TABS: Tab[] = [
   { to: '/blog', labelKey: 'nav.blog', icon: Newspaper },
   { to: '/bewertungen', labelKey: 'nav.reviews', icon: Star },
@@ -38,21 +38,13 @@ const SEO_TABS: Tab[] = [
   { to: '/profile', labelKey: 'mobileNav.profile', icon: User },
 ];
 
-/**
- * App-style tab bar: icon over a visible label, with the active tab tinted.
- *
- * The labels are painted, not just announced. An icon-only bar makes every
- * sighted user decode five glyphs — "Aufträge" and "Anfragen" in particular are
- * not distinguishable from a briefcase and a clipboard — and both the iOS and
- * Android conventions this bar is imitating label their tabs.
- */
 export function MobileBottomNav() {
   const t = useT();
   const tabs = useIsSeoOnly() ? SEO_TABS : TABS;
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/85 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-header border-t border-border bg-card/90 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl lg:hidden"
     >
       <div className="mx-auto flex max-w-md items-stretch justify-around px-1">
         {tabs.map((tab) => (
@@ -74,15 +66,14 @@ function TabItem({ tab, label }: { tab: Tab; label: string }) {
       {({ isActive }) => (
         <span
           className={cn(
-            'flex w-full flex-col items-center gap-0.5 rounded-xl px-1 py-1 transition-all duration-200',
-            'group-active:scale-95 motion-reduce:transition-none motion-reduce:group-active:scale-100',
+            'flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1 transition-colors duration-base',
             'group-focus-visible:ring-2 group-focus-visible:ring-ring',
             isActive
-              ? 'bg-rust/[0.12] text-rust'
+              ? 'bg-primary-soft text-primary'
               : 'text-muted-foreground group-hover:text-foreground',
           )}
         >
-          <Icon className="size-[21px]" strokeWidth={isActive ? 2.2 : 1.7} aria-hidden="true" />
+          <Icon className="size-5" strokeWidth={isActive ? 2.2 : 1.8} aria-hidden="true" />
           <span
             className={cn(
               'max-w-full truncate text-3xs leading-tight tracking-tight',

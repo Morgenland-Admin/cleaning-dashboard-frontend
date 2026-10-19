@@ -1,21 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowLeft, Loader2, Save } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { FileText, Save } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { AddressAutocomplete } from '@/components/address-autocomplete';
-import { EmptyState } from '@/components/empty-state';
+import { BackLink } from '@/components/back-link';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { FormActionBar } from '@/components/form-action-bar';
 import { FormField } from '@/components/form-field';
-import { LineItemsEditor } from '@/components/line-items-editor';
-import { PageHeading } from '@/components/page-heading';
+import { LineItemsEditor, LineItemsTotals } from '@/components/line-items-editor';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { SectionCard } from '@/components/section';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject, type CompanySlug } from '@/contexts/project-context';
 import { toast } from '@/hooks/use-toast';
-import { useLocale, useT } from '@/i18n';
+import { useT, type DictKey } from '@/i18n';
 import {
   customersAdminApi,
   errMessage,
@@ -45,27 +51,10 @@ import {
   type PriceMode,
 } from '@/lib/line-items';
 import { usePageTitle } from '@/lib/use-page-title';
-import { cn } from '@/lib/utils';
 
-// Cent-precision money formatting (utils' formatCurrency rounds to whole euros).
-function formatEur(cents: number, bcp47: string, currency = 'EUR'): string {
-  return (cents / 100).toLocaleString(bcp47, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-  });
-}
-
-/**
- * Seed values for a brand-new invoice, handed over through router state by the
- * pages that already know the recipient (e.g. customer detail), so the operator
- * doesn't retype name/email/address. Ignored in edit mode.
- */
 export type InvoicePrefill = {
   recipientName?: string;
-  /** B2B: company line above the recipient name. */
   recipientCompany?: string;
-  /** B2B: USt-IdNr. of the recipient. */
   recipientVatId?: string;
   recipientEmail?: string;
   addressLine1?: string;
@@ -94,17 +83,14 @@ interface FormState {
   paymentTermsDays: string;
   paymentMethod: InvoicePaymentMethod;
   notes: string;
-  /**
-   * Paketrechnung: the positions describe the scope of work and print without
-   * Einzelpreis/Betrag; the whole job is priced once in `packagePriceEur`.
-   */
+  /** Paketrechnung: positions print without Einzelpreis/Betrag; the whole job is priced once in packagePriceEur. */
   packageMode: boolean;
-  /** Package price as typed — read as net or gross per the active priceMode. */
+  /** As typed; net or gross per the active priceMode. */
   packagePriceEur: string;
   craftsmanService: boolean;
   laborGrossEur: string;
   laborVatEur: string;
-  /** Hand-edited §35a wording; empty means "use the composed sentence". */
+  /** Hand-edited §35a wording; empty means use the composed sentence. */
   craftsmanNote: string;
 }
 
@@ -149,7 +135,6 @@ function toForm(invoice: InvoiceRow): FormState {
     subject: invoice.subject ?? '',
     serviceDate: invoice.serviceDate ?? '',
     serviceDateEnd: invoice.serviceDateEnd ?? '',
-    // Only show the Leistungsdatum block if a date is already set.
     showServiceDate: Boolean(invoice.serviceDate),
     customerType: invoice.customerType,
     taxRatePercent: invoice.taxRatePercent as InvoiceTaxRate,
@@ -157,7 +142,7 @@ function toForm(invoice: InvoiceRow): FormState {
     paymentMethod: invoice.paymentMethod,
     notes: invoice.notes ?? '',
     packageMode: invoice.packageMode,
-    // The stored subtotal is net, which is the form's default price mode.
+    // The stored subtotal is net, the form's default price mode.
     packagePriceEur: invoice.packageMode ? centsToInput(invoice.subtotalCents) : '',
     craftsmanService: invoice.craftsmanService,
     laborGrossEur: invoice.laborGrossCents != null ? centsToInput(invoice.laborGrossCents) : '',
@@ -179,7 +164,6 @@ function toLines(invoice: InvoiceRow): LineDraft[] {
 
 export function InvoiceFormPage() {
   const t = useT();
-  const { bcp47 } = useLocale();
   const { activeProject, isAllBrands, projects, setActiveProjectId } = useProject();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -191,9 +175,7 @@ export function InvoiceFormPage() {
   const isEdit = id != null;
   const slug = activeProject.companySlug;
 
-  // Which brand a new invoice belongs to — drives the tenant it lands in and
-  // therefore the number prefix (HT-, CL-, TR-). An existing invoice can't be
-  // moved to another brand's ledger, so this is create-only.
+  // Create-only: decides the tenant and number prefix (HT-, CL-, TR-); an invoice can't move to another ledger.
   const [createSlug, setCreateSlug] = useState<CompanySlug>(slug);
   const targetSlug = isEdit ? slug : createSlug;
 
@@ -201,9 +183,15 @@ export function InvoiceFormPage() {
   const [lines, setLines] = useState<LineDraft[]>(() => [emptyLine()]);
   const [priceMode, setPriceMode] = useState<PriceMode>('net');
   const [formError, setFormError] = useState<string | null>(null);
-  // Suppresses the customer-default auto-fill once the operator picked a term.
+  const [fieldErrors, setFieldErrors] = useState<{
+    recipientName?: string;
+    packagePrice?: string;
+  }>({});
+  const recipientNameRef = useRef<HTMLInputElement>(null);
+  const packagePriceRef = useRef<HTMLInputElement>(null);
+  const laborGrossRef = useRef<HTMLInputElement>(null);
+  const laborVatRef = useRef<HTMLInputElement>(null);
   const [termTouched, setTermTouched] = useState(false);
-  // The VAT share and the §35a sentence auto-follow the amounts until edited.
   const [vatTouched, setVatTouched] = useState(false);
   const [noteTouched, setNoteTouched] = useState(false);
 
@@ -215,7 +203,6 @@ export function InvoiceFormPage() {
     queryFn: ({ signal }) => invoicesAdminApi.get(slug, id!, signal),
   });
 
-  // Fill the form from the loaded record once, during render (no effect needed).
   const loaded = query.data?.invoice;
   const [hydratedFor, setHydratedFor] = useState<number | null>(null);
   if (loaded && hydratedFor !== loaded.id) {
@@ -223,8 +210,7 @@ export function InvoiceFormPage() {
     setForm(toForm(loaded));
     setLines(toLines(loaded));
     setVatTouched(loaded.laborVatCents != null);
-    // A stored wording that differs from the composed one was hand-edited —
-    // keep it as the operator's text instead of silently regenerating it.
+    // A stored wording that differs from the composed one was hand-edited: keep it, don't regenerate.
     setNoteTouched(
       Boolean(loaded.craftsmanNote) &&
         loaded.craftsmanNote !==
@@ -232,10 +218,16 @@ export function InvoiceFormPage() {
     );
   }
 
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    if (key === 'recipientName' && fieldErrors.recipientName) {
+      setFieldErrors((p) => ({ ...p, recipientName: undefined }));
+    }
+    if ((key === 'packagePriceEur' || key === 'packageMode') && fieldErrors.packagePrice) {
+      setFieldErrors((p) => ({ ...p, packagePrice: undefined }));
+    }
+  };
 
-  /** Best-effort: pull the recipient customer's default payment term. */
   async function maybePrefillTermFromCustomer() {
     if (isEdit || termTouched) return;
     const email = form.recipientEmail.trim().toLowerCase();
@@ -256,7 +248,6 @@ export function InvoiceFormPage() {
   };
 
   const totals = useMemo(() => {
-    // A Paketrechnung is priced once; its positions carry no money at all.
     const subtotal = form.packageMode
       ? netCentsOf(form.packagePriceEur)
       : computeSubtotalCents(lines, priceMode, form.taxRatePercent);
@@ -265,8 +256,6 @@ export function InvoiceFormPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- netCentsOf is derived from the deps below
   }, [lines, form.taxRatePercent, form.packageMode, form.packagePriceEur, priceMode]);
 
-  // Flip the package price between net and gross entry, converting the typed
-  // value so the number on screen matches the new mode (mirrors the editor).
   function switchPackagePriceMode(next: PriceMode) {
     if (next === priceMode) return;
     const cents = toCents(form.packagePriceEur);
@@ -283,7 +272,6 @@ export function InvoiceFormPage() {
     setPriceMode(next);
   }
 
-  // §35a: the amounts, and the sentence exactly as it will be printed.
   const craftsman = useMemo(() => {
     const grossCents = toCents(form.laborGrossEur);
     const autoVatCents = craftsmanVatFromGross(
@@ -292,23 +280,27 @@ export function InvoiceFormPage() {
     );
     const vatCents = vatTouched ? toCents(form.laborVatEur) : autoVatCents;
     const autoNote = craftsmanNoteText(grossCents, vatCents);
+    const errorKey: DictKey | null =
+      grossCents <= 0
+        ? 'invoices.form.craftsmanGrossMissing'
+        : totals.total > 0 && grossCents > totals.total
+          ? 'invoices.form.craftsmanGrossTooHigh'
+          : vatCents > grossCents
+            ? 'invoices.form.craftsmanVatTooHigh'
+            : null;
     return {
       grossCents,
       vatCents,
       autoVatCents,
       autoNote,
-      /** What actually gets stored + printed. */
       note: noteTouched && form.craftsmanNote.trim() ? form.craftsmanNote : autoNote,
-      // Only judge the labour share against a total that exists — the operator
-      // may well fill this block before adding the line items.
-      error:
-        grossCents <= 0
-          ? t('invoices.form.craftsmanGrossMissing')
-          : totals.total > 0 && grossCents > totals.total
-            ? t('invoices.form.craftsmanGrossTooHigh')
-            : vatCents > grossCents
-              ? t('invoices.form.craftsmanVatTooHigh')
-              : null,
+      error: errorKey ? t(errorKey) : null,
+      errorField:
+        errorKey === 'invoices.form.craftsmanVatTooHigh'
+          ? ('vat' as const)
+          : errorKey
+            ? ('gross' as const)
+            : null,
     };
   }, [
     form.laborGrossEur,
@@ -332,10 +324,9 @@ export function InvoiceFormPage() {
         ...(l.isPackage ? { isPackage: true } : {}),
       }));
       const paymentTermsDays = Number(form.paymentTermsDays);
-      // Leistungsdatum only when the toggle is on; otherwise not stored/shown.
       const svcDate = form.showServiceDate ? form.serviceDate || null : null;
       const svcDateEnd = form.showServiceDate ? form.serviceDateEnd || null : null;
-      // Always send the sentence we displayed — what you read is what prints.
+      // Always send the displayed sentence: what you read is what prints.
       const craftsmanPayload = form.craftsmanService
         ? {
             laborGrossCents: craftsman.grossCents,
@@ -358,14 +349,14 @@ export function InvoiceFormPage() {
           serviceDate: svcDate,
           serviceDateEnd: svcDateEnd,
           lineItems,
-          // Always sent, so unticking the box turns it back into a priced invoice.
+          // Always sent so unticking turns it back into a priced invoice.
           packageMode: form.packageMode,
           ...(form.packageMode ? { packageNetCents: totals.subtotal } : {}),
           taxRatePercent: form.taxRatePercent,
           paymentTermsDays: Number.isFinite(paymentTermsDays) ? paymentTermsDays : 7,
           paymentMethod: form.paymentMethod,
           notes: form.notes.trim() || null,
-          // Always sent, so unticking the box clears the stored §35a block.
+          // Always sent so unticking clears the stored §35a block.
           craftsmanService: form.craftsmanService,
           ...craftsmanPayload,
         };
@@ -402,8 +393,7 @@ export function InvoiceFormPage() {
       return invoicesAdminApi.create(targetSlug, input);
     },
     onSuccess: (res) => {
-      // A new invoice may target a brand other than the one in view — switch to
-      // it so the freshly-created draft is visible in the brand-scoped list.
+      // Switch to the new invoice's brand so the draft shows in the brand-scoped list.
       if (!isEdit && createSlug !== slug) {
         const created = projects.find((p) => p.companySlug === createSlug);
         if (created) setActiveProjectId(created.id);
@@ -419,141 +409,164 @@ export function InvoiceFormPage() {
   function submit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
+    setFieldErrors({});
     if (!form.recipientName.trim()) {
-      setFormError(t('invoices.form.recipientNameRequired'));
+      const message = t('invoices.form.recipientNameRequired');
+      setFormError(message);
+      setFieldErrors({ recipientName: message });
+      recipientNameRef.current?.focus();
       return;
     }
-    // Package positions show no prices, so a missing package price would be an
-    // invisible 0,00 € invoice — refuse it here rather than at issue time.
+    // Package positions show no prices: a missing package price would be an invisible 0,00 € invoice.
     if (form.packageMode && totals.subtotal <= 0) {
-      setFormError(t('invoices.form.packagePriceRequired'));
+      const message = t('invoices.form.packagePriceRequired');
+      setFormError(message);
+      setFieldErrors({ packagePrice: message });
+      packagePriceRef.current?.focus();
       return;
     }
     if (form.craftsmanService && craftsman.error) {
       setFormError(craftsman.error);
+      (craftsman.errorField === 'vat' ? laborVatRef : laborGrossRef).current?.focus();
       return;
     }
     save.mutate();
   }
 
+  const backLink = (
+    <BackLink to="/rechnungen" className="mb-3 self-start">
+      {t('invoices.backToList')}
+    </BackLink>
+  );
+  const pageTitle = isEdit ? t('invoices.edit') : t('invoices.newInvoice');
+
   if (isAllBrands) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <BackLink label={t('invoices.backToList')} />
-        <EmptyState message={t('invoices.selectBrandFirst')} />
-      </div>
+      <PageContainer width="narrow">
+        {backLink}
+        <PageHeading title={pageTitle} />
+        <EmptyState
+          variant="dashed"
+          icon={<FileText aria-hidden="true" />}
+          message={t('invoices.selectBrandFirst')}
+        />
+      </PageContainer>
     );
   }
 
   if (isEdit && query.isLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <BackLink label={t('invoices.backToList')} />
-        <div className="flex h-64 items-center justify-center text-muted-foreground">
-          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-        </div>
-      </div>
+      <PageContainer width="narrow">
+        {backLink}
+        <LoadingState className="min-h-64" />
+      </PageContainer>
     );
   }
 
   if (isEdit && (query.error || !query.data)) {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <BackLink label={t('invoices.backToList')} />
-        <ErrorNote message={query.error ? errMessage(query.error) : t('invoices.notFound')} />
-      </div>
+      <PageContainer width="narrow">
+        {backLink}
+        <PageHeading title={pageTitle} />
+        <ErrorState
+          error={query.error ?? new Error(t('invoices.notFound'))}
+          onRetry={() => void query.refetch()}
+          retrying={query.isFetching}
+        />
+      </PageContainer>
     );
   }
 
-  // GoBD: an issued invoice is content-frozen — never offer its form.
+  // GoBD: an issued invoice is content-frozen; never offer its form (a neutral notice, not an error).
   if (isEdit && loaded && loaded.status !== 'draft') {
     return (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <BackLink label={t('invoices.backToList')} />
-        <ErrorNote message={t('invoices.immutableHint')} />
-        <Button asChild variant="outline" className="self-start">
-          <Link to={`/rechnungen/${id}`}>{t('invoices.details')}</Link>
-        </Button>
-      </div>
+      <PageContainer width="narrow">
+        {backLink}
+        <PageHeading title={`${t('invoices.edit')} — ${loaded.number ?? `#${loaded.id}`}`} />
+        <Alert
+          tone="neutral"
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/rechnungen/${id}`}>{t('invoices.details')}</Link>
+            </Button>
+          }
+        >
+          {t('invoices.immutableHint')}
+        </Alert>
+      </PageContainer>
     );
   }
 
   const invoiceLabel = loaded ? (loaded.number ?? `#${loaded.id}`) : t('invoices.newInvoice');
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col">
+    <PageContainer width="narrow">
       <PageHeading
         title={isEdit ? `${t('invoices.edit')} — ${invoiceLabel}` : t('invoices.newInvoice')}
         subtitle={t('invoices.subtitle')}
-        breadcrumb={
-          <>
-            <span>{activeProject.name}</span>
-            <span aria-hidden="true"> / </span>
-            <Link to="/rechnungen" className="hover:underline">
-              {t('invoices.title')}
-            </Link>
-            <span aria-hidden="true"> / </span>
-            <span className="text-foreground">{invoiceLabel}</span>
-          </>
-        }
+        breadcrumb={[
+          { label: activeProject.name },
+          { label: t('invoices.title'), to: '/rechnungen' },
+          ...(isEdit && loaded ? [{ label: invoiceLabel, to: `/rechnungen/${loaded.id}` }] : []),
+          { label: isEdit ? t('invoices.edit') : t('invoices.newInvoice') },
+        ]}
       />
 
       <form className="flex flex-col gap-5" onSubmit={submit} noValidate>
-        <Section title={t('invoices.form.sectionRecipient')}>
-          <div className="grid gap-4">
+        <SectionCard as="fieldset" title={t('invoices.form.sectionRecipient')}>
+          <div className="grid gap-4 sm:grid-cols-2">
             {!isEdit ? (
               <FormField
                 label={t('invoices.form.brand')}
                 hint={t('invoices.form.brandHint')}
                 required
+                className="sm:col-span-2"
               >
                 <Select
-                  className="h-11 md:h-9"
                   value={createSlug}
-                  onChange={(e) => setCreateSlug(e.target.value)}
-                >
-                  {projects.map((p) => (
-                    <option key={p.companySlug} value={p.companySlug}>
-                      {p.name}
-                    </option>
-                  ))}
-                </Select>
+                  onValueChange={setCreateSlug}
+                  options={projects.map((p) => ({
+                    value: p.companySlug,
+                    label: p.name,
+                    description: p.domain,
+                  }))}
+                />
               </FormField>
             ) : null}
-            <FormField label={t('invoices.form.recipientName')} required>
+            <FormField
+              label={t('invoices.form.recipientName')}
+              required
+              error={fieldErrors.recipientName}
+            >
               <Input
-                className="h-11 md:h-9"
+                ref={recipientNameRef}
                 value={form.recipientName}
                 onChange={(e) => set('recipientName', e.target.value)}
               />
             </FormField>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField
-                label={t('invoices.form.recipientCompany')}
-                hint={t('invoices.form.recipientCompanyHint')}
-              >
-                <Input
-                  className="h-11 md:h-9"
-                  value={form.recipientCompany}
-                  onChange={(e) => set('recipientCompany', e.target.value)}
-                />
-              </FormField>
-              <FormField label={t('invoices.form.recipientVatId')}>
-                <Input
-                  className="h-11 uppercase md:h-9"
-                  value={form.recipientVatId}
-                  onChange={(e) => set('recipientVatId', e.target.value)}
-                  placeholder="DE123456789"
-                />
-              </FormField>
-            </div>
             <FormField label={t('invoices.form.recipientEmail')}>
               <Input
                 type="email"
-                className="h-11 md:h-9"
                 value={form.recipientEmail}
                 onChange={(e) => set('recipientEmail', e.target.value)}
                 onBlur={() => void maybePrefillTermFromCustomer()}
+              />
+            </FormField>
+            <FormField
+              label={t('invoices.form.recipientCompany')}
+              hint={t('invoices.form.recipientCompanyHint')}
+            >
+              <Input
+                value={form.recipientCompany}
+                onChange={(e) => set('recipientCompany', e.target.value)}
+              />
+            </FormField>
+            <FormField label={t('invoices.form.recipientVatId')}>
+              <Input
+                className="uppercase"
+                value={form.recipientVatId}
+                onChange={(e) => set('recipientVatId', e.target.value)}
+                placeholder="DE123456789"
               />
             </FormField>
             <FormField
@@ -561,7 +574,6 @@ export function InvoiceFormPage() {
               hint={t('invoices.form.requiredForIssue')}
             >
               <AddressAutocomplete
-                className="h-11 md:h-9"
                 value={form.addressLine1}
                 onChange={(v) => set('addressLine1', v)}
                 onPick={(a) => {
@@ -572,45 +584,40 @@ export function InvoiceFormPage() {
             </FormField>
             <FormField label={t('invoices.form.addressLine2')}>
               <Input
-                className="h-11 md:h-9"
                 value={form.addressLine2}
                 onChange={(e) => set('addressLine2', e.target.value)}
               />
             </FormField>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField
-                label={t('invoices.form.postalCode')}
-                hint={t('invoices.form.requiredForIssue')}
-              >
-                <Input
-                  className="h-11 md:h-9"
-                  inputMode="numeric"
-                  value={form.postalCode}
-                  onChange={(e) => set('postalCode', e.target.value)}
-                />
-              </FormField>
-              <FormField label={t('invoices.form.city')} hint={t('invoices.form.requiredForIssue')}>
-                <Input
-                  className="h-11 md:h-9"
-                  value={form.city}
-                  onChange={(e) => set('city', e.target.value)}
-                />
-              </FormField>
-            </div>
-          </div>
-        </Section>
-
-        <Section title={t('invoices.form.sectionInvoice')}>
-          <div className="grid gap-4">
-            <FormField label={t('invoices.form.subject')} hint={t('invoices.form.subjectHint')}>
+            <FormField
+              label={t('invoices.form.postalCode')}
+              hint={t('invoices.form.requiredForIssue')}
+            >
               <Input
-                className="h-11 md:h-9"
+                inputMode="numeric"
+                value={form.postalCode}
+                onChange={(e) => set('postalCode', e.target.value)}
+              />
+            </FormField>
+            <FormField label={t('invoices.form.city')} hint={t('invoices.form.requiredForIssue')}>
+              <Input value={form.city} onChange={(e) => set('city', e.target.value)} />
+            </FormField>
+          </div>
+        </SectionCard>
+
+        <SectionCard as="fieldset" title={t('invoices.form.sectionInvoice')}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              label={t('invoices.form.subject')}
+              hint={t('invoices.form.subjectHint')}
+              className="sm:col-span-2"
+            >
+              <Input
                 maxLength={200}
                 value={form.subject}
                 onChange={(e) => set('subject', e.target.value)}
               />
             </FormField>
-            <label className="flex items-center gap-2 text-sm text-foreground">
+            <label className="flex items-center gap-2 text-2sm text-foreground sm:col-span-2">
               <Checkbox
                 checked={form.showServiceDate}
                 onChange={(e) => set('showServiceDate', e.target.checked)}
@@ -618,88 +625,79 @@ export function InvoiceFormPage() {
               {t('invoices.form.showServiceDate')}
             </label>
             {form.showServiceDate ? (
-              <div className="grid gap-4 sm:grid-cols-2">
+              <>
                 <FormField label={t('invoices.form.serviceDate')}>
-                  <Input
-                    type="date"
-                    className="h-11 md:h-9"
+                  <DatePicker
                     value={form.serviceDate}
-                    onChange={(e) => set('serviceDate', e.target.value)}
+                    onValueChange={(v) => set('serviceDate', v)}
                   />
                 </FormField>
                 <FormField
                   label={t('invoices.form.serviceDateEnd')}
                   hint={t('invoices.form.serviceDateEndHint')}
                 >
-                  <Input
-                    type="date"
-                    className="h-11 md:h-9"
+                  <DatePicker
                     value={form.serviceDateEnd}
-                    onChange={(e) => set('serviceDateEnd', e.target.value)}
+                    onValueChange={(v) => set('serviceDateEnd', v)}
                   />
                 </FormField>
-              </div>
+              </>
             ) : null}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label={t('invoices.form.customerType')}>
-                <Select
-                  value={form.customerType}
-                  disabled={isEdit}
-                  onChange={(e) => set('customerType', e.target.value as 'b2c' | 'b2b')}
-                >
-                  <option value="b2c">B2C</option>
-                  <option value="b2b">B2B</option>
-                </Select>
-              </FormField>
-              <FormField label={t('invoices.form.taxRate')}>
-                <Select
-                  value={String(form.taxRatePercent)}
-                  onChange={(e) => set('taxRatePercent', Number(e.target.value) as InvoiceTaxRate)}
-                >
-                  <option value="0">{t('invoices.form.taxRate0')}</option>
-                  <option value="7">{t('invoices.form.taxRate7')}</option>
-                  <option value="19">{t('invoices.form.taxRate19')}</option>
-                </Select>
-              </FormField>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label={t('invoices.form.paymentMethod')}>
-                <Select
-                  value={form.paymentMethod}
-                  onChange={(e) => set('paymentMethod', e.target.value as InvoicePaymentMethod)}
-                >
-                  <option value="transfer">{t('invoices.form.paymentTransfer')}</option>
-                  <option value="card">{t('invoices.form.paymentCard')}</option>
-                  <option value="cash">{t('invoices.form.paymentCash')}</option>
-                </Select>
-              </FormField>
-              <FormField
-                label={t('invoices.form.paymentTerms')}
-                hint={
-                  form.paymentMethod !== 'transfer' ? t('invoices.form.paidNoTerms') : undefined
-                }
-              >
-                <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  inputMode="numeric"
-                  className="h-11 md:h-9"
-                  disabled={form.paymentMethod !== 'transfer'}
-                  value={form.paymentTermsDays}
-                  onChange={(e) => {
-                    setTermTouched(true);
-                    set('paymentTermsDays', e.target.value);
-                  }}
-                />
-              </FormField>
-            </div>
+            <FormField label={t('invoices.form.customerType')}>
+              <Select
+                value={form.customerType}
+                disabled={isEdit}
+                onValueChange={(v) => set('customerType', v)}
+                options={[
+                  { value: 'b2c', label: 'B2C' },
+                  { value: 'b2b', label: 'B2B' },
+                ]}
+              />
+            </FormField>
+            <FormField label={t('invoices.form.taxRate')}>
+              <Select
+                value={String(form.taxRatePercent)}
+                onValueChange={(v) => set('taxRatePercent', Number(v) as InvoiceTaxRate)}
+                options={[
+                  { value: '0', label: t('invoices.form.taxRate0') },
+                  { value: '7', label: t('invoices.form.taxRate7') },
+                  { value: '19', label: t('invoices.form.taxRate19') },
+                ]}
+              />
+            </FormField>
+            <FormField label={t('invoices.form.paymentMethod')}>
+              <Select<InvoicePaymentMethod>
+                value={form.paymentMethod}
+                onValueChange={(v) => set('paymentMethod', v)}
+                options={[
+                  { value: 'transfer', label: t('invoices.form.paymentTransfer') },
+                  { value: 'card', label: t('invoices.form.paymentCard') },
+                  { value: 'cash', label: t('invoices.form.paymentCash') },
+                ]}
+              />
+            </FormField>
+            <FormField
+              label={t('invoices.form.paymentTerms')}
+              hint={form.paymentMethod !== 'transfer' ? t('invoices.form.paidNoTerms') : undefined}
+            >
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                disabled={form.paymentMethod !== 'transfer'}
+                value={form.paymentTermsDays}
+                onChange={(e) => {
+                  setTermTouched(true);
+                  set('paymentTermsDays', e.target.value);
+                }}
+              />
+            </FormField>
           </div>
-        </Section>
+        </SectionCard>
 
-        <Section title={t('invoices.form.lineItems')}>
-          {/* Paketrechnung: one price for the whole job, positions as scope text. */}
-          <label className="mb-4 flex items-start gap-2 text-sm text-foreground">
+        <SectionCard as="fieldset" title={t('invoices.form.lineItems')}>
+          <label className="mb-4 flex items-start gap-2 text-2sm text-foreground">
             <Checkbox
               className="mt-0.5"
               checked={form.packageMode}
@@ -720,83 +718,66 @@ export function InvoiceFormPage() {
             onPriceModeChange={setPriceMode}
             taxRatePercent={form.taxRatePercent}
             hidePrices={form.packageMode}
+            showTitle={false}
           />
 
           {form.packageMode ? (
-            <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="mt-4 rounded-lg border border-primary/40 bg-primary-soft p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
                   {t('invoices.form.packagePrice')}
                 </span>
-                <div
-                  className="inline-flex overflow-hidden rounded-md border border-border text-xs"
-                  role="group"
-                  aria-label={t('invoices.form.priceMode')}
-                >
-                  {(['net', 'gross'] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      className={cn(
-                        'px-2.5 py-1 transition-colors',
-                        priceMode === mode
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-muted-foreground hover:bg-muted',
-                      )}
-                      onClick={() => switchPackagePriceMode(mode)}
-                    >
-                      {mode === 'net' ? t('invoices.form.priceNet') : t('invoices.form.priceGross')}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedControl
+                  size="sm"
+                  label={t('invoices.form.priceMode')}
+                  value={priceMode}
+                  onValueChange={switchPackagePriceMode}
+                  options={[
+                    { value: 'net', label: t('invoices.form.priceNet') },
+                    { value: 'gross', label: t('invoices.form.priceGross') },
+                  ]}
+                />
               </div>
-              <div className="mt-2">
-                <FormField
-                  label={
-                    priceMode === 'gross'
-                      ? t('invoices.form.packagePriceGross')
-                      : t('invoices.form.packagePriceNet')
-                  }
-                  hint={t('invoices.form.packagePriceHint')}
-                  required
-                >
-                  <Input
-                    type="number"
-                    step="0.01"
-                    inputMode="decimal"
-                    className="h-11 md:h-9"
-                    placeholder="0,00"
-                    value={form.packagePriceEur}
-                    onChange={(e) => set('packagePriceEur', e.target.value)}
-                  />
-                </FormField>
-              </div>
+              <FormField
+                label={
+                  priceMode === 'gross'
+                    ? t('invoices.form.packagePriceGross')
+                    : t('invoices.form.packagePriceNet')
+                }
+                hint={t('invoices.form.packagePriceHint')}
+                required
+                error={fieldErrors.packagePrice}
+              >
+                <Input
+                  ref={packagePriceRef}
+                  type="number"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  value={form.packagePriceEur}
+                  onChange={(e) => set('packagePriceEur', e.target.value)}
+                />
+              </FormField>
             </div>
           ) : null}
 
-          <div className="mt-4 grid gap-1 rounded-lg border border-border bg-muted/30 p-3 text-sm">
-            <div className="flex justify-between gap-3">
-              <span className="text-xs text-muted-foreground">{t('invoices.form.subtotal')}</span>
-              <span className="tabular-nums">{formatEur(totals.subtotal, bcp47)}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-xs text-muted-foreground">
-                {t('invoices.form.tax')} ({form.taxRatePercent} %)
-              </span>
-              <span className="tabular-nums">{formatEur(totals.tax, bcp47)}</span>
-            </div>
-            <div className="mt-1 flex justify-between gap-3 border-t pt-2 font-semibold">
-              <span className="text-xs uppercase tracking-wide">{t('invoices.form.total')}</span>
-              <span className="tabular-nums">{formatEur(totals.total, bcp47)}</span>
-            </div>
-          </div>
-        </Section>
+          <LineItemsTotals
+            className="mt-4"
+            subtotalCents={totals.subtotal}
+            taxCents={totals.tax}
+            totalCents={totals.total}
+            taxRatePercent={form.taxRatePercent}
+          />
+        </SectionCard>
 
-        {/* §35a EStG — off by default; ticking it prints the deductible-labour
-            paragraph above the closing line. */}
-        <Section title={t('invoices.form.craftsman')} hint={t('invoices.form.craftsmanHint')}>
+        {/* §35a EStG: off by default; ticking prints the deductible-labour paragraph above the closing line. */}
+        <SectionCard
+          as="fieldset"
+          title={t('invoices.form.craftsman')}
+          description={t('invoices.form.craftsmanHint')}
+        >
           <div className="grid gap-4">
-            <label className="flex items-center gap-2 text-sm text-foreground">
+            <label className="flex items-center gap-2 text-2sm text-foreground">
               <Checkbox
                 checked={form.craftsmanService}
                 onChange={(e) => set('craftsmanService', e.target.checked)}
@@ -811,9 +792,10 @@ export function InvoiceFormPage() {
                     label={t('invoices.form.laborGross')}
                     hint={t('invoices.form.laborGrossHint')}
                     required
+                    error={craftsman.errorField === 'gross' ? craftsman.error : null}
                   >
                     <Input
-                      className="h-11 md:h-9"
+                      ref={laborGrossRef}
                       inputMode="decimal"
                       placeholder="0,00"
                       value={form.laborGrossEur}
@@ -833,9 +815,10 @@ export function InvoiceFormPage() {
                             ),
                           })
                     }
+                    error={craftsman.errorField === 'vat' ? craftsman.error : null}
                   >
                     <Input
-                      className="h-11 md:h-9"
+                      ref={laborVatRef}
                       inputMode="decimal"
                       placeholder="0,00"
                       value={vatTouched ? form.laborVatEur : centsToInput(craftsman.autoVatCents)}
@@ -847,8 +830,7 @@ export function InvoiceFormPage() {
                   </FormField>
                 </div>
 
-                {/* The printed wording. Edited text is stored verbatim, so the
-                    operator can phrase it per case (e.g. incl. Fahrtkosten). */}
+                {/* Printed wording; edited text is stored verbatim. */}
                 <FormField
                   label={t('invoices.form.craftsmanText')}
                   hint={t('invoices.form.craftsmanTextHint')}
@@ -865,7 +847,7 @@ export function InvoiceFormPage() {
                 {noteTouched ? (
                   <button
                     type="button"
-                    className="justify-self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    className="justify-self-start rounded-sm text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => {
                       setNoteTouched(false);
                       set('craftsmanNote', '');
@@ -874,82 +856,36 @@ export function InvoiceFormPage() {
                     {t('invoices.form.craftsmanTextReset')}
                   </button>
                 ) : null}
-                {craftsman.error ? (
-                  <p className="text-xs text-destructive">{craftsman.error}</p>
-                ) : null}
               </>
             ) : null}
           </div>
-        </Section>
+        </SectionCard>
 
-        <Section title={t('invoices.form.notes')} hint={t('invoices.form.notesHint')}>
-          <Textarea rows={3} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
-        </Section>
+        <SectionCard
+          as="fieldset"
+          title={t('invoices.form.notes')}
+          description={t('invoices.form.notesHint')}
+        >
+          <Textarea
+            rows={3}
+            value={form.notes}
+            onChange={(e) => set('notes', e.target.value)}
+            aria-label={t('invoices.form.notes')}
+          />
+        </SectionCard>
 
-        {formError ? <ErrorNote message={formError} /> : null}
+        {formError ? <Alert tone="destructive">{formError}</Alert> : null}
 
-        <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:px-4">
-          <Button type="button" variant="ghost" className="h-11 sm:h-9" asChild>
+        <FormActionBar>
+          <Button type="button" variant="ghost" asChild>
             <Link to={isEdit ? `/rechnungen/${id}` : '/rechnungen'}>{t('common.cancel')}</Link>
           </Button>
-          <Button
-            type="submit"
-            className="h-11 flex-1 sm:h-9 sm:flex-none"
-            disabled={save.isPending}
-          >
-            {save.isPending ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Save className="size-4" aria-hidden="true" />
-            )}
+          <Button type="submit" className="flex-1 sm:flex-none" loading={save.isPending}>
+            <Save aria-hidden="true" />
             {isEdit ? t('invoices.form.save') : t('invoices.form.create')}
           </Button>
-        </div>
+        </FormActionBar>
       </form>
-    </div>
-  );
-}
-
-function Section({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
-      <div className="mb-4">
-        <h2 className="font-serif text-base font-semibold tracking-tight">{title}</h2>
-        {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function BackLink({ label }: { label: string }) {
-  return (
-    <Link
-      to="/rechnungen"
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <ArrowLeft className="size-4" aria-hidden="true" />
-      {label}
-    </Link>
-  );
-}
-
-function ErrorNote({ message }: { message: string }) {
-  return (
-    <div
-      role="alert"
-      className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-    >
-      <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <span>{message}</span>
-    </div>
+    </PageContainer>
   );
 }

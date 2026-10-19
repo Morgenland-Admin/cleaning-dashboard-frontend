@@ -2,10 +2,9 @@ export type PriceMode = 'net' | 'gross';
 
 export interface LineDraft {
   label: string;
-  /** Second line under the label on the invoice, e.g. "Premiumreinigung". */
   note: string;
   quantity: string;
-  /** Unit price as typed — read as net or gross per the active priceMode. */
+  // Euros as typed; net or gross per priceMode.
   unitPriceEur: string;
   isPackage: boolean;
 }
@@ -36,7 +35,6 @@ export function centsToInput(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-/** Per-line NET cents, backing VAT out of the entered value in gross mode. */
 export function lineNetCents(l: LineDraft, priceMode: PriceMode, ratePercent: number): number {
   const unit = toCents(l.unitPriceEur);
   return priceMode === 'gross' ? netFromGrossCents(unit, ratePercent) : unit;

@@ -4,36 +4,22 @@ import { cn } from '@/lib/utils';
 
 import type { ReactNode } from 'react';
 
-/*
- * The little count beside a filter tab. It existed in six hand-written copies
- * across the list pages in two shapes, and both failed AA:
- *
- *   - the selected pill inside a filled tab washed `bg-primary-foreground/15`
- *     under text that was already `primary-foreground`, i.e. it moved the
- *     background *towards* the text (3.47:1);
- *   - the resting pill put `text-muted-foreground` on a muted-tinted chip,
- *     which darkens the background under already-soft text (4.18:1).
- *
- * `onFill` now washes with `primary`, not `primary-foreground`. Because those
- * two tokens are opposites in both themes, the wash always moves the background
- * away from the text — it gets darker under light text in the light theme, and
- * lighter under dark text in the dark one.
- */
-const countPillVariants = cva('rounded-md px-1.5 py-0.5 text-3xs font-semibold tabular-nums', {
-  variants: {
-    tone: {
-      /** Resting tab. */
-      muted: 'bg-muted-foreground/15 text-foreground',
-      /** Selected tab that stays on a light surface (a Radix TabsTrigger). */
-      accent: 'bg-rust/15 text-rust',
-      /** Selected tab painted with a solid accent fill. */
-      onFill: 'bg-primary/25 text-primary-foreground',
+const countPillVariants = cva(
+  'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-3xs font-semibold leading-4 tabular-nums',
+  {
+    variants: {
+      tone: {
+        muted: 'bg-muted-foreground/15 text-foreground',
+        accent: 'bg-highlight/15 text-primary',
+        solid: 'bg-highlight text-highlight-foreground',
+        onFill: 'bg-primary-foreground/20 text-primary-foreground',
+      },
+    },
+    defaultVariants: {
+      tone: 'muted',
     },
   },
-  defaultVariants: {
-    tone: 'muted',
-  },
-});
+);
 
 export function CountPill({
   tone,

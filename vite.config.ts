@@ -9,8 +9,6 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      // injectManifest lets us own the service worker — push + notificationclick
-      // handlers live in src/sw.ts. Workbox precache is still injected into it.
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
@@ -25,9 +23,11 @@ export default defineConfig({
       ],
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webp,woff2}'],
-        // Storefront typefaces for the blog editor only — fetched when someone
-        // opens the editor, not pushed into every install's precache.
-        globIgnores: ['**/{dm-sans,lora}-*.woff2'],
+        // Blog-editor fonts and non-Latin UI subsets are fetched on demand, not precached.
+        globIgnores: [
+          '**/{dm-sans,lora}-*.woff2',
+          '**/ibm-plex-sans-{cyrillic,cyrillic-ext,greek,vietnamese}-*.woff2',
+        ],
       },
       manifest: {
         name: 'Reinigungs-Portal',
@@ -43,8 +43,6 @@ export default defineConfig({
         background_color: '#241c17',
         theme_color: '#241c17',
         categories: ['business', 'productivity'],
-        // Long-press / right-click the installed icon. These are the three
-        // things an operator opens the app to do.
         shortcuts: [
           {
             name: 'Aufträge',
@@ -65,14 +63,8 @@ export default defineConfig({
             url: '/tasks',
           },
         ],
-        // PNG first, and at the two sizes Android's install criteria look for
-        // (192 + 512). Chrome will not treat an SVG-only manifest as installable
-        // on Android, which is why the install prompt never appeared there.
-        // The PNGs are rendered from the SVGs and are opaque edge-to-edge —
-        // launchers apply their own corner mask, so a baked-in rounded rect
-        // would leave flattened white notches. The maskable pair carries the
-        // ~30% safe-zone padding so a circular mask cannot clip the glyph.
-        // The SVGs stay last as a scalable fallback for browsers that prefer it.
+        // Android Chrome needs 192+512 PNGs to be installable (SVG-only is not enough).
+        // PNGs stay opaque edge-to-edge (launchers apply their own mask); the maskable pair carries ~30% safe-zone padding.
         icons: [
           {
             src: '/icon-app-192.png',
@@ -113,7 +105,6 @@ export default defineConfig({
         ],
       },
       devOptions: {
-        // Enable in dev so we can test install flow without building.
         enabled: false,
       },
     }),

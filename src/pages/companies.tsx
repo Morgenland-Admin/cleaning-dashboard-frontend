@@ -1,23 +1,19 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  Building2,
-  CheckCircle2,
-  ChevronRight,
-  Loader2,
-  Plus,
-  ShieldCheck,
-  X,
-} from 'lucide-react';
-import { cloneElement, isValidElement, useId, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Building2, ChevronRight, Plus, ShieldCheck } from 'lucide-react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AddressAutocomplete } from '@/components/address-autocomplete';
-import { PageHeading } from '@/components/page-heading';
+import { EmptyState, LoadingState } from '@/components/empty-state';
+import { FormField } from '@/components/form-field';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { SectionCard } from '@/components/section';
+import { Alert, ErrorState } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { toast } from '@/hooks/use-toast';
 import { useT } from '@/i18n';
 import {
   ApiError,
@@ -27,12 +23,22 @@ import {
 } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { usePageTitle } from '@/lib/use-page-title';
+import { cn } from '@/lib/utils';
+
+type T = ReturnType<typeof useT>;
+
+const MEMBERSHIP_ROLES = ['owner', 'admin', 'manager', 'viewer', 'partner'] as const;
+
+function roleLabel(role: string, t: T): string {
+  return (MEMBERSHIP_ROLES as readonly string[]).includes(role)
+    ? t(`profile.role.${role as (typeof MEMBERSHIP_ROLES)[number]}`)
+    : role;
+}
 
 export function CompaniesPage() {
   const t = useT();
   usePageTitle(t('companies.title'));
   const { data: session } = useSession();
-  const queryClient = useQueryClient();
   const userMeta = session?.user as { accessLevel?: string } | undefined;
   const isSuperAdmin = userMeta?.accessLevel === 'super_admin';
 
@@ -41,13 +47,8 @@ export function CompaniesPage() {
     queryFn: ({ signal }) => companiesAdminApi.list(signal),
   });
 
-  function invalidate() {
-    void queryClient.invalidateQueries({ queryKey: ['companies-admin'] });
-    void queryClient.invalidateQueries({ queryKey: ['projects-companies'] });
-  }
-
   return (
-    <div className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-4xl flex-col p-4 sm:p-6 lg:p-8">
+    <PageContainer width="full">
       <PageHeading
         title={t('companies.title')}
         subtitle={t('companies.subtitle')}
@@ -55,88 +56,71 @@ export function CompaniesPage() {
           isSuperAdmin ? (
             <Button asChild>
               <Link to="/companies/new">
-                <Plus className="mr-1.5 size-4" aria-hidden="true" /> {t('companies.newCompany')}
+                <Plus aria-hidden="true" />
+                {t('companies.newCompany')}
               </Link>
             </Button>
           ) : null
         }
       />
 
-      <div className="space-y-2">
+      <div className="flex flex-col gap-4">
         {list.isLoading ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex items-center gap-2 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground"
-          >
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" /> {t('companies.loading')}
-          </div>
+          <LoadingState label={t('companies.loading')} />
         ) : list.error ? (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <span>{(list.error as Error).message}</span>
-          </div>
-        ) : list.data?.companies.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
-            {t('companies.noAccess')}
-          </div>
+          <ErrorState
+            error={list.error}
+            onRetry={() => void list.refetch()}
+            retrying={list.isFetching}
+          />
+        ) : !list.data || list.data.companies.length === 0 ? (
+          <EmptyState
+            variant="dashed"
+            icon={<Building2 aria-hidden="true" />}
+            message={t('companies.noAccess')}
+          />
         ) : (
-          list.data?.companies.map((c) => (
-            <CompanyRow key={c.slug} company={c} t={t} onChanged={invalidate} />
-          ))
+          <ul className="divide-y divide-border overflow-hidden rounded-lg border bg-card">
+            {list.data.companies.map((c) => (
+              <li key={c.slug}>
+                <CompanyRow company={c} t={t} />
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
 
-      {!isSuperAdmin ? (
-        <div className="mt-6 flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <span>{t('companies.superAdminsOnly')}</span>
-        </div>
-      ) : null}
-    </div>
+        {!isSuperAdmin ? (
+          <Alert tone="neutral" icon={<ShieldCheck aria-hidden="true" />}>
+            {t('companies.superAdminsOnly')}
+          </Alert>
+        ) : null}
+      </div>
+    </PageContainer>
   );
 }
 
-function CompanyRow({
-  company,
-  t,
-}: {
-  company: CompanyListRow;
-  t: ReturnType<typeof useT>;
-  onChanged?: () => void;
-}) {
+function CompanyRow({ company, t }: { company: CompanyListRow; t: T }) {
   return (
     <Link
       to={`/companies/${company.slug}`}
-      className="group block rounded-lg border border-border bg-card p-4 transition-colors hover:border-border/80 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="group flex items-center justify-between gap-3 px-4 py-2.5 transition-colors duration-fast hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <CompanyLogoOrMark company={company} size="md" />
-          <div className="min-w-0">
-            <div className="truncate font-medium">{company.name}</div>
-            <div className="truncate text-xs text-muted-foreground">
-              {company.slug} · {t('companies.schemaLabel')} „{company.schemaName}“
-            </div>
+      <div className="flex min-w-0 items-center gap-3">
+        <CompanyLogoOrMark company={company} size="sm" />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-foreground">{company.name}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            {company.slug} · {t('companies.schemaLabel')} „{company.schemaName}“
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {!company.isActive ? (
-            <span className="rounded-full border border-warning/30 bg-warning-soft px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-warning">
-              {t('companies.inactiveLabel')}
-            </span>
-          ) : null}
-          <span className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {company.role}
-          </span>
-          <ChevronRight
-            className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-            aria-hidden="true"
-          />
-        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {!company.isActive ? <Badge variant="warning">{t('companies.inactiveLabel')}</Badge> : null}
+        <Badge variant="secondary">{roleLabel(company.role, t)}</Badge>
+        <ChevronRight
+          className="size-4 text-muted-foreground transition-transform duration-fast group-hover:translate-x-0.5"
+          aria-hidden="true"
+        />
       </div>
     </Link>
   );
@@ -153,7 +137,10 @@ export function CompanyLogoOrMark({
   if (company.logoUrl) {
     return (
       <span
-        className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-white ${dim}`}
+        className={cn(
+          'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border bg-white',
+          dim,
+        )}
       >
         <img src={company.logoUrl} alt="" className="size-full object-contain" loading="lazy" />
       </span>
@@ -165,13 +152,53 @@ export function CompanyLogoOrMark({
     .toUpperCase();
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${dim}`}
+      aria-hidden="true"
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-md text-xs font-bold text-white',
+        dim,
+      )}
       style={{
         backgroundColor: company.primaryColor ?? 'hsl(var(--muted-foreground))',
       }}
     >
-      {initials || <Building2 className="size-5 opacity-80" />}
+      {initials || <Building2 className="size-5 opacity-80" aria-hidden="true" />}
     </span>
+  );
+}
+
+function CheckboxField({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const id = useId();
+  const descriptionId = description ? `${id}-description` : undefined;
+  return (
+    <div className="flex items-start gap-3">
+      <Checkbox
+        id={id}
+        className="mt-0.5"
+        checked={checked}
+        aria-describedby={descriptionId}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <div className="min-w-0">
+        <label htmlFor={id} className="cursor-pointer text-2sm font-medium text-foreground">
+          {label}
+        </label>
+        {description ? (
+          <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -244,258 +271,245 @@ export function EditBrandingForm({
         storefrontOrigin: nl(storefrontOrigin),
         autoIssueInvoices,
       }),
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.success(t('companies.edit.saved'));
+      onSaved();
+    },
     onError: (err) => setError(err instanceof ApiError ? err.message : (err as Error).message),
   });
 
   return (
     <form
-      className="mt-4 space-y-5 border-t border-border pt-4"
+      className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
         mutation.mutate();
       }}
     >
-      <Section title={t('companies.edit.sections.basics')}>
-        <Field label={t('companies.edit.fields.displayName')} required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
-        </Field>
-        <Field label={t('companies.edit.fields.legalName')}>
-          <Input
-            value={legalName}
-            onChange={(e) => setLegalName(e.target.value)}
-            placeholder={t('companies.edit.fields.legalNamePlaceholder')}
-          />
-        </Field>
-        <label className="flex cursor-pointer items-center gap-2 self-start text-sm">
-          <Checkbox checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-          <span>{t('companies.edit.fields.active')}</span>
-        </label>
-      </Section>
-
-      <Section title={t('companies.edit.sections.contact')}>
-        <Field label={t('companies.edit.fields.email')}>
-          <Input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            placeholder={t('companies.edit.fields.emailPlaceholder')}
-          />
-        </Field>
-        <Field label={t('companies.edit.fields.phone')}>
-          <Input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            type="tel"
-            placeholder={t('companies.edit.fields.phonePlaceholder')}
-          />
-        </Field>
-        <Field label={t('companies.edit.fields.websiteUrl')}>
-          <Input
-            value={websiteUrl}
-            onChange={(e) => setWebsiteUrl(e.target.value)}
-            type="url"
-            placeholder={t('companies.edit.fields.websiteUrlPlaceholder')}
-          />
-        </Field>
-      </Section>
-
-      <Section title={t('companies.edit.sections.address')}>
-        <Field label={t('companies.edit.fields.addressLine1')}>
-          <AddressAutocomplete
-            value={addressLine1}
-            onChange={setAddressLine1}
-            onPick={(a) => {
-              if (a.postcode) setPostalCode(a.postcode);
-              if (a.city) setCity(a.city);
-            }}
-          />
-        </Field>
-        <Field label={t('companies.edit.fields.addressLine2')}>
-          <Input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} />
-        </Field>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[140px_1fr_120px]">
-          <Field label={t('companies.edit.fields.postalCode')}>
+      <SectionCard as="fieldset" headingLevel={3} title={t('companies.edit.sections.basics')}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label={t('companies.edit.fields.displayName')} required>
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          </FormField>
+          <FormField label={t('companies.edit.fields.legalName')}>
             <Input
-              value={postalCode}
-              onChange={(e) => setPostalCode(e.target.value)}
-              maxLength={20}
+              value={legalName}
+              onChange={(e) => setLegalName(e.target.value)}
+              placeholder={t('companies.edit.fields.legalNamePlaceholder')}
             />
-          </Field>
-          <Field label={t('companies.edit.fields.city')}>
-            <Input value={city} onChange={(e) => setCity(e.target.value)} />
-          </Field>
-          <Field label={t('companies.edit.fields.country')}>
+          </FormField>
+          <div className="sm:col-span-2">
+            <CheckboxField
+              label={t('companies.edit.fields.active')}
+              checked={isActive}
+              onChange={setIsActive}
+            />
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard as="fieldset" headingLevel={3} title={t('companies.edit.sections.contact')}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label={t('companies.edit.fields.email')}>
             <Input
-              value={country}
-              onChange={(e) => setCountry(e.target.value.toUpperCase())}
-              maxLength={2}
-              placeholder={t('companies.edit.fields.countryPlaceholder')}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              placeholder={t('companies.edit.fields.emailPlaceholder')}
             />
-          </Field>
+          </FormField>
+          <FormField label={t('companies.edit.fields.phone')}>
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              type="tel"
+              placeholder={t('companies.edit.fields.phonePlaceholder')}
+            />
+          </FormField>
+          <FormField label={t('companies.edit.fields.websiteUrl')} className="sm:col-span-2">
+            <Input
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              type="url"
+              placeholder={t('companies.edit.fields.websiteUrlPlaceholder')}
+            />
+          </FormField>
         </div>
-        <Field label={t('companies.edit.fields.region')}>
-          <Input value={region} onChange={(e) => setRegion(e.target.value)} />
-        </Field>
-      </Section>
+      </SectionCard>
 
-      <Section title={t('companies.edit.sections.legal')}>
-        <Field label={t('companies.edit.fields.vatId')}>
-          <Input
-            value={vatId}
-            onChange={(e) => setVatId(e.target.value)}
-            placeholder={t('companies.edit.fields.vatIdPlaceholder')}
-          />
-        </Field>
-        <Field label={t('companies.edit.fields.registrationNumber')}>
-          <Input
-            value={registrationNumber}
-            onChange={(e) => setRegistrationNumber(e.target.value)}
-            placeholder={t('companies.edit.fields.registrationNumberPlaceholder')}
-          />
-        </Field>
-        <Field
-          label={t('companies.edit.fields.businessId')}
-          hint={t('companies.edit.fields.businessIdHint')}
-        >
-          <Input
-            value={businessId}
-            onChange={(e) => setBusinessId(e.target.value)}
-            maxLength={32}
-            placeholder={t('companies.edit.fields.businessIdPlaceholder')}
-          />
-        </Field>
-        <Field label={t('companies.edit.fields.legalForm')}>
-          <Input
-            value={legalForm}
-            onChange={(e) => setLegalForm(e.target.value)}
-            maxLength={64}
-            placeholder={t('companies.edit.fields.legalFormPlaceholder')}
-          />
-        </Field>
-        <Field
-          label={t('companies.edit.fields.managingDirectors')}
-          hint={t('companies.edit.fields.managingDirectorsHint')}
-        >
-          <Input
-            value={managingDirectors}
-            onChange={(e) => setManagingDirectors(e.target.value)}
-            maxLength={200}
-            placeholder={t('companies.edit.fields.managingDirectorsPlaceholder')}
-          />
-        </Field>
-        <Field label={t('companies.edit.fields.chamber')}>
-          <Input
-            value={chamber}
-            onChange={(e) => setChamber(e.target.value)}
-            maxLength={200}
-            placeholder={t('companies.edit.fields.chamberPlaceholder')}
-          />
-        </Field>
-      </Section>
-
-      <Section title={t('companies.edit.sections.invoicing')}>
-        <label className="flex cursor-pointer items-start gap-2 self-start text-sm">
-          <Checkbox
-            className="mt-0.5"
-            checked={autoIssueInvoices}
-            onChange={(e) => setAutoIssueInvoices(e.target.checked)}
-          />
-          <span>
-            {t('companies.edit.fields.autoIssueInvoices')}
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              {t('companies.edit.fields.autoIssueInvoicesHint')}
-            </span>
-          </span>
-        </label>
-      </Section>
-
-      <Section title={t('companies.edit.sections.branding')}>
-        <Field label={t('companies.edit.fields.logoUrl')}>
-          <Input
-            value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
-            placeholder={t('companies.edit.fields.logoUrlPlaceholder')}
-            type="url"
-          />
-        </Field>
-        <Field label={t('companies.edit.fields.primaryColor')}>
-          <Input
-            value={primaryColor}
-            onChange={(e) => setPrimaryColor(e.target.value)}
-            placeholder={t('companies.edit.fields.primaryColorPlaceholder')}
-            pattern="^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$"
-          />
-        </Field>
-      </Section>
-
-      <Section title={t('companies.edit.sections.senderStorefront')}>
-        <Field label={t('companies.edit.fields.senderEmail')}>
-          <Input
-            value={senderEmail}
-            onChange={(e) => setSenderEmail(e.target.value)}
-            type="email"
-            placeholder={t('companies.edit.fields.senderEmailPlaceholder')}
-          />
-        </Field>
-        <Field label={t('companies.edit.fields.senderName')}>
-          <Input
-            value={senderName}
-            onChange={(e) => setSenderName(e.target.value)}
-            placeholder={t('companies.edit.fields.senderNamePlaceholder')}
-          />
-        </Field>
-        <Field label={t('companies.edit.fields.storefrontOrigin')}>
-          <Input
-            value={storefrontOrigin}
-            onChange={(e) => setStorefrontOrigin(e.target.value)}
-            type="url"
-            placeholder={t('companies.edit.fields.storefrontOriginPlaceholder')}
-          />
-        </Field>
-      </Section>
-
-      {error ? (
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <span>{error}</span>
+      <SectionCard as="fieldset" headingLevel={3} title={t('companies.edit.sections.address')}>
+        <div className="grid gap-4">
+          <FormField label={t('companies.edit.fields.addressLine1')}>
+            <AddressAutocomplete
+              value={addressLine1}
+              onChange={setAddressLine1}
+              onPick={(a) => {
+                if (a.postcode) setPostalCode(a.postcode);
+                if (a.city) setCity(a.city);
+              }}
+            />
+          </FormField>
+          <FormField label={t('companies.edit.fields.addressLine2')}>
+            <Input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} />
+          </FormField>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[140px_1fr_120px]">
+            <FormField label={t('companies.edit.fields.postalCode')}>
+              <Input
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                maxLength={20}
+                className="tabular-nums"
+              />
+            </FormField>
+            <FormField label={t('companies.edit.fields.city')}>
+              <Input value={city} onChange={(e) => setCity(e.target.value)} />
+            </FormField>
+            <FormField label={t('companies.edit.fields.country')}>
+              <Input
+                value={country}
+                onChange={(e) => setCountry(e.target.value.toUpperCase())}
+                maxLength={2}
+                placeholder={t('companies.edit.fields.countryPlaceholder')}
+              />
+            </FormField>
+          </div>
+          <FormField label={t('companies.edit.fields.region')}>
+            <Input value={region} onChange={(e) => setRegion(e.target.value)} />
+          </FormField>
         </div>
-      ) : null}
+      </SectionCard>
 
-      <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex h-9 items-center justify-center rounded-md border border-border px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <X className="mr-1.5 size-4" />
+      <SectionCard as="fieldset" headingLevel={3} title={t('companies.edit.sections.legal')}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label={t('companies.edit.fields.vatId')}>
+            <Input
+              value={vatId}
+              onChange={(e) => setVatId(e.target.value)}
+              placeholder={t('companies.edit.fields.vatIdPlaceholder')}
+            />
+          </FormField>
+          <FormField label={t('companies.edit.fields.registrationNumber')}>
+            <Input
+              value={registrationNumber}
+              onChange={(e) => setRegistrationNumber(e.target.value)}
+              placeholder={t('companies.edit.fields.registrationNumberPlaceholder')}
+            />
+          </FormField>
+          <FormField
+            label={t('companies.edit.fields.businessId')}
+            hint={t('companies.edit.fields.businessIdHint')}
+          >
+            <Input
+              value={businessId}
+              onChange={(e) => setBusinessId(e.target.value)}
+              maxLength={32}
+              placeholder={t('companies.edit.fields.businessIdPlaceholder')}
+            />
+          </FormField>
+          <FormField label={t('companies.edit.fields.legalForm')}>
+            <Input
+              value={legalForm}
+              onChange={(e) => setLegalForm(e.target.value)}
+              maxLength={64}
+              placeholder={t('companies.edit.fields.legalFormPlaceholder')}
+            />
+          </FormField>
+          <FormField
+            label={t('companies.edit.fields.managingDirectors')}
+            hint={t('companies.edit.fields.managingDirectorsHint')}
+          >
+            <Input
+              value={managingDirectors}
+              onChange={(e) => setManagingDirectors(e.target.value)}
+              maxLength={200}
+              placeholder={t('companies.edit.fields.managingDirectorsPlaceholder')}
+            />
+          </FormField>
+          <FormField label={t('companies.edit.fields.chamber')}>
+            <Input
+              value={chamber}
+              onChange={(e) => setChamber(e.target.value)}
+              maxLength={200}
+              placeholder={t('companies.edit.fields.chamberPlaceholder')}
+            />
+          </FormField>
+        </div>
+      </SectionCard>
+
+      <SectionCard as="fieldset" headingLevel={3} title={t('companies.edit.sections.invoicing')}>
+        <CheckboxField
+          label={t('companies.edit.fields.autoIssueInvoices')}
+          description={t('companies.edit.fields.autoIssueInvoicesHint')}
+          checked={autoIssueInvoices}
+          onChange={setAutoIssueInvoices}
+        />
+      </SectionCard>
+
+      <SectionCard as="fieldset" headingLevel={3} title={t('companies.edit.sections.branding')}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label={t('companies.edit.fields.logoUrl')}>
+            <Input
+              value={logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              placeholder={t('companies.edit.fields.logoUrlPlaceholder')}
+              type="url"
+            />
+          </FormField>
+          <FormField label={t('companies.edit.fields.primaryColor')}>
+            <Input
+              value={primaryColor}
+              onChange={(e) => setPrimaryColor(e.target.value)}
+              placeholder={t('companies.edit.fields.primaryColorPlaceholder')}
+              pattern="^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$"
+            />
+          </FormField>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        as="fieldset"
+        headingLevel={3}
+        title={t('companies.edit.sections.senderStorefront')}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label={t('companies.edit.fields.senderEmail')}>
+            <Input
+              value={senderEmail}
+              onChange={(e) => setSenderEmail(e.target.value)}
+              type="email"
+              placeholder={t('companies.edit.fields.senderEmailPlaceholder')}
+            />
+          </FormField>
+          <FormField label={t('companies.edit.fields.senderName')}>
+            <Input
+              value={senderName}
+              onChange={(e) => setSenderName(e.target.value)}
+              placeholder={t('companies.edit.fields.senderNamePlaceholder')}
+            />
+          </FormField>
+          <FormField label={t('companies.edit.fields.storefrontOrigin')} className="sm:col-span-2">
+            <Input
+              value={storefrontOrigin}
+              onChange={(e) => setStorefrontOrigin(e.target.value)}
+              type="url"
+              placeholder={t('companies.edit.fields.storefrontOriginPlaceholder')}
+            />
+          </FormField>
+        </div>
+      </SectionCard>
+
+      {error ? <Alert tone="destructive">{error}</Alert> : null}
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose}>
           {t('companies.edit.cancelButton')}
-        </button>
-        <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 size-4 animate-spin" /> {t('companies.edit.savingButton')}
-            </>
-          ) : (
-            <>
-              <CheckCircle2 className="mr-2 size-4" /> {t('companies.edit.saveButton')}
-            </>
-          )}
+        </Button>
+        <Button type="submit" loading={mutation.isPending}>
+          {t('companies.edit.saveButton')}
         </Button>
       </div>
     </form>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <fieldset className="space-y-3">
-      <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {title}
-      </legend>
-      {children}
-    </fieldset>
   );
 }
 
@@ -557,7 +571,7 @@ export function CreateCompanyForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <form className="grid grid-cols-1 gap-4 sm:grid-cols-2" onSubmit={onSubmit}>
-      <Field label={t('companies.create.slug')} hint={t('companies.create.slugHint')} required>
+      <FormField label={t('companies.create.slug')} hint={t('companies.create.slugHint')} required>
         <Input
           value={form.slug}
           onChange={update('slug')}
@@ -565,24 +579,24 @@ export function CreateCompanyForm({ onCreated }: { onCreated: () => void }) {
           required
           pattern="^[a-z][a-z0-9_]{1,62}$"
         />
-      </Field>
-      <Field label={t('companies.create.displayName')} required>
+      </FormField>
+      <FormField label={t('companies.create.displayName')} required>
         <Input
           value={form.name}
           onChange={update('name')}
           placeholder={t('companies.create.displayNamePlaceholder')}
           required
         />
-      </Field>
-      <Field label={t('companies.create.logoUrl')} hint={t('companies.create.logoUrlHint')}>
+      </FormField>
+      <FormField label={t('companies.create.logoUrl')} hint={t('companies.create.logoUrlHint')}>
         <Input
           value={form.logoUrl}
           onChange={update('logoUrl')}
           placeholder="https://… /logo.svg"
           type="url"
         />
-      </Field>
-      <Field
+      </FormField>
+      <FormField
         label={t('companies.create.primaryColor')}
         hint={t('companies.create.primaryColorHint')}
       >
@@ -592,8 +606,8 @@ export function CreateCompanyForm({ onCreated }: { onCreated: () => void }) {
           placeholder="#bd5b3e"
           pattern="^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$"
         />
-      </Field>
-      <Field
+      </FormField>
+      <FormField
         label={t('companies.create.storefrontOrigin')}
         hint={t('companies.create.storefrontOriginHint')}
       >
@@ -603,80 +617,43 @@ export function CreateCompanyForm({ onCreated }: { onCreated: () => void }) {
           placeholder="https://koeln-premium.de"
           type="url"
         />
-      </Field>
-      <Field label={t('companies.create.senderEmail')}>
+      </FormField>
+      <FormField label={t('companies.create.senderEmail')}>
         <Input
           value={form.senderEmail}
           onChange={update('senderEmail')}
           placeholder="kontakt@koeln-premium.de"
           type="email"
         />
-      </Field>
-      <Field label={t('companies.create.contactEmail')}>
+      </FormField>
+      <FormField label={t('companies.create.contactEmail')}>
         <Input
           value={form.email}
           onChange={update('email')}
           placeholder="admin@koeln-premium.de"
           type="email"
         />
-      </Field>
-      <Field label={t('companies.create.websiteUrl')}>
+      </FormField>
+      <FormField label={t('companies.create.websiteUrl')}>
         <Input
           value={form.websiteUrl}
           onChange={update('websiteUrl')}
           placeholder="https://koeln-premium.de"
           type="url"
         />
-      </Field>
+      </FormField>
 
       {error ? (
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive sm:col-span-2">
-          <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <span>{error}</span>
-        </div>
+        <Alert tone="destructive" className="sm:col-span-2">
+          {error}
+        </Alert>
       ) : null}
 
       <div className="flex justify-end sm:col-span-2">
-        <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 size-4 animate-spin" />{' '}
-              {t('companies.create.submittingButton')}
-            </>
-          ) : (
-            t('companies.create.submitButton')
-          )}
+        <Button type="submit" loading={mutation.isPending}>
+          {t('companies.create.submitButton')}
         </Button>
       </div>
     </form>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  required,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  const id = useId();
-  const labelled = isValidElement<{ id?: string }>(children)
-    ? cloneElement(children, { id })
-    : children;
-  return (
-    <div className="space-y-1.5">
-      <Label
-        htmlFor={id}
-        className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
-      >
-        {label} {required ? <span className="text-rust">*</span> : null}
-      </Label>
-      {labelled}
-      {hint ? <p className="text-2xs text-muted-foreground">{hint}</p> : null}
-    </div>
   );
 }

@@ -1,21 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, RefreshCcw, Tag } from 'lucide-react';
+import { Plus, Tag } from 'lucide-react';
 import { useState } from 'react';
 
 import { EmptyState } from '@/components/empty-state';
-import { PageHeading } from '@/components/page-heading';
+import { FormField } from '@/components/form-field';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
 import { StatusBadge } from '@/components/status-badge';
+import { Alert, ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -69,41 +72,35 @@ export function PriceAdjustmentsPage() {
   const toggleMutation = useMutation({
     mutationFn: (vars: { id: number; active: boolean }) =>
       priceAdjustmentsAdminApi.setActive(slug, vars.id, vars.active),
-    onSuccess: invalidate,
+    onSuccess: (_data, vars) => {
+      invalidate();
+      toast.success(
+        vars.active ? t('priceAdjustments.activatedToast') : t('priceAdjustments.deactivatedToast'),
+      );
+    },
     onError: (err) => toast.error(errMessage(err)),
   });
 
   const heading = (
     <PageHeading
-      breadcrumb={
-        <span className="flex items-center gap-2">
-          <span>{isAllBrands ? t('brandFilter.allBrands') : activeProject.name}</span>
-          <span aria-hidden="true">/</span>
-          <span className="text-foreground">{t('priceAdjustments.title')}</span>
-        </span>
-      }
+      breadcrumb={[
+        { label: isAllBrands ? t('brandFilter.allBrands') : activeProject.name },
+        { label: t('priceAdjustments.title') },
+      ]}
       title={t('priceAdjustments.title')}
       subtitle={t('priceAdjustments.subtitle')}
       actions={
         isAllBrands ? undefined : (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="h-11"
+          <>
+            <RefreshButton
               onClick={() => void listQuery.refetch()}
-              disabled={listQuery.isFetching}
-            >
-              <RefreshCcw
-                className={listQuery.isFetching ? 'size-4 animate-spin' : 'size-4'}
-                aria-hidden="true"
-              />
-              {t('common.refresh')}
-            </Button>
-            <Button className="h-11" onClick={() => setDialogOpen(true)}>
-              <Plus className="size-4" aria-hidden="true" />
+              fetching={listQuery.isFetching}
+            />
+            <Button size="sm" onClick={() => setDialogOpen(true)}>
+              <Plus aria-hidden="true" />
               {t('priceAdjustments.new')}
             </Button>
-          </div>
+          </>
         )
       }
     />
@@ -111,52 +108,58 @@ export function PriceAdjustmentsPage() {
 
   if (isAllBrands) {
     return (
-      <div className="mx-auto w-full max-w-4xl">
+      <PageContainer width="full">
         {heading}
-        <Card>
-          <CardContent className="p-0">
-            <EmptyState
-              icon={<Tag className="size-8" aria-hidden="true" />}
-              message={t('priceAdjustments.selectBrandFirst')}
-            />
-          </CardContent>
-        </Card>
-      </div>
+        <EmptyState
+          variant="dashed"
+          icon={<Tag aria-hidden="true" />}
+          message={t('priceAdjustments.selectBrandFirst')}
+        />
+      </PageContainer>
     );
   }
 
   const rows = listQuery.data?.adjustments ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    <PageContainer width="full">
       {heading}
 
-      <p className="mb-4 text-sm text-muted-foreground">{t('priceAdjustments.recordOnly')}</p>
+      <div className="flex flex-col gap-4">
+        <Alert tone="info">{t('priceAdjustments.recordOnly')}</Alert>
 
-      {listQuery.isLoading ? (
-        <div className="space-y-2" aria-hidden="true">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : rows.length === 0 ? (
-        <Card>
-          <CardContent className="p-0">
-            <EmptyState
-              icon={<Tag className="size-8" aria-hidden="true" />}
-              title={t('priceAdjustments.empty')}
-              message={t('priceAdjustments.emptyHint')}
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="overflow-x-auto p-0">
+        {listQuery.isLoading ? (
+          <div className="space-y-2" role="status" aria-label={t('common.loading')}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : listQuery.error && !listQuery.data ? (
+          <ErrorState
+            error={listQuery.error}
+            onRetry={() => void listQuery.refetch()}
+            retrying={listQuery.isFetching}
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            variant="dashed"
+            icon={<Tag aria-hidden="true" />}
+            title={t('priceAdjustments.empty')}
+            message={t('priceAdjustments.emptyHint')}
+            action={
+              <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
+                <Plus aria-hidden="true" />
+                {t('priceAdjustments.new')}
+              </Button>
+            }
+          />
+        ) : (
+          <Card className="overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t('priceAdjustments.colScope')}</TableHead>
-                  <TableHead>{t('priceAdjustments.colPercent')}</TableHead>
+                  <TableHead className="text-right">{t('priceAdjustments.colPercent')}</TableHead>
                   <TableHead>{t('priceAdjustments.colReason')}</TableHead>
                   <TableHead>{t('priceAdjustments.colValidity')}</TableHead>
                   <TableHead>{t('priceAdjustments.colStatus')}</TableHead>
@@ -176,9 +179,9 @@ export function PriceAdjustmentsPage() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          </Card>
+        )}
+      </div>
 
       <CreateDialog
         open={dialogOpen}
@@ -187,10 +190,11 @@ export function PriceAdjustmentsPage() {
         onCreated={() => {
           invalidate();
           setDialogOpen(false);
+          toast.success(t('priceAdjustments.createdToast'));
         }}
         t={t}
       />
-    </div>
+    </PageContainer>
   );
 }
 
@@ -217,7 +221,7 @@ function AdjustmentRow({
         {t(SCOPE_LABEL[row.scope])}
         {row.scopeKey ? <span className="text-muted-foreground"> · {row.scopeKey}</span> : null}
       </TableCell>
-      <TableCell className="tabular-nums">
+      <TableCell className="text-right font-medium tabular-nums">
         {Number(row.adjustmentPercent) > 0 ? '+' : ''}
         {row.adjustmentPercent}%
       </TableCell>
@@ -233,9 +237,8 @@ function AdjustmentRow({
           tone={row.active ? 'success' : 'neutral'}
         />
       </TableCell>
-      <TableCell className="text-right">
-        <Button variant="outline" size="sm" onClick={onToggle} disabled={busy}>
-          {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+      <TableCell className="py-2 text-right">
+        <Button variant="ghost" size="xs" onClick={onToggle} loading={busy}>
           {row.active ? t('priceAdjustments.deactivate') : t('priceAdjustments.activate')}
         </Button>
       </TableCell>
@@ -288,9 +291,11 @@ function CreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[94vw] sm:max-w-md">
-        <DialogTitle>{t('priceAdjustments.new')}</DialogTitle>
-        <DialogDescription>{t('priceAdjustments.recordOnly')}</DialogDescription>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('priceAdjustments.new')}</DialogTitle>
+          <DialogDescription>{t('priceAdjustments.recordOnly')}</DialogDescription>
+        </DialogHeader>
         <form
           className="flex flex-col gap-4"
           onSubmit={(e) => {
@@ -298,35 +303,27 @@ function CreateDialog({
             if (valid) mutation.mutate();
           }}
         >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pa-scope">{t('priceAdjustments.scopeLabel')}</Label>
-            <Select
+          <FormField label={t('priceAdjustments.scopeLabel')} htmlFor="pa-scope">
+            <Select<PriceAdjustmentScope>
               id="pa-scope"
               value={scope}
-              onChange={(e) => setScope(e.target.value as PriceAdjustmentScope)}
-            >
-              {SCOPES.map((s) => (
-                <option key={s} value={s}>
-                  {t(SCOPE_LABEL[s])}
-                </option>
-              ))}
-            </Select>
-          </div>
+              onValueChange={setScope}
+              options={SCOPES.map((s) => ({ value: s, label: t(SCOPE_LABEL[s]) }))}
+            />
+          </FormField>
 
           {scope !== 'global' ? (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pa-key">{t('priceAdjustments.scopeKeyLabel')}</Label>
+            <FormField label={t('priceAdjustments.scopeKeyLabel')} htmlFor="pa-key">
               <Input
                 id="pa-key"
                 value={scopeKey}
                 onChange={(e) => setScopeKey(e.target.value)}
                 maxLength={64}
               />
-            </div>
+            </FormField>
           ) : null}
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pa-percent">{t('priceAdjustments.percentLabel')}</Label>
+          <FormField label={t('priceAdjustments.percentLabel')} htmlFor="pa-percent" required>
             <Input
               id="pa-percent"
               type="number"
@@ -338,10 +335,9 @@ function CreateDialog({
               onChange={(e) => setPercent(e.target.value)}
               required
             />
-          </div>
+          </FormField>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pa-reason">{t('priceAdjustments.reasonLabel')}</Label>
+          <FormField label={t('priceAdjustments.reasonLabel')} htmlFor="pa-reason">
             <Textarea
               id="pa-reason"
               rows={3}
@@ -349,9 +345,9 @@ function CreateDialog({
               onChange={(e) => setReason(e.target.value)}
               maxLength={2000}
             />
-          </div>
+          </FormField>
 
-          <DialogFooter className="mt-1">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -360,10 +356,7 @@ function CreateDialog({
             >
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={!valid || mutation.isPending}>
-              {mutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : null}
+            <Button type="submit" disabled={!valid} loading={mutation.isPending}>
               {mutation.isPending ? t('priceAdjustments.creating') : t('priceAdjustments.create')}
             </Button>
           </DialogFooter>

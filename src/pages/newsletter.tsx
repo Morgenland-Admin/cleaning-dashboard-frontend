@@ -1,25 +1,19 @@
 import { useInfiniteQuery, useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  CheckCircle2,
-  Download,
-  Inbox,
-  Loader2,
-  Mail,
-  RefreshCcw,
-  Trash2,
-} from 'lucide-react';
+import { CheckCircle2, Download, Inbox, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { BrandMark } from '@/components/brand-mark';
+import { BrandChip } from '@/components/brand-mark';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { CountPill } from '@/components/count-pill';
 import { CsvImportSheet } from '@/components/csv-import-sheet';
+import { EmptyState, LoadingState } from '@/components/empty-state';
 import { InfiniteScrollSentinel } from '@/components/infinite-scroll-sentinel';
-import { Badge } from '@/components/ui/badge';
+import { PageContainer, PageHeading } from '@/components/page-heading';
+import { RefreshButton } from '@/components/refresh-button';
+import { StatusBadge } from '@/components/status-badge';
+import { ErrorState } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import {
   Table,
   TableBody,
@@ -28,11 +22,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useProject, type Project, type CompanySlug } from '@/contexts/project-context';
 import { toast } from '@/hooks/use-toast';
 import { useLocale, useT } from '@/i18n';
 import {
+  errMessage,
   exportsAdminApi,
   newsletterAdminApi,
   type NewsletterSubscriber,
@@ -40,7 +35,7 @@ import {
 } from '@/lib/api';
 import { useIsDesktop } from '@/lib/use-is-desktop';
 import { usePageTitle } from '@/lib/use-page-title';
-import { cn, formatDateTime } from '@/lib/utils';
+import { formatDateTime } from '@/lib/utils';
 
 type SubscriberStatus = 'confirmed' | 'pending' | 'unsubscribed';
 
@@ -58,10 +53,10 @@ const STATUS_KEY: Record<SubscriberStatus, string> = {
   unsubscribed: 'newsletter.statusUnsubscribed',
 };
 
-const STATUS_VARIANT: Record<SubscriberStatus, 'default' | 'success' | 'warning' | 'secondary'> = {
+const STATUS_TONE: Record<SubscriberStatus, 'success' | 'warning' | 'neutral'> = {
   confirmed: 'success',
   pending: 'warning',
-  unsubscribed: 'secondary',
+  unsubscribed: 'neutral',
 };
 
 export function NewsletterPage() {
@@ -71,9 +66,6 @@ export function NewsletterPage() {
   const { bcp47 } = useLocale();
   usePageTitle(t('newsletter.title'));
   const [tab, setTab] = useState<SubscriberStatus | 'all'>('all');
-  // The list scrolls inside its own box so a few hundred rows stay navigable
-  // without the page growing to many screens tall. The table header sticks to
-  // the top of that box.
   const listScrollRef = useRef<HTMLDivElement>(null);
   const isDesktop = useIsDesktop();
   const [confirming, setConfirming] = useState<{
@@ -136,7 +128,6 @@ export function NewsletterPage() {
     [rows, tab],
   );
 
-  // Switching tab or brand shows a different list — start it at the top.
   useEffect(() => {
     listScrollRef.current?.scrollTo({ top: 0 });
   }, [tab, activeProject.companySlug, isAllBrands]);
@@ -155,13 +146,16 @@ export function NewsletterPage() {
   const deleteMutation = useMutation({
     mutationFn: ({ companySlug, id }: { companySlug: CompanySlug; id: number }) =>
       newsletterAdminApi.delete(companySlug, id),
-    onSuccess: (_data, { id }) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['newsletter-infinite'] });
       void queryClient.invalidateQueries({ queryKey: ['newsletter'] });
-      void id;
       setConfirming(null);
+      toast.success(t('newsletter.deleted'));
     },
-    onError: () => setConfirming(null),
+    onError: (err) => {
+      setConfirming(null);
+      toast.error(errMessage(err), t('common.error'));
+    },
   });
 
   function refreshAll() {
@@ -187,26 +181,33 @@ export function NewsletterPage() {
     { value: 'unsubscribed', label: t('newsletter.tabUnsubscribed') },
   ];
 
+  const rowProps = (s: Row): SubscriberRowProps => ({
+    row: s,
+    status: statusOf(s),
+    fullName: [s.firstName, s.lastName].filter(Boolean).join(' ') || null,
+    created: formatDateTime(s.createdAt, bcp47, { dateStyle: 'short' }),
+    showBrand: isAllBrands,
+    deleting:
+      deleteMutation.isPending &&
+      deleteMutation.variables?.id === s.id &&
+      deleteMutation.variables?.companySlug === s._brand.companySlug,
+    onDelete: () => setConfirming({ companySlug: s._brand.companySlug, id: s.id, email: s.email }),
+  });
+
+  const brandLabel = isAllBrands ? t('brandFilter.allBrands') : activeProject.name;
+  const errorState = errorMessage ? (
+    <ErrorState error={new Error(errorMessage)} onRetry={refreshAll} retrying={isFetching} />
+  ) : null;
+
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{isAllBrands ? t('brandFilter.allBrands') : activeProject.name}</span>
-          <span>/</span>
-          <span className="text-foreground">{t('newsletter.title')}</span>
-        </div>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-              {t('newsletter.title')}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {t('newsletter.subtitleFor', {
-                brand: isAllBrands ? t('brandFilter.allBrands') : activeProject.name,
-              })}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+    <PageContainer width="full" className="gap-4">
+      <PageHeading
+        className="mb-1"
+        breadcrumb={[{ label: brandLabel }, { label: t('newsletter.title') }]}
+        title={t('newsletter.title')}
+        subtitle={t('newsletter.subtitleFor', { brand: brandLabel })}
+        actions={
+          <>
             <ExportNewsletterButton />
             <CsvImportSheet
               companySlug={activeProject.companySlug}
@@ -218,188 +219,128 @@ export function NewsletterPage() {
               requireConsentAttestation
               disabled={isAllBrands}
               disabledTitle={t('newsletter.importPickBrand')}
-              headerChip={
-                <div className="flex items-center gap-2 text-3xs uppercase tracking-[0.14em] text-muted-foreground">
-                  <BrandMark brand={activeProject} size="xs" />
-                  <span>{activeProject.shortName}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{t('newsletter.import')}</span>
-                </div>
-              }
+              headerChip={<BrandChip brand={activeProject} />}
             />
-            <Button variant="outline" size="sm" onClick={refreshAll} disabled={isFetching}>
-              <RefreshCcw className={cn('size-3.5', isFetching && 'animate-spin')} />
-              {t('newsletter.refresh')}
-            </Button>
-          </div>
-        </div>
-      </div>
+            <RefreshButton fetching={isFetching} onClick={refreshAll} />
+          </>
+        }
+      />
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as SubscriberStatus | 'all')}>
-        <TabsList>
-          {tabs.map((tabItem) => {
-            const active = tab === tabItem.value;
-            return (
-              <TabsTrigger key={tabItem.value} value={tabItem.value} className="gap-1.5">
-                {tabItem.label}
-                <CountPill tone={active ? 'accent' : 'muted'}>{counts[tabItem.value]}</CountPill>
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-      </Tabs>
-
-      {errorMessage ? (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-        >
-          <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <span>{errorMessage}</span>
-        </div>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('newsletter.title')}</CardTitle>
-          <CardDescription>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <SegmentedControl
+          label={t('newsletter.colStatus')}
+          value={tab}
+          onValueChange={setTab}
+          overflow="scroll"
+          className="sm:w-auto"
+          options={tabs.map((tabItem) => ({
+            value: tabItem.value,
+            label: tabItem.label,
+            count: counts[tabItem.value],
+          }))}
+        />
+        {!isLoading ? (
+          <p className="shrink-0 text-2sm tabular-nums text-muted-foreground">
             {filtered.length === 1
               ? t('newsletter.countSingular', { count: filtered.length })
               : t('newsletter.countPlural', { count: filtered.length })}
-          </CardDescription>
-        </CardHeader>
-        <CardContent
-          ref={listScrollRef}
-          className="p-0 lg:max-h-[calc(100svh-17rem)] lg:overflow-y-auto lg:overscroll-contain"
-        >
-          {isLoading ? (
-            <div className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              {t('newsletter.loading')}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex h-48 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Inbox className="size-6 opacity-50" />
-              <span>{t('newsletter.empty')}</span>
-            </div>
-          ) : (
-            <Table containerClassName="w-full">
-              <TableHeader className="sticky top-0 z-10 border-y border-border/70 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:border-b [&_th]:border-border/70 [&_th]:bg-muted">
+          </p>
+        ) : null}
+      </div>
+
+      {errorState && rows.length > 0 ? errorState : null}
+
+      {isLoading ? (
+        <LoadingState label={t('newsletter.loading')} className="min-h-48" />
+      ) : errorState && rows.length === 0 ? (
+        errorState
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          variant="dashed"
+          icon={<Inbox aria-hidden="true" />}
+          message={rows.length > 0 ? t('newsletter.emptyFiltered') : t('newsletter.empty')}
+        />
+      ) : (
+        // overflow-clip rounds the corners without becoming a scroll container, so the sticky header pins to the list box.
+        <div className="overflow-clip rounded-lg border border-border bg-card">
+          <div
+            ref={listScrollRef}
+            className="lg:max-h-[calc(100svh-16rem)] lg:overflow-y-auto lg:overscroll-contain"
+          >
+            <ul className="divide-y divide-border md:hidden">
+              {filtered.map((s) => (
+                <SubscriberListItem key={`${s._brand.id}:${s.id}`} {...rowProps(s)} />
+              ))}
+            </ul>
+
+            <Table containerClassName="hidden w-full md:block">
+              <TableHeader sticky>
                 <TableRow>
-                  <TableHead className="py-2.5 sm:px-6">{t('newsletter.colEmail')}</TableHead>
-                  <TableHead className="hidden px-5 py-2.5 sm:table-cell">
-                    {t('brandFilter.title')}
-                  </TableHead>
-                  <TableHead className="hidden px-5 py-2.5 md:table-cell">
-                    {t('newsletter.colName')}
-                  </TableHead>
-                  <TableHead className="hidden px-5 py-2.5 lg:table-cell">
+                  <TableHead>{t('newsletter.colEmail')}</TableHead>
+                  {isAllBrands ? <TableHead>{t('common.brand')}</TableHead> : null}
+                  <TableHead>{t('newsletter.colName')}</TableHead>
+                  <TableHead className="hidden lg:table-cell">
                     {t('newsletter.colSource')}
                   </TableHead>
-                  <TableHead className="py-2.5 sm:px-5">{t('newsletter.colStatus')}</TableHead>
-                  <TableHead className="hidden px-5 py-2.5 text-right sm:table-cell">
-                    {t('newsletter.colCreated')}
-                  </TableHead>
-                  <TableHead className="py-2.5 text-right sm:px-5">
+                  <TableHead>{t('newsletter.colStatus')}</TableHead>
+                  <TableHead className="text-right">{t('newsletter.colCreated')}</TableHead>
+                  <TableHead className="w-0">
                     <span className="sr-only">{t('newsletter.colActions')}</span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((s) => {
-                  const status = statusOf(s);
-                  const fullName = [s.firstName, s.lastName].filter(Boolean).join(' ') || null;
-                  const isThisDeleting =
-                    deleteMutation.isPending &&
-                    deleteMutation.variables?.id === s.id &&
-                    deleteMutation.variables?.companySlug === s._brand.companySlug;
+                  const p = rowProps(s);
                   return (
                     <TableRow key={`${s._brand.id}:${s.id}`}>
-                      <TableCell className="sm:px-6">
-                        <div className="flex items-center gap-2">
-                          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-rust/10 text-rust">
-                            <Mail className="size-3.5" />
-                          </span>
-                          <div className="min-w-0">
-                            <a
-                              href={`mailto:${s.email}`}
-                              className="truncate font-medium text-primary hover:underline"
-                            >
-                              {s.email}
-                            </a>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground md:hidden">
-                              <BrandChip brand={s._brand} />
-                              {fullName ? <span>{fullName}</span> : null}
-                              {s.source ? <span>· {s.source}</span> : null}
-                            </div>
-                          </div>
-                        </div>
+                      <TableCell className="max-w-[22rem]">
+                        <MailtoLink email={s.email} />
                       </TableCell>
-                      <TableCell className="hidden px-5 sm:table-cell">
-                        <BrandChip brand={s._brand} />
-                      </TableCell>
-                      <TableCell className="hidden px-5 text-sm md:table-cell">
-                        {fullName ?? '—'}
-                      </TableCell>
-                      <TableCell className="hidden px-5 text-xs text-muted-foreground lg:table-cell">
+                      {isAllBrands ? (
+                        <TableCell>
+                          <BrandChip brand={s._brand} />
+                        </TableCell>
+                      ) : null}
+                      <TableCell>{p.fullName ?? '—'}</TableCell>
+                      <TableCell className="hidden text-muted-foreground lg:table-cell">
                         {s.source ?? '—'}
                       </TableCell>
-                      <TableCell className="sm:px-5">
-                        <Badge variant={STATUS_VARIANT[status]}>
-                          {t(STATUS_KEY[status] as never)}
-                        </Badge>
+                      <TableCell>
+                        <StatusBadge
+                          label={t(STATUS_KEY[p.status] as never)}
+                          tone={STATUS_TONE[p.status]}
+                        />
                       </TableCell>
-                      <TableCell className="hidden px-5 text-right text-xs tabular-nums text-muted-foreground sm:table-cell">
-                        {formatDateTime(s.createdAt, bcp47, {
-                          dateStyle: 'short',
-                        })}
+                      <TableCell className="whitespace-nowrap text-right tabular-nums text-muted-foreground">
+                        {p.created}
                       </TableCell>
-                      <TableCell className="text-right sm:px-5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() =>
-                            setConfirming({
-                              companySlug: s._brand.companySlug,
-                              id: s.id,
-                              email: s.email,
-                            })
-                          }
-                          aria-label={t('newsletter.delete')}
-                          className="text-destructive hover:text-destructive"
-                          disabled={isThisDeleting}
-                        >
-                          {isThisDeleting ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="size-4" />
-                          )}
-                        </Button>
+                      <TableCell className="py-1.5 text-right">
+                        <DeleteAction {...p} />
                       </TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
-          )}
-          {!isAllBrands ? (
-            <InfiniteScrollSentinel
-              hasMore={!!singleInfinite.hasNextPage}
-              isLoading={singleInfinite.isFetchingNextPage}
-              onIntersect={loadMore}
-              // Only a root when that box actually scrolls (lg+); otherwise the
-              // sentinel sits inside it forever and pages in the whole list.
-              rootRef={isDesktop ? listScrollRef : undefined}
-            />
-          ) : null}
-          {allBrandsHasMore ? (
-            <div className="border-t border-border/60 px-4 py-3 text-center text-xs text-muted-foreground sm:px-6">
-              {t('common.allBrandsHasMore')}
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+
+            {!isAllBrands ? (
+              <InfiniteScrollSentinel
+                hasMore={!!singleInfinite.hasNextPage}
+                isLoading={singleInfinite.isFetchingNextPage}
+                onIntersect={loadMore}
+                // Root only where the box scrolls (lg+); otherwise the sentinel is always visible and loads every page.
+                rootRef={isDesktop ? listScrollRef : undefined}
+              />
+            ) : null}
+            {allBrandsHasMore ? (
+              <p className="border-t border-border px-4 py-3 text-center text-xs text-muted-foreground">
+                {t('common.allBrandsHasMore')}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!confirming}
@@ -422,16 +363,73 @@ export function NewsletterPage() {
           });
         }}
       />
-    </div>
+    </PageContainer>
   );
 }
 
-function BrandChip({ brand }: { brand: Project }) {
+interface SubscriberRowProps {
+  row: Row;
+  status: SubscriberStatus;
+  fullName: string | null;
+  created: string;
+  showBrand: boolean;
+  deleting: boolean;
+  onDelete: () => void;
+}
+
+function MailtoLink({ email }: { email: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <BrandMark brand={brand} size="sm" />
-      <span className="text-xs">{brand.shortName}</span>
-    </span>
+    <a
+      href={`mailto:${email}`}
+      className="block truncate rounded-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {email}
+    </a>
+  );
+}
+
+function DeleteAction({ row, deleting, onDelete }: SubscriberRowProps) {
+  const t = useT();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onDelete}
+          aria-label={t('newsletter.deleteAria', { email: row.email })}
+          className="text-destructive hover:bg-destructive-soft hover:text-destructive"
+          loading={deleting}
+        >
+          <Trash2 aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t('newsletter.delete')}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SubscriberListItem(props: SubscriberRowProps) {
+  const t = useT();
+  const { row, status, fullName, created, showBrand } = props;
+  return (
+    <li className="flex items-start gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 text-2sm">
+            <MailtoLink email={row.email} />
+          </div>
+          <StatusBadge label={t(STATUS_KEY[status] as never)} tone={STATUS_TONE[status]} />
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {showBrand ? <BrandChip brand={row._brand} /> : null}
+          {fullName ? <span>{fullName}</span> : null}
+          {row.source ? <span>· {row.source}</span> : null}
+          <span className="tabular-nums">· {created}</span>
+        </div>
+      </div>
+      <DeleteAction {...props} />
+    </li>
   );
 }
 
@@ -451,7 +449,7 @@ function ExportNewsletterButton() {
       setState('queued');
       setTimeout(() => setState('idle'), 4000);
     } catch (err) {
-      toast.error((err as Error).message);
+      toast.error(errMessage(err), t('common.error'));
       setState('idle');
     }
   }
@@ -459,7 +457,7 @@ function ExportNewsletterButton() {
   if (isAllBrands) {
     return (
       <Button variant="outline" size="sm" disabled title={t('newsletter.exportPickBrand')}>
-        <Download className="size-3.5" />
+        <Download aria-hidden="true" />
         {t('newsletter.export')}
       </Button>
     );
@@ -469,7 +467,7 @@ function ExportNewsletterButton() {
     return (
       <Button variant="outline" size="sm" asChild className="text-success">
         <Link to="/exports">
-          <CheckCircle2 className="size-3.5" />
+          <CheckCircle2 aria-hidden="true" />
           {t('newsletter.exportQueued')}
         </Link>
       </Button>
@@ -477,12 +475,8 @@ function ExportNewsletterButton() {
   }
 
   return (
-    <Button variant="outline" size="sm" onClick={createExport} disabled={state === 'loading'}>
-      {state === 'loading' ? (
-        <Loader2 className="size-3.5 animate-spin" />
-      ) : (
-        <Download className="size-3.5" />
-      )}
+    <Button variant="outline" size="sm" onClick={createExport} loading={state === 'loading'}>
+      <Download aria-hidden="true" />
       {t('newsletter.export')}
     </Button>
   );

@@ -52,27 +52,31 @@ export function AttachmentGallery({ companySlug, attachments, className }: Props
           const isImage = isImageAttachment(att);
           const isClickable = !!url;
           return (
-            <li
-              key={att.key}
-              className="overflow-hidden rounded-lg border border-border bg-muted/30"
-            >
+            <li key={att.key} className="overflow-hidden rounded-lg border border-border bg-card">
               <button
                 type="button"
                 disabled={!isClickable}
                 onClick={() => isClickable && setLightboxIndex(i)}
-                className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                aria-label={t('attachment.openImage', { name: att.name })}
+                className="block w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+                aria-label={
+                  q?.isError
+                    ? t('attachment.loadFailed', { name: att.name })
+                    : t('attachment.openImage', { name: att.name })
+                }
               >
-                <div className="relative flex aspect-[4/3] items-center justify-center bg-background/60">
+                <div className="relative flex aspect-[4/3] items-center justify-center bg-muted">
                   {q?.isLoading ? (
-                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    <Loader2
+                      className="size-4 animate-spin text-muted-foreground"
+                      aria-hidden="true"
+                    />
                   ) : q?.isError ? (
-                    <AlertCircle className="size-4 text-rust" />
+                    <AlertCircle className="size-4 text-destructive" aria-hidden="true" />
                   ) : url && isImage ? (
                     <img
                       src={url}
                       alt={att.name}
-                      className="size-full object-contain"
+                      className="size-full object-cover"
                       loading="lazy"
                     />
                   ) : (
@@ -81,7 +85,9 @@ export function AttachmentGallery({ companySlug, attachments, className }: Props
                     </span>
                   )}
                 </div>
-                <div className="truncate px-2 py-1 text-2xs text-foreground/80">{att.name}</div>
+                <div className="truncate border-t border-border px-2 py-1 text-2xs text-foreground">
+                  {att.name}
+                </div>
               </button>
             </li>
           );
@@ -120,7 +126,6 @@ function Lightbox({
   const url = urls[index];
   const isImage = isImageAttachment(current);
 
-  // Arrow keys navigate; Radix handles Esc/scroll-lock/focus-trap.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'ArrowRight' && total > 1) {
@@ -162,16 +167,12 @@ function Lightbox({
               aria-label={t('common.close')}
               className="inline-flex size-9 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
-              <X className="size-5" />
+              <X className="size-5" aria-hidden="true" />
             </DialogPrimitive.Close>
           </div>
 
-          {/*
-            Clicking the empty space around the image closes the lightbox. It is a
-            pointer-only shortcut, not the control: Escape (Radix) and the Close
-            button above are the keyboard paths, so this stays presentational
-            rather than becoming a focusable div with a key handler.
-          */}
+          {/* Pointer-only close shortcut; keyboard users have Escape and the Close button,
+              so this stays presentational. */}
           <div
             role="presentation"
             className="relative flex flex-1 items-center justify-center px-4 pb-6"
@@ -195,7 +196,10 @@ function Lightbox({
                 {t('common.openInNewTab')}
               </a>
             ) : (
-              <Loader2 className="size-6 animate-spin text-white/70" />
+              <span role="status" className="inline-flex">
+                <Loader2 className="size-6 animate-spin text-white/70" aria-hidden="true" />
+                <span className="sr-only">{t('common.loading')}</span>
+              </span>
             )}
 
             {total > 1 ? (
@@ -221,7 +225,7 @@ function NavButton({ side, onClick }: { side: 'left' | 'right'; onClick: () => v
         side === 'left' ? 'left-3' : 'right-3',
       )}
     >
-      <Icon className="size-6" />
+      <Icon className="size-6" aria-hidden="true" />
     </button>
   );
 }
